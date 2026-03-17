@@ -41,6 +41,7 @@ function main() {
         uniform paramBall2D ball1;
         uniform paramBall2D ball2;
         uniform vec2 resolution;
+        uniform float time;
             
         in vec2 uv;
         out vec4 fragColor;
@@ -110,10 +111,11 @@ function main() {
         return;
     }
 
-    const positionLocation = gl.getAttribLocation(program, "a_position");
-    const ball1Location = gl.getUniformLocation(program, "ball1");
-    const ball2Location = gl.getUniformLocation(program, "ball2");
-    const resolutionLocation = gl.getUniformLocation(program, "resolution");
+        const positionLocation = gl.getAttribLocation(program, "a_position");
+        const ball1Location = gl.getUniformLocation(program, "ball1");
+        const ball2Location = gl.getUniformLocation(program, "ball2");
+        const resolutionLocation = gl.getUniformLocation(program, "resolution");
+        const timeLocation = gl.getUniformLocation(program, "time");
 
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -135,6 +137,7 @@ function main() {
     }
 
     function drawScene() {
+        const t = performance.now() / 1000;
         resizeCanvasToDisplaySize(gl.canvas);
 
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -148,10 +151,11 @@ function main() {
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
         gl.uniform1f(gl.getUniformLocation(program, "ball1.r"), 0.15);
-        gl.uniform2f(gl.getUniformLocation(program, "ball1.center"), 0.3, 0.5);
+        gl.uniform2f(gl.getUniformLocation(program, "ball1.center"), 0.3 + 0.2 * Math.sin(t), 0.5);
         gl.uniform1f(gl.getUniformLocation(program, "ball2.r"), 0.2);
-        gl.uniform2f(gl.getUniformLocation(program, "ball2.center"), 0.7, 0.5);
+        gl.uniform2f(gl.getUniformLocation(program, "ball2.center"), 0.7 + 0.2 * Math.cos(t), 0.5);
         gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
+        gl.uniform1f(timeLocation, t);
 
         gl.drawArrays(gl.TRIANGLES, 0, 3);
 
