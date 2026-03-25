@@ -3,6 +3,8 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane compile [PATH]\n  lane list-primitives\n  lane --list-primitives\n  lane list-preregistered\n  lane --list-preregistered\n  lane show-preregistered <NAME>\n  lane --show-preregistered <NAME>\n  lane help\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -13,37 +15,69 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
     match args.as_slice() {
+        [] => compile_from_stdin(),
+        [command] if is_help(command) => {
+            print_help();
+            Ok(())
+        }
+        [command] if command == "compile" => compile_from_stdin(),
+        [command, path] if command == "compile" => compile_path(path),
+        [command] if command == "list-primitives" => {
+            print_known_primitives();
+            Ok(())
+        }
         [flag] if flag == "--list-primitives" => {
             print_known_primitives();
-            return Ok(());
+            Ok(())
+        }
+        [command] if command == "list-preregistered" => {
+            print_preregistered_objects();
+            Ok(())
         }
         [flag] if flag == "--list-preregistered" => {
             print_preregistered_objects();
-            return Ok(());
+            Ok(())
         }
-        [flag, name] if flag == "--show-preregistered" => {
-            if let Some(object) = sdf_dsl::preregistered_object(name) {
-                println!("{} {}", kind_name(object.kind), object.name);
-                println!();
-                println!("{}", object.body);
-                return Ok(());
-            }
-            return Err(format!("unknown preregistered object '{name}'").into());
-        }
-        _ => {}
+        [command, name] if command == "show-preregistered" => print_preregistered_object(name),
+        [flag, name] if flag == "--show-preregistered" => print_preregistered_object(name),
+        [path] => compile_path(path),
+        _ => Err("unexpected arguments; run `lane --help` for usage".into()),
     }
+}
 
-    let source = if let Some(path) = args.first() {
-        fs::read_to_string(path)?
-    } else {
-        let mut source = String::new();
-        io::stdin().read_to_string(&mut source)?;
-        source
-    };
+fn compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let source = fs::read_to_string(path)?;
+    print_compiled_program(&source)
+}
 
-    let glsl = sdf_dsl::compile_program(&source)?;
+fn compile_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
+    let mut source = String::new();
+    io::stdin().read_to_string(&mut source)?;
+    print_compiled_program(&source)
+}
+
+fn print_compiled_program(source: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let glsl = sdf_dsl::compile_program(source)?;
     println!("{glsl}");
     Ok(())
+}
+
+fn print_help() {
+    println!("{HELP}");
+}
+
+fn is_help(arg: &str) -> bool {
+    matches!(arg, "help" | "-h" | "--help")
+}
+
+fn print_preregistered_object(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(object) = sdf_dsl::preregistered_object(name) {
+        println!("{} {}", kind_name(object.kind), object.name);
+        println!();
+        println!("{}", object.body);
+        return Ok(());
+    }
+    Err(format!("unknown preregistered object '{name}'").into())
 }
 
 fn print_known_primitives() {

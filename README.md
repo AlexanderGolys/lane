@@ -1,6 +1,6 @@
 # sdf-compiler
 
-A small Rust prototype for a functional SDF DSL that compiles object expressions into GLSL.
+A small Rust prototype for a functional SDF DSL with a `lane` CLI that compiles object expressions into GLSL.
 
 Current slice:
 
@@ -21,7 +21,7 @@ Example input lives in `test.sdfdsl`.
 Run it with:
 
 ```sh
-cargo run -- test.sdfdsl
+cargo run --bin lane -- test.sdfdsl
 ```
 
 Run tests with:
@@ -33,13 +33,19 @@ cargo test
 List the known primitives, including each generated SDF signature and parameter domain, with:
 
 ```sh
-cargo run -- --list-primitives
+cargo run --bin lane -- --list-primitives
 ```
 
 Inspect preregistered GLSL support objects with:
 
 ```sh
-cargo run -- --list-preregistered
-cargo run -- --show-preregistered ParamBall3D
-cargo run -- --show-preregistered sdf0_Ball3D
+cargo run --bin lane -- --list-preregistered
+cargo run --bin lane -- --show-preregistered ParamBall3D
+cargo run --bin lane -- --show-preregistered sdf0_Ball3D
+```
+
+Show CLI usage with:
+
+```sh
+cargo run --bin lane -- --help
 ```
