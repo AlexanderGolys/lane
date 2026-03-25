@@ -1,9 +1,9 @@
-in: float time
-in: func(float -> float) rB
-in: func(float -> vec3) centerA
+in: R time
+in: Func(R, R) rB
+in: Func(R, R3) centerA
 
-func(float -> float) hardness = pow2 @ sin + .5
-func(float -> vec3) centerB = (1, sin, cos) + centerA / 2
+Func(R, R) hardness = pow2 @ sin + .5
+Func(R, R3) centerB = (1, sin, cos) + centerA / 2
 Obj3 A = Ball3D(r=3) + centerA(time)
 Obj3 B = Ball3D(r=rB(time)) + centerB(time)
 Obj3 C = SmoothUnion(hardness(time))(A, B)

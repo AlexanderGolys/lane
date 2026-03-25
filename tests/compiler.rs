@@ -176,7 +176,7 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "cexp" && object.ty == "Hom(R2, R2)"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "Union" && object.ty == "Hom(Obj3 × Obj3, Obj3)"));
+        .any(|object| { object.name == "Union" && object.ty == "Hom(Obj3 × Obj3, Obj3)" }));
     assert!(objects.iter().any(|object| {
         object.name == "SmoothUnion" && object.ty == "Hom(R, Hom(Obj3 × Obj3, Obj3))"
     }));
@@ -261,6 +261,35 @@ fn supports_trailing_line_comments() {
 }
 
 #[test]
+fn emits_generated_object_helpers() {
+    let source = "gen Obj3 shell = Ball3D(r=2) + (1, 0, 0)\nout: shell\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sdf_shell(vec3 p) {"));
+    assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p) {"));
+    assert!(glsl.contains("return sdf0_Ball3D((p - vec3(1.0, 0.0, 0.0)), ParamBall3D(2.0));"));
+}
+
+#[test]
+fn generated_helpers_capture_scene_inputs_in_their_signatures() {
+    let source = "in: float time\ngen Obj3 shell = Ball3D(r=1 + time)\nout: shell\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
+    assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p, float time) {"));
+    assert!(glsl.contains("float dx = sdf_shell(p + vec3(eps, 0.0, 0.0), time) - sdf_shell(p - vec3(eps, 0.0, 0.0), time);"));
+}
+
+#[test]
+fn plain_object_bindings_do_not_export_helpers() {
+    let source = "Obj3 shell = Ball3D(r=2)\nout: shell\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(!glsl.contains("float sdf_shell("));
+    assert!(!glsl.contains("vec3 grad_sdf_shell("));
+}
+
+#[test]
 fn reports_the_offending_token_for_expression_parse_errors() {
     let source = "out: Ball3D(r=1) + *\n";
     let error = compile_program(source).unwrap_err().to_string();
@@ -293,6 +322,14 @@ fn rejects_old_binding_syntax() {
     let error = compile_program(source).unwrap_err().to_string();
 
     assert!(error.contains("use 'type name = value'"));
+}
+
+#[test]
+fn rejects_gen_on_non_object_bindings() {
+    let source = "gen R radius = 2\nout: Ball3D(r=radius)\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("'gen' currently only supports Obj3 bindings"));
 }
 
 #[test]

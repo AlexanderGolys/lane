@@ -180,6 +180,7 @@ struct BindingDecl {
     name: String,
     ty: Type,
     expr: Expr,
+    generated: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -351,6 +352,7 @@ struct TypedFunc {
 struct TypedBinding {
     name: String,
     expr: ObjectExpr,
+    generated: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -459,6 +461,7 @@ impl TypedProgram {
             typed_bindings.push(TypedBinding {
                 name: binding.name.clone(),
                 expr,
+                generated: binding.generated,
             });
         }
 
@@ -495,39 +498,20 @@ impl TypedProgram {
             lines.push(String::new());
         }
 
-        let mut signature = vec!["vec3 p".to_string()];
-        let mut scene_input_names = Vec::new();
-        for input in &self.inputs {
-            match input.ty {
-                Type::Float
-                | Type::Int
-                | Type::Vec2
-                | Type::Vec3
-                | Type::Vec4
-                | Type::Mat2
-                | Type::Mat3
-                | Type::Mat4 => {
-                    signature.push(format!("{} {}", input.ty.glsl_name(), input.name));
-                    scene_input_names.push(input.name.clone());
-                }
-                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => {}
+        let signature = self.scene_signature();
+        let scene_input_names = self.scene_input_names();
+        let object_bindings = self.object_bindings();
+        let helper_names = self.func_names();
+
+        for binding in &self.bindings {
+            if !binding.generated {
+                continue;
             }
+            lines.extend(self.emit_generated_binding(binding, &object_bindings, &helper_names));
         }
 
         lines.push(format!("float scene_sdf({}) {{", signature.join(", ")));
-        let mut object_bindings = BTreeMap::new();
-        let helper_names = self.func_names();
-        for binding in &self.value_bindings {
-            lines.push(format!(
-                "    {} {} = {};",
-                binding.ty.glsl_name(),
-                binding.name,
-                emit_value_expr(&binding.expr, &helper_names)
-            ));
-        }
-        for binding in &self.bindings {
-            object_bindings.insert(binding.name.clone(), binding.expr.clone());
-        }
+        lines.extend(self.emit_value_binding_lines(&helper_names));
         let output = emit_object_expr(&self.output, "p", &object_bindings, &helper_names);
         lines.push(format!("    return {};", output));
         lines.push("}".to_string());
@@ -571,6 +555,134 @@ impl TypedProgram {
         lines.push("}".to_string());
 
         lines.join("\n")
+    }
+
+    fn scene_signature(&self) -> Vec<String> {
+        let mut signature = vec!["vec3 p".to_string()];
+        for input in &self.inputs {
+            match input.ty {
+                Type::Float
+                | Type::Int
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat2
+                | Type::Mat3
+                | Type::Mat4 => signature.push(format!("{} {}", input.ty.glsl_name(), input.name)),
+                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => {}
+            }
+        }
+        signature
+    }
+
+    fn scene_input_names(&self) -> Vec<String> {
+        self.inputs
+            .iter()
+            .filter_map(|input| match input.ty {
+                Type::Float
+                | Type::Int
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat2
+                | Type::Mat3
+                | Type::Mat4 => Some(input.name.clone()),
+                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => None,
+            })
+            .collect()
+    }
+
+    fn emit_value_binding_lines(&self, helper_names: &HashMap<String, String>) -> Vec<String> {
+        self.value_bindings
+            .iter()
+            .map(|binding| {
+                format!(
+                    "    {} {} = {};",
+                    binding.ty.glsl_name(),
+                    binding.name,
+                    emit_value_expr(&binding.expr, helper_names)
+                )
+            })
+            .collect()
+    }
+
+    fn object_bindings(&self) -> BTreeMap<String, ObjectExpr> {
+        self.bindings
+            .iter()
+            .map(|binding| (binding.name.clone(), binding.expr.clone()))
+            .collect()
+    }
+
+    fn emit_generated_binding(
+        &self,
+        binding: &TypedBinding,
+        object_bindings: &BTreeMap<String, ObjectExpr>,
+        helper_names: &HashMap<String, String>,
+    ) -> Vec<String> {
+        let signature = self.scene_signature();
+        let scene_input_names = self.scene_input_names();
+        let mut lines = Vec::new();
+
+        lines.push(format!(
+            "float sdf_{}({}) {{",
+            binding.name,
+            signature.join(", ")
+        ));
+        lines.extend(self.emit_value_binding_lines(helper_names));
+        lines.push(format!(
+            "    return {};",
+            emit_object_expr(&binding.expr, "p", object_bindings, helper_names)
+        ));
+        lines.push("}".to_string());
+        lines.push(String::new());
+
+        lines.push(format!(
+            "vec3 grad_sdf_{}({}) {{",
+            binding.name,
+            signature.join(", ")
+        ));
+        lines.push("    float eps = 0.0005;".to_string());
+        let forward_x = std::iter::once("p + vec3(eps, 0.0, 0.0)".to_string())
+            .chain(scene_input_names.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let backward_x = std::iter::once("p - vec3(eps, 0.0, 0.0)".to_string())
+            .chain(scene_input_names.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let forward_y = std::iter::once("p + vec3(0.0, eps, 0.0)".to_string())
+            .chain(scene_input_names.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let backward_y = std::iter::once("p - vec3(0.0, eps, 0.0)".to_string())
+            .chain(scene_input_names.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let forward_z = std::iter::once("p + vec3(0.0, 0.0, eps)".to_string())
+            .chain(scene_input_names.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let backward_z = std::iter::once("p - vec3(0.0, 0.0, eps)".to_string())
+            .chain(scene_input_names.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "    float dx = sdf_{}({}) - sdf_{}({});",
+            binding.name, forward_x, binding.name, backward_x
+        ));
+        lines.push(format!(
+            "    float dy = sdf_{}({}) - sdf_{}({});",
+            binding.name, forward_y, binding.name, backward_y
+        ));
+        lines.push(format!(
+            "    float dz = sdf_{}({}) - sdf_{}({});",
+            binding.name, forward_z, binding.name, backward_z
+        ));
+        lines.push("    return normalize(vec3(dx, dy, dz));".to_string());
+        lines.push("}".to_string());
+        lines.push(String::new());
+
+        lines
     }
 
     fn support_blocks(&self, registry: &Registry) -> Vec<&'static str> {
@@ -2813,7 +2925,11 @@ fn format_object_type(ty: &Type) -> String {
             .collect::<Vec<_>>()
             .join(" × "),
         Type::Func(input, output) => {
-            format!("Hom({}, {})", format_object_type(input), format_object_type(output))
+            format!(
+                "Hom({}, {})",
+                format_object_type(input),
+                format_object_type(output)
+            )
         }
     }
 }
@@ -2914,6 +3030,8 @@ impl<'a> Parser<'a> {
             return Ok(Decl::Output(OutputDecl { expr }));
         }
 
+        let generated = line.starts_with("gen ");
+        let line = line.strip_prefix("gen ").unwrap_or(line);
         let (left, expr_source) = split_once_required(line, '=')?;
         if left.contains(':') {
             return Err(Error::new(
@@ -2924,6 +3042,9 @@ impl<'a> Parser<'a> {
         let ty = parse_type(ty_source.trim())?;
         let expr = ExprParser::new(expr_source.trim()).parse()?;
         if matches!(ty, Type::Func(_, _)) {
+            if generated {
+                return Err(Error::new("'gen' currently only supports Obj3 bindings"));
+            }
             return Ok(Decl::Func(FuncDecl {
                 name: name.to_string(),
                 ty,
@@ -2931,6 +3052,9 @@ impl<'a> Parser<'a> {
             }));
         }
         if !matches!(ty, Type::Obj3) {
+            if generated {
+                return Err(Error::new("'gen' currently only supports Obj3 bindings"));
+            }
             return Ok(Decl::ValueBinding(ValueBindingDecl {
                 name: name.to_string(),
                 ty,
@@ -2941,6 +3065,7 @@ impl<'a> Parser<'a> {
             name: name.to_string(),
             ty,
             expr,
+            generated,
         }))
     }
 }
