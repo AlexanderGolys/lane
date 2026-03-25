@@ -1,11 +1,26 @@
-# sdf-magic
+# sdf-compiler
 
-This repository includes a standalone Typst note at `notes.typ`.
+A small Rust prototype for a functional SDF DSL that compiles object expressions into GLSL.
 
-Compile it with:
+Current slice:
+
+- pre-registered `Ball3D(r=...)` primitive
+- pre-registered `SmoothUnion(k)` operator
+- value functions `sin`, `cos`, `pow2`
+- `Obj3 + vec3` placement sugar
+- top-level `in`, `func`, typed object bindings, and `out`
+- named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
+
+Example input lives in `test.sdfdsl`.
+
+Run it with:
 
 ```sh
-typst compile notes.typ notes.pdf
+cargo run -- test.sdfdsl
 ```
 
-The note now uses only built-in Typst constructs, so it does not depend on external preview packages to render.
+Run tests with:
+
+```sh
+cargo test
+```
