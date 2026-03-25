@@ -194,8 +194,14 @@ enum Expr {
     },
     Constructor {
         name: String,
-        fields: Vec<(String, Expr)>,
+        args: ConstructorArgs,
     },
+}
+
+#[derive(Clone, Debug)]
+enum ConstructorArgs {
+    Named(Vec<(String, Expr)>),
+    Positional(Vec<Expr>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -929,12 +935,43 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             ensure_type(ty, &Type::Obj3, &format!("identifier '{}'", name))?;
             Ok(ObjectExpr::Var(name.clone()))
         }
-        Expr::Constructor { name, fields } => {
-            let primitive = env
-                .registry
-                .primitives
-                .get(name.as_str())
-                .ok_or_else(|| Error::new(format!("unknown primitive '{}'", name)))?;
+        Expr::Constructor { name, args } => {
+            let primitive = if let Some(primitive) = env.registry.primitives.get(name.as_str()) {
+                primitive
+            } else {
+                match args {
+                    ConstructorArgs::Positional(positional) => {
+                        return infer_object_call(
+                            &Expr::Call {
+                                callee: Box::new(Expr::Ident(name.clone())),
+                                args: positional.clone(),
+                            },
+                            env,
+                        )
+                    }
+                    ConstructorArgs::Named(_) => {
+                        return Err(Error::new(format!("unknown primitive '{}'", name)))
+                    }
+                }
+            };
+            let fields = match args {
+                ConstructorArgs::Named(fields) => fields.clone(),
+                ConstructorArgs::Positional(values) => {
+                    if values.len() != primitive.fields.len() {
+                        return Err(Error::new(format!(
+                            "primitive '{}' expects {} field(s)",
+                            name,
+                            primitive.fields.len()
+                        )));
+                    }
+                    primitive
+                        .fields
+                        .iter()
+                        .zip(values.iter())
+                        .map(|(field, value)| (field.name.to_string(), value.clone()))
+                        .collect()
+                }
+            };
             if fields.len() != primitive.fields.len() {
                 return Err(Error::new(format!(
                     "primitive '{}' expects {} field(s)",
@@ -1135,9 +1172,19 @@ fn infer_value_expr(
                 ty,
             })
         }
-        Expr::Constructor { .. } => {
-            Err(Error::new("primitive constructors are object expressions"))
-        }
+        Expr::Constructor { name, args } => match args {
+            ConstructorArgs::Positional(args) => infer_value_expr(
+                &Expr::Call {
+                    callee: Box::new(Expr::Ident(name.clone())),
+                    args: args.clone(),
+                },
+                env,
+                lift_param,
+            ),
+            ConstructorArgs::Named(_) => {
+                Err(Error::new("primitive constructors are object expressions"))
+            }
+        },
     }
 }
 
@@ -1861,20 +1908,8 @@ impl ExprParser {
             Some(Token::Number(value)) => Ok(Expr::Number(value.parse::<f64>().unwrap())),
             Some(Token::Ident(name)) => {
                 if matches!(self.peek(), Some(Token::LParen)) {
-                    let start = self.index;
                     let args = self.parse_mixed_args()?;
-                    if let Some(named) = args.named {
-                        return Ok(Expr::Constructor {
-                            name,
-                            fields: named,
-                        });
-                    }
-                    self.index = start;
-                    let args = self.parse_positional_args()?;
-                    return Ok(Expr::Call {
-                        callee: Box::new(Expr::Ident(name)),
-                        args,
-                    });
+                    return Ok(Expr::Constructor { name, args });
                 }
                 Ok(Expr::Ident(name))
             }
@@ -1920,22 +1955,26 @@ impl ExprParser {
         Ok(args)
     }
 
-    fn parse_mixed_args(&mut self) -> Result<MixedArgs, Error> {
+    fn parse_mixed_args(&mut self) -> Result<ConstructorArgs, Error> {
         self.expect(Token::LParen)?;
         if matches!(self.peek(), Some(Token::RParen)) {
             self.index += 1;
-            return Ok(MixedArgs {
-                named: Some(Vec::new()),
-            });
+            return Ok(ConstructorArgs::Positional(Vec::new()));
+        }
+
+        if !matches!(
+            (self.peek(), self.peek_n(1)),
+            (Some(Token::Ident(_)), Some(Token::Equal))
+        ) {
+            self.index -= 1;
+            return Ok(ConstructorArgs::Positional(self.parse_positional_args()?));
         }
 
         let mut named = Vec::new();
         loop {
             let field_name = match (self.peek(), self.peek_n(1)) {
                 (Some(Token::Ident(name)), Some(Token::Equal)) => name.clone(),
-                _ => {
-                    return Ok(MixedArgs { named: None });
-                }
+                _ => return Err(Error::new("expected named constructor arguments")),
             };
             self.index += 2;
             let expr = self.parse_add_sub()?;
@@ -1949,7 +1988,7 @@ impl ExprParser {
                 _ => return Err(Error::new("expected ',' or ')' in named argument list")),
             }
         }
-        Ok(MixedArgs { named: Some(named) })
+        Ok(ConstructorArgs::Named(named))
     }
 
     fn expect(&mut self, expected: Token) -> Result<(), Error> {
@@ -1977,10 +2016,6 @@ impl ExprParser {
     fn peek_n(&self, offset: usize) -> Option<&Token> {
         self.tokens.get(self.index + offset)
     }
-}
-
-struct MixedArgs {
-    named: Option<Vec<(String, Expr)>>,
 }
 
 fn tokenize(source: &str) -> Vec<Token> {
@@ -2097,6 +2132,21 @@ fn flatten_call<'a>(expr: &'a Expr) -> Result<(String, Vec<&'a Expr>), Error> {
                 args.reverse();
                 return Ok((name.clone(), args));
             }
+            Expr::Constructor {
+                name,
+                args: constructor_args,
+            } => match constructor_args {
+                ConstructorArgs::Positional(constructor_args) => {
+                    for arg in constructor_args.iter().rev() {
+                        args.push(arg);
+                    }
+                    args.reverse();
+                    return Ok((name.clone(), args));
+                }
+                ConstructorArgs::Named(_) => {
+                    return Err(Error::new("unsupported callable object expression"))
+                }
+            },
             _ => return Err(Error::new("unsupported callable object expression")),
         }
     }

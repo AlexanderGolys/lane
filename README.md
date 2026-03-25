@@ -14,6 +14,7 @@ Current slice:
 - 2D and 3D primitives stay distinct semantic families even though the current object surface type is `Obj3`
 - top-level `in`, `func`, typed object bindings, and `out`
 - C-style line comments starting with `//`
+- primitive constructor arguments can be passed positionally in field order, e.g. `Box2D(2, 1)`
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
 - output uses `out: value`, for example `out: C`
 - polygons use `Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))` and currently support up to 16 vertices

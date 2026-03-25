@@ -214,6 +214,22 @@ fn emits_box_primitive() {
 }
 
 #[test]
+fn emits_primitive_with_positional_arguments() {
+    let source = "Obj3 shape = Box2D(2, 1)\nout: shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("sdf0_Box2D((p).xy, ParamBox2D(2.0, 1.0))"));
+}
+
+#[test]
+fn rejects_wrong_number_of_positional_primitive_arguments() {
+    let source = "out: Ball3D()\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("primitive 'Ball3D' expects 1 field(s)"));
+}
+
+#[test]
 fn emits_simplex3d_primitive() {
     let source = "Obj3 shape = Simplex3D(p0=(0, 0, 0), p1=(1, 0, 0), p2=(0, 1, 0), p3=(0, 0, 1))\nout: shape\n";
     let glsl = compile_program(source).unwrap();
