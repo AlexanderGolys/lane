@@ -4,7 +4,7 @@ A small Rust prototype for a functional SDF DSL that compiles object expressions
 
 Current slice:
 
-- pre-registered `Ball3D(r=...)` primitive
+- pre-registered `Ball3D(r=...)`, `Simplex3D(size=...)`, `Halfspace3D(n=..., h=...)`, and `Torus3D(major=..., minor=...)` primitives
 - pre-registered 2D `Box2D`, `Segment2D`, `Triangle2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
 - pre-registered `SmoothUnion(k)` operator
 - value functions `sin`, `cos`, `pow2`

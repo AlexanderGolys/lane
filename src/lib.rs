@@ -408,6 +408,51 @@ impl Default for Registry {
                 },
             ),
             (
+                "Simplex3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamSimplex3D"),
+                    fields: vec![PrimitiveFieldDef {
+                        name: "size",
+                        kind: PrimitiveFieldKind::Value(Type::Float),
+                    }],
+                    support_glsl: "struct ParamSimplex3D {\n    float size;\n};\n\nfloat sdf0_Simplex3D(vec3 p, ParamSimplex3D params) {\n    float k = sqrt(2.0);\n    vec3 q = p;\n    q.x = abs(q.x);\n    q.z = abs(q.z);\n    if (q.z > q.x) {\n        q.xz = q.zx;\n    }\n    q.x -= params.size;\n    q.y += params.size / k;\n    if ((q.x + (k * q.y)) > 0.0) {\n        q.xy = vec2(q.x - (k * q.y), (-k * q.x) - q.y) * 0.5;\n    }\n    q.x -= clamp(q.x, -2.0 * params.size, 0.0);\n    return -length(q) * sign(q.y);\n}",
+                },
+            ),
+            (
+                "Halfspace3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamHalfspace3D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "n",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "h",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                    ],
+                    support_glsl: "struct ParamHalfspace3D {\n    vec3 n;\n    float h;\n};\n\nfloat sdf0_Halfspace3D(vec3 p, ParamHalfspace3D params) {\n    return dot(p, normalize(params.n)) + params.h;\n}",
+                },
+            ),
+            (
+                "Torus3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamTorus3D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "major",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                        PrimitiveFieldDef {
+                            name: "minor",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                    ],
+                    support_glsl: "struct ParamTorus3D {\n    float major;\n    float minor;\n};\n\nfloat sdf0_Torus3D(vec3 p, ParamTorus3D params) {\n    vec2 q = vec2(length(p.xz) - params.major, p.y);\n    return length(q) - params.minor;\n}",
+                },
+            ),
+            (
                 "Box2D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamBox2D"),
@@ -1665,6 +1710,39 @@ mod tests {
         assert!(glsl.contains("struct ParamBox2D"));
         assert!(glsl.contains("float sdf0_Box2D(vec3 p, ParamBox2D params)"));
         assert!(glsl.contains("sdf0_Box2D(p, ParamBox2D(vec2(2.0, 1.0)))"));
+    }
+
+    #[test]
+    fn emits_simplex3d_primitive() {
+        let source = "Obj3 shape = Simplex3D(size=2)\nout: shape\n";
+        let glsl = compile_program(source).unwrap();
+
+        assert!(glsl.contains("struct ParamSimplex3D"));
+        assert!(glsl.contains("float sdf0_Simplex3D(vec3 p, ParamSimplex3D params)"));
+        assert!(glsl.contains("q.x -= params.size;"));
+        assert!(glsl.contains("sdf0_Simplex3D(p, ParamSimplex3D(2.0))"));
+    }
+
+    #[test]
+    fn emits_halfspace3d_primitive() {
+        let source = "Obj3 shape = Halfspace3D(n=(0, 1, 0), h=2)\nout: shape\n";
+        let glsl = compile_program(source).unwrap();
+
+        assert!(glsl.contains("struct ParamHalfspace3D"));
+        assert!(glsl.contains("float sdf0_Halfspace3D(vec3 p, ParamHalfspace3D params)"));
+        assert!(glsl.contains("return dot(p, normalize(params.n)) + params.h;"));
+        assert!(glsl.contains("sdf0_Halfspace3D(p, ParamHalfspace3D(vec3(0.0, 1.0, 0.0), 2.0))"));
+    }
+
+    #[test]
+    fn emits_torus3d_primitive() {
+        let source = "Obj3 shape = Torus3D(major=3, minor=.5)\nout: shape\n";
+        let glsl = compile_program(source).unwrap();
+
+        assert!(glsl.contains("struct ParamTorus3D"));
+        assert!(glsl.contains("float sdf0_Torus3D(vec3 p, ParamTorus3D params)"));
+        assert!(glsl.contains("vec2 q = vec2(length(p.xz) - params.major, p.y);"));
+        assert!(glsl.contains("sdf0_Torus3D(p, ParamTorus3D(3.0, 0.5))"));
     }
 
     #[test]
