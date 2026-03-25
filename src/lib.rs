@@ -2567,7 +2567,10 @@ impl ExprParser {
     fn parse(mut self) -> Result<Expr, Error> {
         let expr = self.parse_add_sub()?;
         if self.peek().is_some() {
-            return Err(Error::new("unexpected trailing tokens in expression"));
+            return Err(Error::new(format!(
+                "unexpected trailing token {} in expression",
+                self.describe_current_token()
+            )));
         }
         Ok(expr)
     }
@@ -2660,7 +2663,10 @@ impl ExprParser {
                 Ok(Expr::Ident(name))
             }
             Some(Token::LParen) => self.parse_paren_or_tuple(),
-            _ => Err(Error::new("unexpected token in expression")),
+            _ => Err(Error::new(format!(
+                "unexpected token {} in expression",
+                self.describe_previous_token()
+            ))),
         }
     }
 
@@ -2744,7 +2750,43 @@ impl ExprParser {
         if token == expected {
             return Ok(());
         }
-        Err(Error::new("unexpected token"))
+        Err(Error::new(format!(
+            "expected {}, got {}",
+            Self::describe_token(&expected),
+            Self::describe_token(&token)
+        )))
+    }
+
+    fn describe_current_token(&self) -> String {
+        self.peek()
+            .map(Self::describe_token)
+            .unwrap_or_else(|| "<end of input>".to_string())
+    }
+
+    fn describe_previous_token(&self) -> String {
+        self.index
+            .checked_sub(1)
+            .and_then(|index| self.tokens.get(index))
+            .map(Self::describe_token)
+            .unwrap_or_else(|| "<start of input>".to_string())
+    }
+
+    fn describe_token(token: &Token) -> String {
+        match token {
+            Token::Ident(name) => format!("identifier '{}'", name),
+            Token::Number(value) => format!("number '{}'", value),
+            Token::LParen => "'('".to_string(),
+            Token::RParen => "')'".to_string(),
+            Token::Colon => "':'".to_string(),
+            Token::Comma => "','".to_string(),
+            Token::Equal => "'='".to_string(),
+            Token::Plus => "'+'".to_string(),
+            Token::Minus => "'-'".to_string(),
+            Token::Star => "'*'".to_string(),
+            Token::Slash => "'/'".to_string(),
+            Token::At => "'@'".to_string(),
+            Token::Arrow => "'->'".to_string(),
+        }
     }
 
     fn next(&mut self) -> Option<Token> {

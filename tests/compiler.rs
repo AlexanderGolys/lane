@@ -220,6 +220,14 @@ fn supports_trailing_line_comments() {
 }
 
 #[test]
+fn reports_the_offending_token_for_expression_parse_errors() {
+    let source = "out: Ball3D(r=1) + *\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("unexpected token '*' in expression"));
+}
+
+#[test]
 fn emits_only_used_support_code() {
     let source = "Obj3 A = Ball3D(r=3)\nout: A\n";
     let glsl = compile_program(source).unwrap();
