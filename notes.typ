@@ -1,16 +1,28 @@
-#import "@preview/ctheorems:1.1.3": *
-#show: thmrules
-
 #set page(numbering: "1")
 // #set text(font: "New Computer Modern")
 
-// Theorem environments
-#let theorem = thmbox("theorem", "Theorem", fill: rgb("#eeffee"))
-#let proposition = thmplain("proposition", "Proposition")
-#let lemma = thmplain("lemma", "Lemma")
-#let definition = thmbox("definition", "Definition", inset: (x: 1.2em, top: 1em))
-#let remark = thmplain("remark", "Remark")
-#let admonition = thmbox("admonition", "Note", fill: rgb("#ffffee"))
+#let theorem_block(label, title: none, fill: none, inset: (x: 1.2em, y: 1em), body) = {
+  block(
+    inset: inset,
+    fill: fill,
+    stroke: luma(200),
+    radius: 6pt,
+    width: 100%,
+    [
+      #strong(label)
+      #if title != none [#sym.space.nobreak (#title)]
+      #parbreak()
+      #body
+    ],
+  )
+}
+
+#let theorem(title: none, body) = theorem_block("Theorem", title: title, fill: rgb("#eeffee"), body)
+#let proposition(title: none, body) = theorem_block("Proposition", title: title, body)
+#let lemma(title: none, body) = theorem_block("Lemma", title: title, body)
+#let definition(title: none, body) = theorem_block("Definition", title: title, fill: rgb("#f7f7ff"), body)
+#let remark(title: none, body) = theorem_block("Remark", title: title, body)
+#let admonition(title: none, body) = theorem_block("Note", title: title, fill: rgb("#ffffee"), body)
 
 = Signed Distance Functions: Theory and Design
 
