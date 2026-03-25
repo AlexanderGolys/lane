@@ -3017,7 +3017,10 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        if let Some(rest) = line.strip_prefix("generate ") {
+        if let Some(rest) = line
+            .strip_prefix("generate ")
+            .or_else(|| line.strip_prefix("gen "))
+        {
             let expr_source = rest.trim();
             if let Some((left, _)) = expr_source.split_once('=') {
                 if parse_type(left.trim()).is_ok() {
@@ -3030,8 +3033,11 @@ impl<'a> Parser<'a> {
             return Ok(Decl::Output(OutputDecl { expr }));
         }
 
-        let generated = line.starts_with("construct ");
-        let line = line.strip_prefix("construct ").unwrap_or(line);
+        let generated = line.starts_with("construct ") || line.starts_with("const ");
+        let line = line
+            .strip_prefix("construct ")
+            .or_else(|| line.strip_prefix("const "))
+            .unwrap_or(line);
         let (left, expr_source) = split_once_required(line, '=')?;
         if left.contains(':') {
             return Err(Error::new(

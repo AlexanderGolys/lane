@@ -245,6 +245,22 @@ fn rejects_invalid_function_composition() {
 }
 
 #[test]
+fn supports_generate_alias() {
+    let source = "gen Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+}
+
+#[test]
+fn supports_construct_alias() {
+    let source = "const Obj3 shell = Ball3D(r=2)\ngenerate shell\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sdf_shell(vec3 p) {"));
+}
+
+#[test]
 fn supports_full_line_comments() {
     let source =
         "// input animation\nprovided float time\n// object body\ngenerate Ball3D(r=1 + time)\n";
@@ -476,7 +492,8 @@ fn emits_triangle_primitive() {
 
 #[test]
 fn emits_polygon_primitive() {
-    let source = "Obj3 shape = Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))\ngenerate shape\n";
+    let source =
+        "Obj3 shape = Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("const int POLYGON2D_MAX_VERTICES = 16;"));
