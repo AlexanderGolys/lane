@@ -887,6 +887,27 @@ impl Default for Registry {
                 },
             ),
             (
+                "Triangle3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamTriangle3D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "p1",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p2",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p3",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                    ],
+                    support_glsl: "struct ParamTriangle3D {\n    vec3 p1;\n    vec3 p2;\n    vec3 p3;\n};\n\nfloat sdf0_Triangle3D(vec3 p, ParamTriangle3D params) {\n    vec3 ba = params.p2 - params.p1;\n    vec3 pa = p - params.p1;\n    vec3 cb = params.p3 - params.p2;\n    vec3 pb = p - params.p2;\n    vec3 ac = params.p1 - params.p3;\n    vec3 pc = p - params.p3;\n    vec3 nor = cross(ba, ac);\n    return sqrt((sign(dot(cross(ba, nor), pa)) + sign(dot(cross(cb, nor), pb)) + sign(dot(cross(ac, nor), pc)) < 2.0) ? min(min(dot((ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0)) - pa, (ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0)) - pa), dot((cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0)) - pb, (cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0)) - pb)), dot((ac * clamp(dot(ac, pc) / dot(ac, ac), 0.0, 1.0)) - pc, (ac * clamp(dot(ac, pc) / dot(ac, ac), 0.0, 1.0)) - pc)) : dot(nor, pa) * dot(nor, pa) / dot(nor, nor));\n}",
+                },
+            ),
+            (
                 "Simplex3D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamSimplex3D"),
@@ -912,6 +933,23 @@ impl Default for Registry {
                 },
             ),
             (
+                "Plane3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamPlane3D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "n",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "origin",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                    ],
+                    support_glsl: "struct ParamPlane3D {\n    vec3 n;\n    float h;\n};\n\nfloat sdf0_Plane3D(vec3 p, ParamPlane3D params) {\n    return dot(normalize(params.n), p) + params.h;\n}",
+                },
+            ),
+            (
                 "Halfspace3D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamHalfspace3D"),
@@ -926,6 +964,23 @@ impl Default for Registry {
                         },
                     ],
                     support_glsl: "struct ParamHalfspace3D {\n    vec3 n;\n    float h;\n};\n\nfloat sdf0_Halfspace3D(vec3 p, ParamHalfspace3D params) {\n    return dot(p, normalize(params.n)) + params.h;\n}",
+                },
+            ),
+            (
+                "Line3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamLine3D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "x0",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "dir",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                    ],
+                    support_glsl: "struct ParamLine3D {\n    vec3 x0;\n    vec3 dir;\n};\n\nfloat sdf0_Line3D(vec3 p, ParamLine3D params) {\n    vec3 delta = p - params.x0;\n    vec3 direction = normalize(params.dir);\n    return length(delta - (direction * dot(delta, direction)));\n}",
                 },
             ),
             (
@@ -960,6 +1015,31 @@ impl Default for Registry {
                         },
                     ],
                     support_glsl: "struct ParamTorus3D {\n    float major;\n    float minor;\n};\n\nfloat sdf0_Torus3D(vec3 p, ParamTorus3D params) {\n    vec2 q = vec2(length(p.xz) - params.major, p.y);\n    return length(q) - params.minor;\n}",
+                },
+            ),
+            (
+                "Quad2D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamQuad2D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "p1",
+                            kind: PrimitiveFieldKind::Value(Type::Vec2),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p2",
+                            kind: PrimitiveFieldKind::Value(Type::Vec2),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p3",
+                            kind: PrimitiveFieldKind::Value(Type::Vec2),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p4",
+                            kind: PrimitiveFieldKind::Value(Type::Vec2),
+                        },
+                    ],
+                    support_glsl: "struct ParamQuad2D {\n    vec2 p1;\n    vec2 p2;\n    vec2 p3;\n    vec2 p4;\n};\n\nfloat sdf0_Quad2D(vec2 p, ParamQuad2D params) {\n    vec2 vertices[4] = vec2[4](params.p1, params.p2, params.p3, params.p4);\n    float d = dot(p - vertices[0], p - vertices[0]);\n    float s = 1.0;\n    for (int i = 0, j = 3; i < 4; j = i, i++) {\n        vec2 e = vertices[j] - vertices[i];\n        vec2 w = p - vertices[i];\n        vec2 b = w - (e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0));\n        d = min(d, dot(b, b));\n        bvec3 c = bvec3(p.y >= vertices[i].y, p.y < vertices[j].y, (e.x * w.y) > (e.y * w.x));\n        if (all(c) || all(not(c))) {\n            s *= -1.0;\n        }\n    }\n    return s * sqrt(d);\n}",
                 },
             ),
             (
@@ -1015,6 +1095,31 @@ impl Default for Registry {
                         },
                     ],
                     support_glsl: "struct ParamTriangle2D {\n    vec2 p0;\n    vec2 p1;\n    vec2 p2;\n};\n\nfloat sdf0_Triangle2D(vec2 p, ParamTriangle2D params) {\n    vec2 e0 = params.p1 - params.p0;\n    vec2 e1 = params.p2 - params.p1;\n    vec2 e2 = params.p0 - params.p2;\n    vec2 v0 = p - params.p0;\n    vec2 v1 = p - params.p1;\n    vec2 v2 = p - params.p2;\n    vec2 pq0 = v0 - (e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0));\n    vec2 pq1 = v1 - (e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0));\n    vec2 pq2 = v2 - (e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0));\n    float s = sign((e0.x * e2.y) - (e0.y * e2.x));\n    vec2 d = min(min(vec2(dot(pq0, pq0), s * ((v0.x * e0.y) - (v0.y * e0.x))), vec2(dot(pq1, pq1), s * ((v1.x * e1.y) - (v1.y * e1.x)))), vec2(dot(pq2, pq2), s * ((v2.x * e2.y) - (v2.y * e2.x))));\n    return -sqrt(d.x) * sign(d.y);\n}",
+                },
+            ),
+            (
+                "Quad3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamQuad3D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "p1",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p2",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p3",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p4",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                    ],
+                    support_glsl: "struct ParamQuad3D {\n    vec3 p1;\n    vec3 p2;\n    vec3 p3;\n    vec3 p4;\n};\n\nfloat sdf0_Quad3D(vec3 p, ParamQuad3D params) {\n    vec3 ba = params.p2 - params.p1;\n    vec3 pa = p - params.p1;\n    vec3 cb = params.p3 - params.p2;\n    vec3 pb = p - params.p2;\n    vec3 dc = params.p4 - params.p3;\n    vec3 pc = p - params.p3;\n    vec3 ad = params.p1 - params.p4;\n    vec3 pd = p - params.p4;\n    vec3 nor = cross(ba, ad);\n    return sqrt((sign(dot(cross(ba, nor), pa)) + sign(dot(cross(cb, nor), pb)) + sign(dot(cross(dc, nor), pc)) + sign(dot(cross(ad, nor), pd)) < 3.0) ? min(min(min(dot((ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0)) - pa, (ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0)) - pa), dot((cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0)) - pb, (cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0)) - pb)), dot((dc * clamp(dot(dc, pc) / dot(dc, dc), 0.0, 1.0)) - pc, (dc * clamp(dot(dc, pc) / dot(dc, dc), 0.0, 1.0)) - pc)), dot((ad * clamp(dot(ad, pd) / dot(ad, ad), 0.0, 1.0)) - pd, (ad * clamp(dot(ad, pd) / dot(ad, ad), 0.0, 1.0)) - pd)) : dot(nor, pa) * dot(nor, pa) / dot(nor, nor));\n}",
                 },
             ),
             (
@@ -2769,6 +2874,16 @@ fn emit_object_expr(
             .unwrap_or_else(|| format!("obj_{}", name)),
         ObjectExpr::Primitive { name, kind, fields } => match kind {
             PrimitiveKind::ParamStruct(param_type) => {
+                if name == "Plane3D" {
+                    let normal = primitive_value_field(fields, "n");
+                    let origin = primitive_value_field(fields, "origin");
+                    let normal_expr = emit_plain_value_expr(normal, helper_names);
+                    let origin_expr = emit_plain_value_expr(origin, helper_names);
+                    return format!(
+                        "sdf0_Plane3D({}, ParamPlane3D({}, (-dot(normalize({}), {}))))",
+                        point_expr, normal_expr, normal_expr, origin_expr
+                    );
+                }
                 let rendered_fields = fields
                     .iter()
                     .map(|(_, expr)| match expr {
@@ -2830,6 +2945,19 @@ fn emit_object_expr(
             format!("{}({})", glsl_name, args.join(", "))
         }
     }
+}
+
+fn primitive_value_field<'a>(
+    fields: &'a [(String, PrimitiveArgExpr)],
+    name: &str,
+) -> &'a ValueExpr {
+    fields
+        .iter()
+        .find_map(|(field_name, expr)| match (field_name.as_str(), expr) {
+            (candidate, PrimitiveArgExpr::Value(expr)) if candidate == name => Some(expr),
+            _ => None,
+        })
+        .unwrap()
 }
 
 fn emit_polygon_vertices(vertices: &[ValueExpr], helper_names: &HashMap<String, String>) -> String {

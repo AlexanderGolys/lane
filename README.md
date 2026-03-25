@@ -4,8 +4,8 @@ A small Rust prototype for the lane DSL that compiles object expressions into GL
 
 Current slice:
 
-- pre-registered `Ball3D(r=...)`, `Box3D(a=..., b=..., c=...)`, `Simplex3D(p0=..., p1=..., p2=..., p3=...)`, `Halfspace3D(n=..., h=...)`, `Segment3D(a=..., b=...)`, and `Torus3D(major=..., minor=...)` primitives
-- pre-registered 2D `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
+- pre-registered 3D `Ball3D(r=...)`, `Box3D(a=..., b=..., c=...)`, `Triangle3D(p1=..., p2=..., p3=...)`, `Quad3D(p1=..., p2=..., p3=..., p4=...)`, `Plane3D(n=..., origin=...)`, `Line3D(x0=..., dir=...)`, `Simplex3D(p0=..., p1=..., p2=..., p3=...)`, `Halfspace3D(n=..., h=...)`, `Segment3D(a=..., b=...)`, and `Torus3D(major=..., minor=...)` primitives
+- pre-registered 2D `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Quad2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
 - pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
 - associative binary operators such as `Union`, `Intersection`, and `Xor` accept any arity `>= 2` and are lowered to balanced binary calls
 - custom value functions such as `pow2` and holomorphic `Vec2 -> Vec2` helpers including `cexp`, `clog`, `csqrt`, `csin`, `ccos`, `ctan`, `csinh`, `ccosh`, `ctanh`, and `cinv`
@@ -24,6 +24,7 @@ Current slice:
 - emitted GLSL always includes both `scene_sdf` and a numerically approximated `scene_grad`
 - emitted GLSL renames generated local identifiers when they would collide with user-defined value names such as `p` or `eps`
 - polygons use `Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))` and currently support up to 16 vertices
+- `Plane3D(n=..., origin=...)` lowers to a local `ParamPlane3D { vec3 n; float h; }` representation before GLSL emission
 
 Example inputs live in `test.lane` and `showcase.lane`. The showcase file combines all current primitives, object operators, value functions, and ambient action sugars in one scene.
 

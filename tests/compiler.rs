@@ -19,9 +19,29 @@ fn lists_known_primitives_with_lane_types() {
         .iter()
         .find(|primitive| primitive.name == "Segment3D")
         .unwrap();
+    let plane3 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Plane3D")
+        .unwrap();
+    let line3 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Line3D")
+        .unwrap();
+    let triangle3 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Triangle3D")
+        .unwrap();
     let polygon = primitives
         .iter()
         .find(|primitive| primitive.name == "Polygon2D")
+        .unwrap();
+    let quad2 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Quad2D")
+        .unwrap();
+    let quad3 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Quad3D")
         .unwrap();
 
     assert_eq!(ball.dimension, ShapeDimension::D3);
@@ -69,6 +89,30 @@ fn lists_known_primitives_with_lane_types() {
         .function_body
         .contains("float sdf0_Segment3D(vec3 p, ParamSegment3D params)"));
 
+    assert_eq!(plane3.dimension, ShapeDimension::D3);
+    assert_eq!(plane3.parameter_space, "ParamPlane3D");
+    assert_eq!(plane3.fields[0].name, "n");
+    assert_eq!(plane3.fields[0].domain, "R3");
+    assert_eq!(plane3.fields[1].name, "origin");
+    assert_eq!(plane3.fields[1].domain, "R3");
+    assert!(plane3.type_body.as_deref().unwrap().contains("float h;"));
+
+    assert_eq!(line3.dimension, ShapeDimension::D3);
+    assert_eq!(line3.parameter_space, "ParamLine3D");
+    assert_eq!(line3.fields[0].name, "x0");
+    assert_eq!(line3.fields[0].domain, "R3");
+    assert_eq!(line3.fields[1].name, "dir");
+    assert_eq!(line3.fields[1].domain, "R3");
+
+    assert_eq!(triangle3.dimension, ShapeDimension::D3);
+    assert_eq!(triangle3.parameter_space, "ParamTriangle3D");
+    assert_eq!(triangle3.fields[0].name, "p1");
+    assert_eq!(triangle3.fields[1].name, "p2");
+    assert_eq!(triangle3.fields[2].name, "p3");
+    assert!(triangle3
+        .function_body
+        .contains("float sdf0_Triangle3D(vec3 p, ParamTriangle3D params)"));
+
     assert_eq!(polygon.dimension, ShapeDimension::D2);
     assert_eq!(polygon.parameter_space, "{ points: R2 list }");
     assert_eq!(polygon.fields[0].name, "points");
@@ -77,6 +121,20 @@ fn lists_known_primitives_with_lane_types() {
     assert!(polygon
         .function_body
         .contains("float sdf0_Polygon2D(vec2 p"));
+
+    assert_eq!(quad2.dimension, ShapeDimension::D2);
+    assert_eq!(quad2.parameter_space, "ParamQuad2D");
+    assert_eq!(quad2.fields.len(), 4);
+    assert!(quad2
+        .function_body
+        .contains("float sdf0_Quad2D(vec2 p, ParamQuad2D params)"));
+
+    assert_eq!(quad3.dimension, ShapeDimension::D3);
+    assert_eq!(quad3.parameter_space, "ParamQuad3D");
+    assert_eq!(quad3.fields.len(), 4);
+    assert!(quad3
+        .function_body
+        .contains("float sdf0_Quad3D(vec3 p, ParamQuad3D params)"));
 }
 
 #[test]
@@ -484,6 +542,42 @@ fn emits_halfspace3d_primitive() {
 }
 
 #[test]
+fn emits_plane3d_primitive() {
+    let source = "Obj3 shape = Plane3D(n=(0, 1, 0), origin=(0, 2, 0))\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct ParamPlane3D"));
+    assert!(glsl.contains("float sdf0_Plane3D(vec3 p, ParamPlane3D params)"));
+    assert!(glsl.contains("float h;"));
+    assert!(glsl.contains("sdf0_Plane3D(p, ParamPlane3D(vec3(0.0, 1.0, 0.0), (-dot(normalize(vec3(0.0, 1.0, 0.0)), vec3(0.0, 2.0, 0.0)))))"));
+}
+
+#[test]
+fn emits_line3d_primitive() {
+    let source = "Obj3 shape = Line3D(x0=(0, 0, 0), dir=(2, 1, 3))\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct ParamLine3D"));
+    assert!(glsl.contains("float sdf0_Line3D(vec3 p, ParamLine3D params)"));
+    assert!(glsl.contains("vec3 direction = normalize(params.dir);"));
+    assert!(glsl.contains("sdf0_Line3D(p, ParamLine3D(vec3(0.0, 0.0, 0.0), vec3(2.0, 1.0, 3.0)))"));
+}
+
+#[test]
+fn emits_triangle3d_primitive() {
+    let source =
+        "Obj3 shape = Triangle3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(0, 1, 0))\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct ParamTriangle3D"));
+    assert!(glsl.contains("float sdf0_Triangle3D(vec3 p, ParamTriangle3D params)"));
+    assert!(glsl.contains("vec3 nor = cross(ba, ac);"));
+    assert!(glsl.contains(
+        "sdf0_Triangle3D(p, ParamTriangle3D(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0)))"
+    ));
+}
+
+#[test]
 fn emits_torus3d_primitive() {
     let source = "Obj3 shape = Torus3D(major=3, minor=.5)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
@@ -524,6 +618,32 @@ fn emits_triangle_primitive() {
     assert!(glsl.contains("float sdf0_Triangle2D(vec2 p, ParamTriangle2D params)"));
     assert!(glsl.contains(
         "sdf0_Triangle2D((p).xy, ParamTriangle2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)))"
+    ));
+}
+
+#[test]
+fn emits_quad2d_primitive() {
+    let source =
+        "Obj3 shape = Quad2D(p1=(0, 0), p2=(2, 0), p3=(2, 1), p4=(0, 1))\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct ParamQuad2D"));
+    assert!(glsl.contains("float sdf0_Quad2D(vec2 p, ParamQuad2D params)"));
+    assert!(glsl.contains(
+        "sdf0_Quad2D((p).xy, ParamQuad2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(0.0, 1.0)))"
+    ));
+}
+
+#[test]
+fn emits_quad3d_primitive() {
+    let source = "Obj3 shape = Quad3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(1, 1, 0), p4=(0, 1, 0))\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct ParamQuad3D"));
+    assert!(glsl.contains("float sdf0_Quad3D(vec3 p, ParamQuad3D params)"));
+    assert!(glsl.contains("vec3 dc = params.p4 - params.p3;"));
+    assert!(glsl.contains(
+        "sdf0_Quad3D(p, ParamQuad3D(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0)))"
     ));
 }
 
