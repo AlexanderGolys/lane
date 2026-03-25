@@ -59,6 +59,32 @@ fn prints_help_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Usage:"));
-    assert!(stdout.contains("lane compile [PATH]"));
     assert!(stdout.contains("lane --show-preregistered <NAME>"));
+    assert!(stdout.contains("lane -h"));
+}
+
+#[test]
+fn prints_help_from_short_flag() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg("-h")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Usage:"));
+}
+
+#[test]
+fn treats_bare_help_as_input_path() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg("help")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("No such file or directory"));
 }

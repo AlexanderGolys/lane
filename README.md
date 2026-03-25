@@ -49,3 +49,5 @@ Show CLI usage with:
 ```sh
 cargo run -- --help
 ```
+
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage.

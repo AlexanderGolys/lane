@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane compile [PATH]\n  lane list-primitives\n  lane --list-primitives\n  lane list-preregistered\n  lane --list-preregistered\n  lane show-preregistered <NAME>\n  lane --show-preregistered <NAME>\n  lane help\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list-primitives\n  lane --list-preregistered\n  lane --show-preregistered <NAME>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
 
 fn main() {
     if let Err(err) = run() {
@@ -20,25 +20,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_help();
             Ok(())
         }
-        [command] if command == "compile" => compile_from_stdin(),
-        [command, path] if command == "compile" => compile_path(path),
-        [command] if command == "list-primitives" => {
-            print_known_primitives();
-            Ok(())
-        }
         [flag] if flag == "--list-primitives" => {
             print_known_primitives();
-            Ok(())
-        }
-        [command] if command == "list-preregistered" => {
-            print_preregistered_objects();
             Ok(())
         }
         [flag] if flag == "--list-preregistered" => {
             print_preregistered_objects();
             Ok(())
         }
-        [command, name] if command == "show-preregistered" => print_preregistered_object(name),
         [flag, name] if flag == "--show-preregistered" => print_preregistered_object(name),
         [path] => compile_path(path),
         _ => Err("unexpected arguments; run `lane --help` for usage".into()),
@@ -67,7 +56,7 @@ fn print_help() {
 }
 
 fn is_help(arg: &str) -> bool {
-    matches!(arg, "help" | "-h" | "--help")
+    matches!(arg, "-h" | "--help")
 }
 
 fn print_preregistered_object(name: &str) -> Result<(), Box<dyn std::error::Error>> {
