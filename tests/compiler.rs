@@ -1,4 +1,34 @@
-use sdf_dsl::compile_program;
+use sdf_dsl::{compile_program, known_primitives};
+
+#[test]
+fn lists_known_primitives_with_domains() {
+    let primitives = known_primitives();
+    let ball = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Ball3D")
+        .unwrap();
+    let polygon = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Polygon2D")
+        .unwrap();
+
+    assert_eq!(ball.sdf_name, "sdf0_Ball3D");
+    assert_eq!(
+        ball.domain,
+        "sdf0_Ball3D(vec3 p, ParamBall3D params) -> float"
+    );
+    assert_eq!(ball.parameter_type.as_deref(), Some("ParamBall3D"));
+    assert_eq!(ball.fields[0].name, "r");
+    assert_eq!(ball.fields[0].domain, "float");
+
+    assert_eq!(
+        polygon.domain,
+        "sdf0_Polygon2D(vec2 p, vec2 vertices[POLYGON2D_MAX_VERTICES], int count) -> float"
+    );
+    assert_eq!(polygon.parameter_type, None);
+    assert_eq!(polygon.fields[0].name, "points");
+    assert_eq!(polygon.fields[0].domain, "vec2 list");
+}
 
 #[test]
 fn composes_unary_functions_in_function_bodies() {

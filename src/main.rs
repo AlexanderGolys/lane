@@ -12,6 +12,32 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.len() == 1 && args[0] == "--list-primitives" {
+        for primitive in sdf_dsl::known_primitives() {
+            let fields = primitive
+                .fields
+                .iter()
+                .map(|field| format!("{}: {}", field.name, field.domain))
+                .collect::<Vec<_>>()
+                .join(", ");
+            match &primitive.parameter_type {
+                Some(parameter_type) => {
+                    println!(
+                        "{}: {} | params {} {{{}}}",
+                        primitive.name, primitive.domain, parameter_type, fields
+                    );
+                }
+                None => {
+                    println!(
+                        "{}: {} | fields {{{}}}",
+                        primitive.name, primitive.domain, fields
+                    );
+                }
+            }
+        }
+        return Ok(());
+    }
+
     let source = if let Some(path) = args.first() {
         fs::read_to_string(path)?
     } else {

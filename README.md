@@ -29,3 +29,9 @@ Run tests with:
 ```sh
 cargo test
 ```
+
+List the known primitives, including each generated SDF signature and parameter domain, with:
+
+```sh
+cargo run -- --list-primitives
+```

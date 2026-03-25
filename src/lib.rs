@@ -8,6 +8,11 @@ pub fn compile_program(source: &str) -> Result<String, Error> {
     Ok(typed.emit_glsl(&registry))
 }
 
+pub fn known_primitives() -> Vec<KnownPrimitive> {
+    let registry = Registry::default();
+    registry.known_primitives()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     message: String,
@@ -30,6 +35,21 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnownPrimitive {
+    pub name: String,
+    pub sdf_name: String,
+    pub domain: String,
+    pub parameter_type: Option<String>,
+    pub fields: Vec<KnownPrimitiveField>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnownPrimitiveField {
+    pub name: String,
+    pub domain: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
     Float,
     Vec2,
@@ -49,6 +69,16 @@ impl Type {
             Self::Vec2 => "vec2",
             Self::Vec3 => "vec3",
             Self::Obj3 | Self::Func(_, _) => "",
+        }
+    }
+
+    fn surface_name(&self) -> &'static str {
+        match self {
+            Self::Float => "float",
+            Self::Vec2 => "vec2",
+            Self::Vec3 => "vec3",
+            Self::Obj3 => "Obj3",
+            Self::Func(_, _) => "func",
         }
     }
 }
@@ -546,6 +576,63 @@ impl Default for Registry {
             primitives,
             object_ops,
             builtins,
+        }
+    }
+}
+
+impl Registry {
+    fn known_primitives(&self) -> Vec<KnownPrimitive> {
+        let mut names: Vec<_> = self.primitives.keys().copied().collect();
+        names.sort_unstable();
+        names
+            .into_iter()
+            .map(|name| {
+                let primitive = &self.primitives[name];
+                KnownPrimitive {
+                    name: name.to_string(),
+                    sdf_name: format!("sdf0_{name}"),
+                    domain: primitive.domain(name),
+                    parameter_type: primitive.parameter_type(),
+                    fields: primitive
+                        .fields
+                        .iter()
+                        .map(KnownPrimitiveField::from_def)
+                        .collect(),
+                }
+            })
+            .collect()
+    }
+}
+
+impl PrimitiveDef {
+    fn domain(&self, name: &str) -> String {
+        match &self.kind {
+            PrimitiveKind::ParamStruct(param_type) => {
+                format!("sdf0_{name}(vec3 p, {param_type} params) -> float")
+            }
+            PrimitiveKind::Polygon2D => {
+                "sdf0_Polygon2D(vec2 p, vec2 vertices[POLYGON2D_MAX_VERTICES], int count) -> float"
+                    .to_string()
+            }
+        }
+    }
+
+    fn parameter_type(&self) -> Option<String> {
+        match &self.kind {
+            PrimitiveKind::ParamStruct(param_type) => Some((*param_type).to_string()),
+            PrimitiveKind::Polygon2D => None,
+        }
+    }
+}
+
+impl KnownPrimitiveField {
+    fn from_def(field: &PrimitiveFieldDef) -> Self {
+        Self {
+            name: field.name.to_string(),
+            domain: match &field.kind {
+                PrimitiveFieldKind::Value(ty) => ty.surface_name().to_string(),
+                PrimitiveFieldKind::Vec2List => "vec2 list".to_string(),
+            },
         }
     }
 }
