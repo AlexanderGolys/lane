@@ -371,6 +371,16 @@ struct TypedProgram {
     output: ObjectExpr,
 }
 
+#[derive(Clone, Debug)]
+struct EmitLocals {
+    point: String,
+    func_param: String,
+    eps: String,
+    dx: String,
+    dy: String,
+    dz: String,
+}
+
 impl TypedProgram {
     fn from_program(program: &Program, registry: &Registry) -> Result<Self, Error> {
         let mut env = Env::new(registry);
@@ -478,6 +488,7 @@ impl TypedProgram {
 
     fn emit_glsl(&self, registry: &Registry) -> String {
         let mut lines = Vec::new();
+        let locals = self.emit_locals();
 
         for support in self.support_blocks(registry) {
             lines.extend(support.lines().map(str::to_string));
@@ -485,20 +496,22 @@ impl TypedProgram {
         }
 
         for func in &self.funcs {
+            let func_var_names = HashMap::from([("t".to_string(), locals.func_param.clone())]);
             lines.push(format!(
-                "{} {}(float t) {{",
+                "{} {}(float {}) {{",
                 func.output.glsl_name(),
-                helper_name(&func.name)
+                helper_name(&func.name),
+                locals.func_param
             ));
             lines.push(format!(
                 "    return {};",
-                emit_value_expr(&func.expr, &self.func_names())
+                emit_value_expr(&func.expr, &self.func_names(), &func_var_names)
             ));
             lines.push("}".to_string());
             lines.push(String::new());
         }
 
-        let signature = self.scene_signature();
+        let signature = self.scene_signature(&locals.point);
         let scene_input_names = self.scene_input_names();
         let object_bindings = self.object_bindings();
         let helper_names = self.func_names();
@@ -507,58 +520,69 @@ impl TypedProgram {
             if !binding.generated {
                 continue;
             }
-            lines.extend(self.emit_generated_binding(binding, &object_bindings, &helper_names));
+            lines.extend(self.emit_generated_binding(
+                binding,
+                &object_bindings,
+                &helper_names,
+                &locals,
+            ));
         }
 
         lines.push(format!("float scene_sdf({}) {{", signature.join(", ")));
         lines.extend(self.emit_value_binding_lines(&helper_names));
-        let output = emit_object_expr(&self.output, "p", &object_bindings, &helper_names);
+        let output = emit_object_expr(&self.output, &locals.point, &object_bindings, &helper_names);
         lines.push(format!("    return {};", output));
         lines.push("}".to_string());
 
         lines.push(String::new());
         lines.push(format!("vec3 scene_grad({}) {{", signature.join(", ")));
-        lines.push("    float eps = 0.0005;".to_string());
-        let mut grad_args = vec!["p + vec3(eps, 0.0, 0.0)".to_string()];
+        lines.push(format!("    float {} = 0.0005;", locals.eps));
+        let mut grad_args = vec![format!("{} + vec3({}, 0.0, 0.0)", locals.point, locals.eps)];
         grad_args.extend(scene_input_names.iter().cloned());
         lines.push(format!(
-            "    float dx = scene_sdf({}) - scene_sdf({});",
+            "    float {} = scene_sdf({}) - scene_sdf({});",
+            locals.dx,
             grad_args.join(", "),
-            std::iter::once("p - vec3(eps, 0.0, 0.0)".to_string())
+            std::iter::once(format!("{} - vec3({}, 0.0, 0.0)", locals.point, locals.eps))
                 .chain(scene_input_names.iter().cloned())
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
         lines.push(format!(
-            "    float dy = scene_sdf({}) - scene_sdf({});",
-            std::iter::once("p + vec3(0.0, eps, 0.0)".to_string())
+            "    float {} = scene_sdf({}) - scene_sdf({});",
+            locals.dy,
+            std::iter::once(format!("{} + vec3(0.0, {}, 0.0)", locals.point, locals.eps))
                 .chain(scene_input_names.iter().cloned())
                 .collect::<Vec<_>>()
                 .join(", "),
-            std::iter::once("p - vec3(0.0, eps, 0.0)".to_string())
+            std::iter::once(format!("{} - vec3(0.0, {}, 0.0)", locals.point, locals.eps))
                 .chain(scene_input_names.iter().cloned())
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
         lines.push(format!(
-            "    float dz = scene_sdf({}) - scene_sdf({});",
-            std::iter::once("p + vec3(0.0, 0.0, eps)".to_string())
+            "    float {} = scene_sdf({}) - scene_sdf({});",
+            locals.dz,
+            std::iter::once(format!("{} + vec3(0.0, 0.0, {})", locals.point, locals.eps))
                 .chain(scene_input_names.iter().cloned())
                 .collect::<Vec<_>>()
                 .join(", "),
-            std::iter::once("p - vec3(0.0, 0.0, eps)".to_string())
+            std::iter::once(format!("{} - vec3(0.0, 0.0, {})", locals.point, locals.eps))
                 .chain(scene_input_names.iter().cloned())
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
-        lines.push("    return normalize(vec3(dx, dy, dz));".to_string());
+        lines.push(format!(
+            "    return normalize(vec3({}, {}, {}));",
+            locals.dx, locals.dy, locals.dz
+        ));
         lines.push("}".to_string());
 
         lines.join("\n")
     }
 
-    fn scene_signature(&self) -> Vec<String> {
-        let mut signature = vec!["vec3 p".to_string()];
+    fn scene_signature(&self, point_name: &str) -> Vec<String> {
+        let mut signature = vec![format!("vec3 {}", point_name)];
         for input in &self.inputs {
             match input.ty {
                 Type::Float
@@ -600,7 +624,7 @@ impl TypedProgram {
                     "    {} {} = {};",
                     binding.ty.glsl_name(),
                     binding.name,
-                    emit_value_expr(&binding.expr, helper_names)
+                    emit_plain_value_expr(&binding.expr, helper_names)
                 )
             })
             .collect()
@@ -618,8 +642,9 @@ impl TypedProgram {
         binding: &TypedBinding,
         object_bindings: &BTreeMap<String, ObjectExpr>,
         helper_names: &HashMap<String, String>,
+        locals: &EmitLocals,
     ) -> Vec<String> {
-        let signature = self.scene_signature();
+        let signature = self.scene_signature(&locals.point);
         let scene_input_names = self.scene_input_names();
         let mut lines = Vec::new();
 
@@ -631,7 +656,7 @@ impl TypedProgram {
         lines.extend(self.emit_value_binding_lines(helper_names));
         lines.push(format!(
             "    return {};",
-            emit_object_expr(&binding.expr, "p", object_bindings, helper_names)
+            emit_object_expr(&binding.expr, &locals.point, object_bindings, helper_names)
         ));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -641,48 +666,100 @@ impl TypedProgram {
             binding.name,
             signature.join(", ")
         ));
-        lines.push("    float eps = 0.0005;".to_string());
-        let forward_x = std::iter::once("p + vec3(eps, 0.0, 0.0)".to_string())
-            .chain(scene_input_names.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let backward_x = std::iter::once("p - vec3(eps, 0.0, 0.0)".to_string())
-            .chain(scene_input_names.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let forward_y = std::iter::once("p + vec3(0.0, eps, 0.0)".to_string())
-            .chain(scene_input_names.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let backward_y = std::iter::once("p - vec3(0.0, eps, 0.0)".to_string())
-            .chain(scene_input_names.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let forward_z = std::iter::once("p + vec3(0.0, 0.0, eps)".to_string())
-            .chain(scene_input_names.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let backward_z = std::iter::once("p - vec3(0.0, 0.0, eps)".to_string())
-            .chain(scene_input_names.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(", ");
+        lines.push(format!("    float {} = 0.0005;", locals.eps));
+        let forward_x =
+            std::iter::once(format!("{} + vec3({}, 0.0, 0.0)", locals.point, locals.eps))
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ");
+        let backward_x =
+            std::iter::once(format!("{} - vec3({}, 0.0, 0.0)", locals.point, locals.eps))
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ");
+        let forward_y =
+            std::iter::once(format!("{} + vec3(0.0, {}, 0.0)", locals.point, locals.eps))
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ");
+        let backward_y =
+            std::iter::once(format!("{} - vec3(0.0, {}, 0.0)", locals.point, locals.eps))
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ");
+        let forward_z =
+            std::iter::once(format!("{} + vec3(0.0, 0.0, {})", locals.point, locals.eps))
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ");
+        let backward_z =
+            std::iter::once(format!("{} - vec3(0.0, 0.0, {})", locals.point, locals.eps))
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ");
         lines.push(format!(
-            "    float dx = sdf_{}({}) - sdf_{}({});",
-            binding.name, forward_x, binding.name, backward_x
+            "    float {} = sdf_{}({}) - sdf_{}({});",
+            locals.dx, binding.name, forward_x, binding.name, backward_x
         ));
         lines.push(format!(
-            "    float dy = sdf_{}({}) - sdf_{}({});",
-            binding.name, forward_y, binding.name, backward_y
+            "    float {} = sdf_{}({}) - sdf_{}({});",
+            locals.dy, binding.name, forward_y, binding.name, backward_y
         ));
         lines.push(format!(
-            "    float dz = sdf_{}({}) - sdf_{}({});",
-            binding.name, forward_z, binding.name, backward_z
+            "    float {} = sdf_{}({}) - sdf_{}({});",
+            locals.dz, binding.name, forward_z, binding.name, backward_z
         ));
-        lines.push("    return normalize(vec3(dx, dy, dz));".to_string());
+        lines.push(format!(
+            "    return normalize(vec3({}, {}, {}));",
+            locals.dx, locals.dy, locals.dz
+        ));
         lines.push("}".to_string());
         lines.push(String::new());
 
         lines
+    }
+
+    fn emit_locals(&self) -> EmitLocals {
+        let mut forbidden = BTreeSet::new();
+        for input in &self.inputs {
+            match input.ty {
+                Type::Float
+                | Type::Int
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat2
+                | Type::Mat3
+                | Type::Mat4 => {
+                    forbidden.insert(input.name.clone());
+                }
+                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => {}
+            }
+        }
+        for binding in &self.value_bindings {
+            forbidden.insert(binding.name.clone());
+        }
+
+        let point = unique_local_name("p", &forbidden);
+        forbidden.insert(point.clone());
+        let func_param = unique_local_name("t", &forbidden);
+        forbidden.insert(func_param.clone());
+        let eps = unique_local_name("eps", &forbidden);
+        forbidden.insert(eps.clone());
+        let dx = unique_local_name("dx", &forbidden);
+        forbidden.insert(dx.clone());
+        let dy = unique_local_name("dy", &forbidden);
+        forbidden.insert(dy.clone());
+        let dz = unique_local_name("dz", &forbidden);
+
+        EmitLocals {
+            point,
+            func_param,
+            eps,
+            dx,
+            dy,
+            dz,
+        }
     }
 
     fn support_blocks(&self, registry: &Registry) -> Vec<&'static str> {
@@ -2392,14 +2469,21 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
     }
 }
 
-fn emit_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> String {
+fn emit_value_expr(
+    expr: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
     match expr {
         ValueExpr::Float(value) => format_float(*value),
-        ValueExpr::Var(name, _) => name.clone(),
+        ValueExpr::Var(name, _) => value_names
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.clone()),
         ValueExpr::Call { func, args, .. } => {
             let rendered_args = args
                 .iter()
-                .map(|arg| emit_value_expr(arg, helper_names))
+                .map(|arg| emit_value_expr(arg, helper_names, value_names))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!(
@@ -2412,60 +2496,67 @@ fn emit_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> 
             op, left, right, ..
         } => {
             if *op == BinOp::Sub && is_float_literal(left, 0.0) {
-                return format!("(-{})", emit_value_expr(right, helper_names));
+                return format!("(-{})", emit_value_expr(right, helper_names, value_names));
             }
             format!(
                 "({} {} {})",
-                emit_value_expr(left, helper_names),
+                emit_value_expr(left, helper_names, value_names),
                 op.symbol(),
-                emit_value_expr(right, helper_names)
+                emit_value_expr(right, helper_names, value_names)
             )
         }
         ValueExpr::Vec2(x, y) => format!(
             "vec2({}, {})",
-            emit_value_expr(x, helper_names),
-            emit_value_expr(y, helper_names)
+            emit_value_expr(x, helper_names, value_names),
+            emit_value_expr(y, helper_names, value_names)
         ),
         ValueExpr::Vec3(x, y, z) => format!(
             "vec3({}, {}, {})",
-            emit_value_expr(x, helper_names),
-            emit_value_expr(y, helper_names),
-            emit_value_expr(z, helper_names)
+            emit_value_expr(x, helper_names, value_names),
+            emit_value_expr(y, helper_names, value_names),
+            emit_value_expr(z, helper_names, value_names)
         ),
         ValueExpr::Mat3(r0, r1, r2) => format!(
             "transpose(mat3({}, {}, {}))",
-            emit_value_expr(r0, helper_names),
-            emit_value_expr(r1, helper_names),
-            emit_value_expr(r2, helper_names)
+            emit_value_expr(r0, helper_names, value_names),
+            emit_value_expr(r1, helper_names, value_names),
+            emit_value_expr(r2, helper_names, value_names)
         ),
         ValueExpr::Derivative { epsilon, func, at } => {
-            emit_scalar_derivative(func, epsilon, at, helper_names)
+            emit_scalar_derivative(func, epsilon, at, helper_names, value_names)
         }
         ValueExpr::Partial {
             axis,
             epsilon,
             func,
             at,
-        } => emit_partial_derivative(*axis, func, epsilon, at, helper_names),
+        } => emit_partial_derivative(*axis, func, epsilon, at, helper_names, value_names),
         ValueExpr::DirectionalDerivative {
             epsilon,
             direction,
             func,
             at,
-        } => emit_directional_derivative(func, epsilon, direction, at, helper_names),
-        ValueExpr::Gradient { epsilon, func, at } => emit_gradient(func, epsilon, at, helper_names),
+        } => emit_directional_derivative(func, epsilon, direction, at, helper_names, value_names),
+        ValueExpr::Gradient { epsilon, func, at } => {
+            emit_gradient(func, epsilon, at, helper_names, value_names)
+        }
         ValueExpr::Divergence { epsilon, func, at } => {
-            emit_divergence(func, epsilon, at, helper_names)
+            emit_divergence(func, epsilon, at, helper_names, value_names)
         }
     }
+}
+
+fn emit_plain_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> String {
+    emit_value_expr(expr, helper_names, &HashMap::new())
 }
 
 fn emit_function_application(
     func: &FunctionExpr,
     arg: ValueExpr,
     helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
 ) -> String {
-    emit_value_expr(&apply_function_expr(func, arg), helper_names)
+    emit_value_expr(&apply_function_expr(func, arg), helper_names, value_names)
 }
 
 fn emit_scalar_derivative(
@@ -2473,6 +2564,7 @@ fn emit_scalar_derivative(
     epsilon: &ValueExpr,
     at: &ValueExpr,
     helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
 ) -> String {
     let plus = ValueExpr::Binary {
         op: BinOp::Add,
@@ -2494,9 +2586,9 @@ fn emit_scalar_derivative(
     };
     format!(
         "(({} - {}) / {})",
-        emit_function_application(func, plus, helper_names),
-        emit_function_application(func, minus, helper_names),
-        emit_value_expr(&twice, helper_names)
+        emit_function_application(func, plus, helper_names, value_names),
+        emit_function_application(func, minus, helper_names, value_names),
+        emit_value_expr(&twice, helper_names, value_names)
     )
 }
 
@@ -2506,6 +2598,7 @@ fn emit_partial_derivative(
     epsilon: &ValueExpr,
     at: &ValueExpr,
     helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
 ) -> String {
     let plus = emit_vec3_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Add);
     let minus = emit_vec3_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Sub);
@@ -2517,9 +2610,9 @@ fn emit_partial_derivative(
     };
     format!(
         "(({} - {}) / {})",
-        emit_function_application(func, plus, helper_names),
-        emit_function_application(func, minus, helper_names),
-        emit_value_expr(&twice, helper_names)
+        emit_function_application(func, plus, helper_names, value_names),
+        emit_function_application(func, minus, helper_names, value_names),
+        emit_value_expr(&twice, helper_names, value_names)
     )
 }
 
@@ -2529,6 +2622,7 @@ fn emit_directional_derivative(
     direction: &ValueExpr,
     at: &ValueExpr,
     helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
 ) -> String {
     let direction_step = ValueExpr::Binary {
         op: BinOp::Mul,
@@ -2560,9 +2654,9 @@ fn emit_directional_derivative(
     };
     format!(
         "(({} - {}) / {})",
-        emit_function_application(func, plus, helper_names),
-        emit_function_application(func, minus, helper_names),
-        emit_value_expr(&twice, helper_names)
+        emit_function_application(func, plus, helper_names, value_names),
+        emit_function_application(func, minus, helper_names, value_names),
+        emit_value_expr(&twice, helper_names, value_names)
     )
 }
 
@@ -2571,12 +2665,13 @@ fn emit_gradient(
     epsilon: &ValueExpr,
     at: &ValueExpr,
     helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
 ) -> String {
     format!(
         "vec3({}, {}, {})",
-        emit_partial_derivative(0, func, epsilon, at, helper_names),
-        emit_partial_derivative(1, func, epsilon, at, helper_names),
-        emit_partial_derivative(2, func, epsilon, at, helper_names)
+        emit_partial_derivative(0, func, epsilon, at, helper_names, value_names),
+        emit_partial_derivative(1, func, epsilon, at, helper_names, value_names),
+        emit_partial_derivative(2, func, epsilon, at, helper_names, value_names)
     )
 }
 
@@ -2585,6 +2680,7 @@ fn emit_divergence(
     epsilon: &ValueExpr,
     at: &ValueExpr,
     helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
 ) -> String {
     let twice = ValueExpr::Binary {
         op: BinOp::Mul,
@@ -2592,36 +2688,42 @@ fn emit_divergence(
         right: Box::new(epsilon.clone()),
         ty: Type::Float,
     };
-    let denom = emit_value_expr(&twice, helper_names);
+    let denom = emit_value_expr(&twice, helper_names, value_names);
     let dx_plus = emit_function_application(
         func,
         emit_vec3_axis_offset(at.clone(), epsilon.clone(), 0, BinOp::Add),
         helper_names,
+        value_names,
     );
     let dx_minus = emit_function_application(
         func,
         emit_vec3_axis_offset(at.clone(), epsilon.clone(), 0, BinOp::Sub),
         helper_names,
+        value_names,
     );
     let dy_plus = emit_function_application(
         func,
         emit_vec3_axis_offset(at.clone(), epsilon.clone(), 1, BinOp::Add),
         helper_names,
+        value_names,
     );
     let dy_minus = emit_function_application(
         func,
         emit_vec3_axis_offset(at.clone(), epsilon.clone(), 1, BinOp::Sub),
         helper_names,
+        value_names,
     );
     let dz_plus = emit_function_application(
         func,
         emit_vec3_axis_offset(at.clone(), epsilon.clone(), 2, BinOp::Add),
         helper_names,
+        value_names,
     );
     let dz_minus = emit_function_application(
         func,
         emit_vec3_axis_offset(at.clone(), epsilon.clone(), 2, BinOp::Sub),
         helper_names,
+        value_names,
     );
     format!(
         "((({dx_plus}).x - ({dx_minus}).x) / {denom} + (({dy_plus}).y - ({dy_minus}).y) / {denom} + (({dz_plus}).z - ({dz_minus}).z) / {denom})"
@@ -2670,7 +2772,7 @@ fn emit_object_expr(
                 let rendered_fields = fields
                     .iter()
                     .map(|(_, expr)| match expr {
-                        PrimitiveArgExpr::Value(expr) => emit_value_expr(expr, helper_names),
+                        PrimitiveArgExpr::Value(expr) => emit_plain_value_expr(expr, helper_names),
                         PrimitiveArgExpr::Vec2List(_) => unreachable!(),
                     })
                     .collect::<Vec<_>>()
@@ -2723,7 +2825,7 @@ fn emit_object_expr(
             args.extend(
                 value_args
                     .iter()
-                    .map(|arg| emit_value_expr(arg, helper_names)),
+                    .map(|arg| emit_plain_value_expr(arg, helper_names)),
             );
             format!("{}({})", glsl_name, args.join(", "))
         }
@@ -2733,7 +2835,7 @@ fn emit_object_expr(
 fn emit_polygon_vertices(vertices: &[ValueExpr], helper_names: &HashMap<String, String>) -> String {
     let mut rendered = vertices
         .iter()
-        .map(|vertex| emit_value_expr(vertex, helper_names))
+        .map(|vertex| emit_plain_value_expr(vertex, helper_names))
         .collect::<Vec<_>>();
     let fill = rendered
         .last()
@@ -2755,21 +2857,21 @@ fn emit_transformed_point(
         return format!(
             "({} - {})",
             point_expr,
-            emit_value_expr(translation, helper_names)
+            emit_plain_value_expr(translation, helper_names)
         );
     }
     if is_zero_vec3(translation) {
         return format!(
             "(transpose({}) * {})",
-            emit_value_expr(linear, helper_names),
+            emit_plain_value_expr(linear, helper_names),
             point_expr
         );
     }
     format!(
         "(transpose({}) * (({}) - {}))",
-        emit_value_expr(linear, helper_names),
+        emit_plain_value_expr(linear, helper_names),
         point_expr,
-        emit_value_expr(translation, helper_names)
+        emit_plain_value_expr(translation, helper_names)
     )
 }
 
@@ -2858,6 +2960,44 @@ fn emitted_function_name(name: &str, helper_names: &HashMap<String, String>) -> 
 
 fn helper_name(name: &str) -> String {
     format!("dsl_{}", name)
+}
+
+fn unique_local_name(base: &str, forbidden: &BTreeSet<String>) -> String {
+    if !forbidden.contains(base) {
+        return base.to_string();
+    }
+
+    let mut counter = 0u64;
+    loop {
+        let candidate = format!(
+            "{}_r{:06x}",
+            base,
+            stable_name_hash(base, forbidden, counter)
+        );
+        if !forbidden.contains(&candidate) {
+            return candidate;
+        }
+        counter += 1;
+    }
+}
+
+fn stable_name_hash(base: &str, forbidden: &BTreeSet<String>, counter: u64) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in base.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash ^= counter;
+    hash = hash.wrapping_mul(0x100000001b3);
+    for name in forbidden {
+        for byte in name.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        hash ^= u64::from(b'|');
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash & 0x00ff_ffff
 }
 
 fn format_float(value: f64) -> String {

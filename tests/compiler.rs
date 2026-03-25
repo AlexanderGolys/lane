@@ -300,6 +300,18 @@ fn generated_helpers_capture_scene_inputs_in_their_signatures() {
 }
 
 #[test]
+fn renames_generated_locals_on_name_conflicts() {
+    let source = "provided float p\nprovided float eps\ngenerate Ball3D(r=eps) + (p, 0, 0)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p_r"));
+    assert!(glsl.contains(", float p, float eps)"));
+    assert!(glsl.contains("float eps_r"));
+    assert!(glsl.contains("scene_sdf(p_r"));
+    assert!(glsl.contains("vec3(eps_r"));
+}
+
+#[test]
 fn plain_object_bindings_do_not_export_helpers() {
     let source = "Obj3 shell = Ball3D(r=2)\ngenerate shell\n";
     let glsl = compile_program(source).unwrap();

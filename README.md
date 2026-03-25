@@ -22,6 +22,7 @@ Current slice:
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
 - output uses `generate value`, for example `generate C`, and `gen value` is accepted as a shorthand alias
 - emitted GLSL always includes both `scene_sdf` and a numerically approximated `scene_grad`
+- emitted GLSL renames generated local identifiers when they would collide with user-defined value names such as `p` or `eps`
 - polygons use `Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))` and currently support up to 16 vertices
 
 Example inputs live in `test.lane` and `showcase.lane`. The showcase file combines all current primitives, object operators, value functions, and ambient action sugars in one scene.
