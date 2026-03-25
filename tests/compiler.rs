@@ -1,4 +1,4 @@
-use sdf_dsl::{
+use lane::{
     compile_program, known_preregistered_objects, known_primitives, preregistered_object,
     PreregisteredObjectKind,
 };

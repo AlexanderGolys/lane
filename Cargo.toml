@@ -1,10 +1,6 @@
 [package]
-name = "sdf-dsl"
+name = "lane"
 version = "0.1.0"
 edition = "2021"
-
-[[bin]]
-name = "lane"
-path = "src/main.rs"
 
 [dependencies]

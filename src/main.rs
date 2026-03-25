@@ -57,7 +57,7 @@ fn compile_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_compiled_program(source: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let glsl = sdf_dsl::compile_program(source)?;
+    let glsl = lane::compile_program(source)?;
     println!("{glsl}");
     Ok(())
 }
@@ -71,7 +71,7 @@ fn is_help(arg: &str) -> bool {
 }
 
 fn print_preregistered_object(name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(object) = sdf_dsl::preregistered_object(name) {
+    if let Some(object) = lane::preregistered_object(name) {
         println!("{} {}", kind_name(object.kind), object.name);
         println!();
         println!("{}", object.body);
@@ -81,7 +81,7 @@ fn print_preregistered_object(name: &str) -> Result<(), Box<dyn std::error::Erro
 }
 
 fn print_known_primitives() {
-    for primitive in sdf_dsl::known_primitives() {
+    for primitive in lane::known_primitives() {
         let fields = primitive
             .fields
             .iter()
@@ -107,11 +107,11 @@ fn print_known_primitives() {
 
 fn print_preregistered_objects() {
     for kind in [
-        sdf_dsl::PreregisteredObjectKind::Function,
-        sdf_dsl::PreregisteredObjectKind::Type,
+        lane::PreregisteredObjectKind::Function,
+        lane::PreregisteredObjectKind::Type,
     ] {
         println!("{}:", kind_name(kind));
-        for object in sdf_dsl::known_preregistered_objects() {
+        for object in lane::known_preregistered_objects() {
             if object.kind == kind {
                 println!("{}", object.name);
             }
@@ -120,9 +120,9 @@ fn print_preregistered_objects() {
     }
 }
 
-fn kind_name(kind: sdf_dsl::PreregisteredObjectKind) -> &'static str {
+fn kind_name(kind: lane::PreregisteredObjectKind) -> &'static str {
     match kind {
-        sdf_dsl::PreregisteredObjectKind::Function => "function",
-        sdf_dsl::PreregisteredObjectKind::Type => "type",
+        lane::PreregisteredObjectKind::Function => "function",
+        lane::PreregisteredObjectKind::Type => "type",
     }
 }

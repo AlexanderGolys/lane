@@ -1,4 +1,4 @@
-use sdf_dsl::compile_program;
+use lane::compile_program;
 
 #[test]
 fn compiles_sample_program_to_glsl() {
