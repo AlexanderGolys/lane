@@ -281,3 +281,52 @@ fn treats_bare_help_as_input_path() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("No such file or directory"));
 }
+
+#[test]
+fn wraps_output_in_fragment_shader_when_directive_is_present() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(b"// fragment-shader: #version 330 core\ngenerate Ball3D(r=1)\n")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with("#version 330 core"));
+    assert!(stdout.contains("uniform vec2 resolution;"));
+    assert!(stdout.contains("float d = scene_sdf(vec3(uv, 0.0));"));
+}
+
+#[test]
+fn rejects_fragment_shader_wrapper_for_lane_inputs() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(b"// fragment-shader: #version 330 core\nprovided float time\ngenerate Ball3D(r=time)\n")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("fragment shader wrapper currently requires"));
+}

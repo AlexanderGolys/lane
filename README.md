@@ -34,6 +34,8 @@ cargo run -- test.lane
 cargo run -- showcase.lane
 ```
 
+Add a directive comment such as `// fragment-shader: #version 330 core` to wrap the emitted scene GLSL in a minimal fullscreen fragment shader for the no-extra-input case.
+
 Run tests with:
 
 ```sh
