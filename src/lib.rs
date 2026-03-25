@@ -571,7 +571,7 @@ impl Default for Registry {
                             kind: PrimitiveFieldKind::Value(Type::Float),
                         },
                     ],
-                    support_glsl: "struct ParamBox2D {\n    float a;\n    float b;\n};\n\nfloat sdf0_Box2D(vec3 p, ParamBox2D params) {\n    vec2 d = abs(p.xy) - vec2(params.a, params.b);\n    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);\n}",
+                    support_glsl: "struct ParamBox2D {\n    float a;\n    float b;\n};\n\nfloat sdf0_Box2D(vec2 p, ParamBox2D params) {\n    vec2 d = abs(p) - vec2(params.a, params.b);\n    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);\n}",
                 },
             ),
             (
@@ -588,7 +588,7 @@ impl Default for Registry {
                             kind: PrimitiveFieldKind::Value(Type::Vec2),
                         },
                     ],
-                    support_glsl: "struct ParamSegment2D {\n    vec2 a;\n    vec2 b;\n};\n\nfloat sdf0_Segment2D(vec3 p, ParamSegment2D params) {\n    vec2 pa = p.xy - params.a;\n    vec2 ba = params.b - params.a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - (ba * h));\n}",
+                    support_glsl: "struct ParamSegment2D {\n    vec2 a;\n    vec2 b;\n};\n\nfloat sdf0_Segment2D(vec2 p, ParamSegment2D params) {\n    vec2 pa = p - params.a;\n    vec2 ba = params.b - params.a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - (ba * h));\n}",
                 },
             ),
             (
@@ -609,7 +609,7 @@ impl Default for Registry {
                             kind: PrimitiveFieldKind::Value(Type::Vec2),
                         },
                     ],
-                    support_glsl: "struct ParamTriangle2D {\n    vec2 p0;\n    vec2 p1;\n    vec2 p2;\n};\n\nfloat sdf0_Triangle2D(vec3 p, ParamTriangle2D params) {\n    vec2 e0 = params.p1 - params.p0;\n    vec2 e1 = params.p2 - params.p1;\n    vec2 e2 = params.p0 - params.p2;\n    vec2 v0 = p.xy - params.p0;\n    vec2 v1 = p.xy - params.p1;\n    vec2 v2 = p.xy - params.p2;\n    vec2 pq0 = v0 - (e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0));\n    vec2 pq1 = v1 - (e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0));\n    vec2 pq2 = v2 - (e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0));\n    float s = sign((e0.x * e2.y) - (e0.y * e2.x));\n    vec2 d = min(min(vec2(dot(pq0, pq0), s * ((v0.x * e0.y) - (v0.y * e0.x))), vec2(dot(pq1, pq1), s * ((v1.x * e1.y) - (v1.y * e1.x)))), vec2(dot(pq2, pq2), s * ((v2.x * e2.y) - (v2.y * e2.x))));\n    return -sqrt(d.x) * sign(d.y);\n}",
+                    support_glsl: "struct ParamTriangle2D {\n    vec2 p0;\n    vec2 p1;\n    vec2 p2;\n};\n\nfloat sdf0_Triangle2D(vec2 p, ParamTriangle2D params) {\n    vec2 e0 = params.p1 - params.p0;\n    vec2 e1 = params.p2 - params.p1;\n    vec2 e2 = params.p0 - params.p2;\n    vec2 v0 = p - params.p0;\n    vec2 v1 = p - params.p1;\n    vec2 v2 = p - params.p2;\n    vec2 pq0 = v0 - (e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0));\n    vec2 pq1 = v1 - (e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0));\n    vec2 pq2 = v2 - (e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0));\n    float s = sign((e0.x * e2.y) - (e0.y * e2.x));\n    vec2 d = min(min(vec2(dot(pq0, pq0), s * ((v0.x * e0.y) - (v0.y * e0.x))), vec2(dot(pq1, pq1), s * ((v1.x * e1.y) - (v1.y * e1.x)))), vec2(dot(pq2, pq2), s * ((v2.x * e2.y) - (v2.y * e2.x))));\n    return -sqrt(d.x) * sign(d.y);\n}",
                 },
             ),
             (
@@ -631,7 +631,7 @@ impl Default for Registry {
                         name: "at",
                         kind: PrimitiveFieldKind::Value(Type::Vec2),
                     }],
-                    support_glsl: "struct ParamPoint2D {\n    vec2 at;\n};\n\nfloat sdf0_Point2D(vec3 p, ParamPoint2D params) {\n    return length(p.xy - params.at);\n}",
+                    support_glsl: "struct ParamPoint2D {\n    vec2 at;\n};\n\nfloat sdf0_Point2D(vec2 p, ParamPoint2D params) {\n    return length(p - params.at);\n}",
                 },
             ),
         ]);
@@ -1455,9 +1455,14 @@ fn emit_object_expr(
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
+                let point_arg = if shape_dimension(name) == ShapeDimension::D2 {
+                    format!("({}).xy", point_expr)
+                } else {
+                    point_expr.to_string()
+                };
                 format!(
                     "sdf0_{}({}, {}({}))",
-                    name, point_expr, param_type, rendered_fields
+                    name, point_arg, param_type, rendered_fields
                 )
             }
             PrimitiveKind::Polygon2D => {

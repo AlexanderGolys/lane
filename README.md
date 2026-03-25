@@ -71,4 +71,4 @@ Show CLI usage with:
 cargo run -- --help
 ```
 
-CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive, and the predefined support objects can be listed separately by kind.
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive, and 2D primitives expose local `vec2` evaluators while 3D primitives expose local `vec3` evaluators.

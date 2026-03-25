@@ -53,7 +53,7 @@ fn looks_up_known_primitive_by_name() {
     assert!(primitive.type_body.as_deref().unwrap().contains("float b;"));
     assert!(primitive
         .function_body
-        .contains("float sdf0_Box2D(vec3 p, ParamBox2D params)"));
+        .contains("float sdf0_Box2D(vec2 p, ParamBox2D params)"));
 }
 
 #[test]
@@ -190,9 +190,9 @@ fn emits_box_primitive() {
     assert!(glsl.contains("struct ParamBox2D"));
     assert!(glsl.contains("float a;"));
     assert!(glsl.contains("float b;"));
-    assert!(glsl.contains("float sdf0_Box2D(vec3 p, ParamBox2D params)"));
+    assert!(glsl.contains("float sdf0_Box2D(vec2 p, ParamBox2D params)"));
     assert!(glsl.contains("vec2(params.a, params.b)"));
-    assert!(glsl.contains("sdf0_Box2D(p, ParamBox2D(2.0, 1.0))"));
+    assert!(glsl.contains("sdf0_Box2D((p).xy, ParamBox2D(2.0, 1.0))"));
 }
 
 #[test]
@@ -240,8 +240,8 @@ fn emits_segment_primitive() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamSegment2D"));
-    assert!(glsl.contains("float sdf0_Segment2D(vec3 p, ParamSegment2D params)"));
-    assert!(glsl.contains("sdf0_Segment2D(p, ParamSegment2D(vec2(0.0, 0.0), vec2(2.0, 1.0)))"));
+    assert!(glsl.contains("float sdf0_Segment2D(vec2 p, ParamSegment2D params)"));
+    assert!(glsl.contains("sdf0_Segment2D((p).xy, ParamSegment2D(vec2(0.0, 0.0), vec2(2.0, 1.0)))"));
 }
 
 #[test]
@@ -250,9 +250,9 @@ fn emits_triangle_primitive() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamTriangle2D"));
-    assert!(glsl.contains("float sdf0_Triangle2D(vec3 p, ParamTriangle2D params)"));
+    assert!(glsl.contains("float sdf0_Triangle2D(vec2 p, ParamTriangle2D params)"));
     assert!(glsl.contains(
-        "sdf0_Triangle2D(p, ParamTriangle2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)))"
+        "sdf0_Triangle2D((p).xy, ParamTriangle2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)))"
     ));
 }
 
@@ -276,8 +276,8 @@ fn emits_point_primitive() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamPoint2D"));
-    assert!(glsl.contains("float sdf0_Point2D(vec3 p, ParamPoint2D params)"));
-    assert!(glsl.contains("sdf0_Point2D(p, ParamPoint2D(vec2(3.0, 4.0)))"));
+    assert!(glsl.contains("float sdf0_Point2D(vec2 p, ParamPoint2D params)"));
+    assert!(glsl.contains("sdf0_Point2D((p).xy, ParamPoint2D(vec2(3.0, 4.0)))"));
 }
 
 #[test]
