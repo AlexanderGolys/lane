@@ -155,6 +155,8 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("cexp: Hom(R2, R2)"));
     assert!(stdout.contains("Union: Hom(Obj3 × Obj3, Obj3)"));
     assert!(stdout.contains("SmoothUnion: Hom(R, Hom(Obj3 × Obj3, Obj3))"));
+    assert!(stdout.contains("Revolution: Hom(R, Hom(Obj3, Obj3))"));
+    assert!(stdout.contains("Extrusion: Hom(R, Hom(Obj3, Obj3))"));
     assert!(!stdout.contains(" sin"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }

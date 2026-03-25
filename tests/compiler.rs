@@ -238,6 +238,12 @@ fn lists_builtin_lane_objects() {
     assert!(objects.iter().any(|object| {
         object.name == "SmoothUnion" && object.ty == "Hom(R, Hom(Obj3 × Obj3, Obj3))"
     }));
+    assert!(objects
+        .iter()
+        .any(|object| { object.name == "Revolution" && object.ty == "Hom(R, Hom(Obj3, Obj3))" }));
+    assert!(objects
+        .iter()
+        .any(|object| { object.name == "Extrusion" && object.ty == "Hom(R, Hom(Obj3, Obj3))" }));
     assert!(!objects.iter().any(|object| object.name == "sin"));
     assert!(!objects.iter().any(|object| object.name == "gradient"));
 }
@@ -678,6 +684,22 @@ fn emits_translation_action_from_addition_sugar() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("sdf0_Ball3D((p - vec3(1.0, 2.0, 3.0)), ParamBall3D(1.0))"));
+}
+
+#[test]
+fn emits_revolution_operator() {
+    let source = "generate Revolution(1.5)(Segment2D(a=(0, -1), b=(0, 1)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("sdf0_Segment2D((vec3((length((p).xz) - 1.5), (p).y, 0.0)).xy, ParamSegment2D(vec2(0.0, (-1.0)), vec2(0.0, 1.0)))"));
+}
+
+#[test]
+fn emits_extrusion_operator() {
+    let source = "generate Extrusion(.25)(Box2D(a=1, b=.5))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("min(max(sdf0_Box2D((vec3((p).xy, 0.0)).xy, ParamBox2D(1.0, 0.5)), abs((p).z) - 0.25), 0.0) + length(max(vec2(sdf0_Box2D((vec3((p).xy, 0.0)).xy, ParamBox2D(1.0, 0.5)), abs((p).z) - 0.25), 0.0))"));
 }
 
 #[test]

@@ -26,6 +26,8 @@ Obj3 tri = Triangle2D(p0=(0 - .8, 0 - .6), p1=(.9, 0 - .4), p2=(0, 1.1)) + (0, 0
 Obj3 quad = Quad2D(p1=(0 - 1.0, 0 - .7), p2=(1.0, 0 - .7), p3=(.8, .5), p4=(0 - .8, .6)) + (0, 0, .9)
 Obj3 poly = Polygon2D(points=((0 - 1, 0 - 1), (1, 0 - 1), (1.2, .2), (0, 1.1), (0 - 1, .7))) + (0, 0, 0 - .2)
 Obj3 bead = Point2D(anchor2(time))
+Obj3 lathe = Revolution(1.6)(Triangle2D(p0=(0, 0 - .4), p1=(.35, 0), p2=(0, .4)))
+Obj3 slab = Extrusion(.2)(Quad2D(p1=(0 - .8, 0 - .4), p2=(.8, 0 - .4), p3=(.6, .4), p4=(0 - .6, .4))) + (0, 0, 1.5)
 
 Obj3 planar_union = Union(box, segment)
 Obj3 planar_clip = Intersection(planar_union, tri)
@@ -37,7 +39,8 @@ Obj3 smooth_cut = SmoothDifference(ripple(time))(smooth_pair, cut)
 Obj3 smooth_mix = SmoothIntersection(.25 + pulse(time))(smooth_cut, simplex)
 Obj3 framed = SmoothUnion(.2)(face, panel)
 Obj3 guide = SmoothUnion(.15)(rail, plane)
-Obj3 smooth_x = SmoothXor(.2 + ripple(time))(SmoothUnion(.15)(smooth_mix, framed), orbit)
+Obj3 formed = SmoothUnion(.1)(lathe, slab)
+Obj3 smooth_x = SmoothXor(.2 + ripple(time))(SmoothUnion(.15)(SmoothUnion(.1)(smooth_mix, framed), formed), orbit)
 Obj3 final = SmoothUnion(.3)(SmoothUnion(.15)(smooth_x, guide), spin(time) * planar_twist)
 
 generate final

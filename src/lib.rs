@@ -1235,6 +1235,28 @@ impl Default for Registry {
                     support_glsl: "float op_smooth_xor_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_xor_max(float a, float b, float k) {\n    return -op_smooth_xor_min(-a, -b, k);\n}\n\nfloat op_smooth_xor(float a, float b, float k) {\n    return op_smooth_xor_max(op_smooth_xor_min(a, b, k), -op_smooth_xor_max(a, b, k), k);\n}",
                 },
             ),
+            (
+                "Revolution",
+                ObjectOpDef {
+                    name: "Revolution",
+                    value_arg_types: vec![Type::Float],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "op_revolution",
+                    support_glsl: "",
+                },
+            ),
+            (
+                "Extrusion",
+                ObjectOpDef {
+                    name: "Extrusion",
+                    value_arg_types: vec![Type::Float],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "op_extrusion",
+                    support_glsl: "",
+                },
+            ),
         ]);
 
         let value_funcs = HashMap::from([
@@ -2933,6 +2955,29 @@ fn emit_object_expr(
             value_args,
             object_args,
         } => {
+            if glsl_name == "op_revolution" {
+                let offset = emit_plain_value_expr(&value_args[0], helper_names);
+                let revolved_point = format!(
+                    "vec3((length(({}).xz) - {}), ({}).y, 0.0)",
+                    point_expr, offset, point_expr
+                );
+                return emit_object_expr(
+                    &object_args[0],
+                    &revolved_point,
+                    object_bindings,
+                    helper_names,
+                );
+            }
+            if glsl_name == "op_extrusion" {
+                let height = emit_plain_value_expr(&value_args[0], helper_names);
+                let base_point = format!("vec3(({}).xy, 0.0)", point_expr);
+                let base_distance =
+                    emit_object_expr(&object_args[0], &base_point, object_bindings, helper_names);
+                return format!(
+                    "(min(max({}, abs(({}).z) - {}), 0.0) + length(max(vec2({}, abs(({}).z) - {}), 0.0)))",
+                    base_distance, point_expr, height, base_distance, point_expr, height
+                );
+            }
             let mut args = object_args
                 .iter()
                 .map(|arg| emit_object_expr(arg, point_expr, object_bindings, helper_names))
