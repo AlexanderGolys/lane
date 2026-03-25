@@ -455,6 +455,24 @@ fn emits_union_operator() {
 }
 
 #[test]
+fn emits_associative_union_operator_with_four_args() {
+    let source = "Obj3 a = Ball3D(r=4)\nObj3 b = Ball3D(r=3) + (1, 0, 0)\nObj3 c = Ball3D(r=2) + (2, 0, 0)\nObj3 d = Ball3D(r=1) + (3, 0, 0)\nout: Union(a, b, c, d)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("return op_union(op_union("));
+    assert!(glsl.contains(", op_union("));
+}
+
+#[test]
+fn emits_associative_union_operator_with_three_args() {
+    let source = "Obj3 a = Ball3D(r=3)\nObj3 b = Ball3D(r=2) + (1, 0, 0)\nObj3 c = Ball3D(r=1) + (2, 0, 0)\nout: Union(a, b, c)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("return op_union(sdf0_Ball3D("));
+    assert!(glsl.contains(", op_union("));
+}
+
+#[test]
 fn emits_intersection_operator() {
     let source =
         "Obj3 a = Ball3D(r=2)\nObj3 b = Ball3D(r=1) + (0.5, 0, 0)\nout: Intersection(a, b)\n";
@@ -532,4 +550,15 @@ fn emits_only_used_object_operator_support() {
     assert!(!glsl.contains("op_smooth_intersection"));
     assert!(!glsl.contains("op_smooth_difference"));
     assert!(!glsl.contains("op_smooth_xor"));
+}
+
+#[test]
+fn rejects_extra_arguments_for_non_associative_operator() {
+    let source = "Obj3 a = Ball3D(r=3)\nObj3 b = Ball3D(r=2)\nObj3 c = Ball3D(r=1)\nout: Difference(a, b, c)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "operator 'Difference' expects 2 argument(s), got 3"
+    );
 }

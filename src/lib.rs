@@ -631,6 +631,7 @@ struct ObjectOpDef {
     name: &'static str,
     value_arg_types: Vec<Type>,
     object_arg_count: usize,
+    associative_binary: bool,
     glsl_name: &'static str,
     support_glsl: &'static str,
 }
@@ -812,6 +813,7 @@ impl Default for Registry {
                     name: "SmoothUnion",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
+                    associative_binary: false,
                     glsl_name: "op_smooth_union",
                     support_glsl: "float op_smooth_union_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_union(float a, float b, float k) {\n    return op_smooth_union_min(a, b, k);\n}",
                 },
@@ -822,6 +824,7 @@ impl Default for Registry {
                     name: "Union",
                     value_arg_types: vec![],
                     object_arg_count: 2,
+                    associative_binary: true,
                     glsl_name: "op_union",
                     support_glsl: "float op_union(float a, float b) {\n    return min(a, b);\n}",
                 },
@@ -832,6 +835,7 @@ impl Default for Registry {
                     name: "Intersection",
                     value_arg_types: vec![],
                     object_arg_count: 2,
+                    associative_binary: true,
                     glsl_name: "op_intersection",
                     support_glsl: "float op_intersection(float a, float b) {\n    return max(a, b);\n}",
                 },
@@ -842,6 +846,7 @@ impl Default for Registry {
                     name: "Difference",
                     value_arg_types: vec![],
                     object_arg_count: 2,
+                    associative_binary: false,
                     glsl_name: "op_difference",
                     support_glsl: "float op_difference(float a, float b) {\n    return max(a, -b);\n}",
                 },
@@ -852,6 +857,7 @@ impl Default for Registry {
                     name: "Xor",
                     value_arg_types: vec![],
                     object_arg_count: 2,
+                    associative_binary: true,
                     glsl_name: "op_xor",
                     support_glsl: "float op_xor(float a, float b) {\n    return max(min(a, b), -max(a, b));\n}",
                 },
@@ -862,6 +868,7 @@ impl Default for Registry {
                     name: "SmoothIntersection",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
+                    associative_binary: false,
                     glsl_name: "op_smooth_intersection",
                     support_glsl: "float op_smooth_intersection_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_intersection_max(float a, float b, float k) {\n    return -op_smooth_intersection_min(-a, -b, k);\n}\n\nfloat op_smooth_intersection(float a, float b, float k) {\n    return op_smooth_intersection_max(a, b, k);\n}",
                 },
@@ -872,6 +879,7 @@ impl Default for Registry {
                     name: "SmoothDifference",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
+                    associative_binary: false,
                     glsl_name: "op_smooth_difference",
                     support_glsl: "float op_smooth_difference_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_difference_max(float a, float b, float k) {\n    return -op_smooth_difference_min(-a, -b, k);\n}\n\nfloat op_smooth_difference(float a, float b, float k) {\n    return op_smooth_difference_max(a, -b, k);\n}",
                 },
@@ -882,6 +890,7 @@ impl Default for Registry {
                     name: "SmoothXor",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
+                    associative_binary: false,
                     glsl_name: "op_smooth_xor",
                     support_glsl: "float op_smooth_xor_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_xor_max(float a, float b, float k) {\n    return -op_smooth_xor_min(-a, -b, k);\n}\n\nfloat op_smooth_xor(float a, float b, float k) {\n    return op_smooth_xor_max(op_smooth_xor_min(a, b, k), -op_smooth_xor_max(a, b, k), k);\n}",
                 },
@@ -1315,12 +1324,21 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         .object_ops
         .get(name.as_str())
         .ok_or_else(|| Error::new(format!("unknown object operator '{}'", name)))?;
-    let total_args = op.value_arg_types.len() + op.object_arg_count;
-    if args.len() != total_args {
+    let min_total_args = op.value_arg_types.len() + op.object_arg_count;
+    if op.associative_binary {
+        if args.len() < min_total_args {
+            return Err(Error::new(format!(
+                "operator '{}' expects at least {} argument(s), got {}",
+                name,
+                min_total_args,
+                args.len()
+            )));
+        }
+    } else if args.len() != min_total_args {
         return Err(Error::new(format!(
             "operator '{}' expects {} argument(s), got {}",
             name,
-            total_args,
+            min_total_args,
             args.len()
         )));
     }
@@ -1341,12 +1359,57 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         object_args.push(infer_object_expr(expr, env)?);
     }
 
-    Ok(ObjectExpr::RegisteredOp {
-        name: op.name.to_string(),
-        glsl_name: op.glsl_name.to_string(),
-        value_args,
-        object_args,
-    })
+    if op.associative_binary {
+        Ok(fold_associative_registered_op(
+            op.name,
+            op.glsl_name,
+            &value_args,
+            &object_args,
+        ))
+    } else {
+        Ok(ObjectExpr::RegisteredOp {
+            name: op.name.to_string(),
+            glsl_name: op.glsl_name.to_string(),
+            value_args,
+            object_args,
+        })
+    }
+}
+
+fn fold_associative_registered_op(
+    name: &str,
+    glsl_name: &str,
+    value_args: &[ValueExpr],
+    object_args: &[ObjectExpr],
+) -> ObjectExpr {
+    debug_assert!(object_args.len() >= 2);
+    if object_args.len() == 2 {
+        return ObjectExpr::RegisteredOp {
+            name: name.to_string(),
+            glsl_name: glsl_name.to_string(),
+            value_args: value_args.to_vec(),
+            object_args: object_args.to_vec(),
+        };
+    }
+    if object_args.len() == 3 {
+        let right = fold_associative_registered_op(name, glsl_name, value_args, &object_args[1..]);
+        return ObjectExpr::RegisteredOp {
+            name: name.to_string(),
+            glsl_name: glsl_name.to_string(),
+            value_args: value_args.to_vec(),
+            object_args: vec![object_args[0].clone(), right],
+        };
+    }
+
+    let split = object_args.len() / 2;
+    let left = fold_associative_registered_op(name, glsl_name, value_args, &object_args[..split]);
+    let right = fold_associative_registered_op(name, glsl_name, value_args, &object_args[split..]);
+    ObjectExpr::RegisteredOp {
+        name: name.to_string(),
+        glsl_name: glsl_name.to_string(),
+        value_args: value_args.to_vec(),
+        object_args: vec![left, right],
+    }
 }
 
 fn collect_object_support<'a>(expr: &'a ObjectExpr, names: &mut BTreeSet<&'a str>) {
