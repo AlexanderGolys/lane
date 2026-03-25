@@ -8,6 +8,7 @@ Current slice:
 - pre-registered 2D `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
 - pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
 - value functions `sin`, `cos`, `pow2`
+- differential builtin objects such as `derivative`, `partialX`, `partialY`, `partialZ`, `directionalDerivative`, `gradient`, and `divergence`
 - unary function composition with `f @ g`, meaning `x |-> f(g(x))`
 - `vec2`, `vec3`, and nested-row `mat3` tuple literals in value expressions
 - ambient object actions with `Obj3 + vec3` translation sugar and `mat3 * Obj3` orthogonal action
@@ -17,6 +18,7 @@ Current slice:
 - primitive constructor arguments can be passed positionally in field order, e.g. `Box2D(2, 1)`
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
 - output uses `out: value`, for example `out: C`
+- emitted GLSL always includes both `scene_sdf` and a numerically approximated `scene_grad`
 - polygons use `Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))` and currently support up to 16 vertices
 
 Example inputs live in `test.lane` and `showcase.lane`. The showcase file combines all current primitives, object operators, value functions, and ambient action sugars in one scene.

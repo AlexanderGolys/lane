@@ -51,6 +51,14 @@ float scene_sdf(vec3 p, float time) {
     float obj_B = sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time)));
     float obj_C = op_smooth_union(obj_A, obj_B, dsl_hardness(time));
     return obj_C;
+}
+
+vec3 scene_grad(vec3 p, float time) {
+    float eps = 0.0005;
+    float dx = scene_sdf(p + vec3(eps, 0.0, 0.0), time) - scene_sdf(p - vec3(eps, 0.0, 0.0), time);
+    float dy = scene_sdf(p + vec3(0.0, eps, 0.0), time) - scene_sdf(p - vec3(0.0, eps, 0.0), time);
+    float dz = scene_sdf(p + vec3(0.0, 0.0, eps), time) - scene_sdf(p - vec3(0.0, 0.0, eps), time);
+    return normalize(vec3(dx, dy, dz));
 }"#;
 
     assert_eq!(glsl, expected);
@@ -65,4 +73,5 @@ fn compiles_showcase_program_to_glsl() {
     assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
     assert!(glsl.contains("mat3 dsl_spin(float t) {"));
     assert!(glsl.contains("float scene_sdf(vec3 p, float time, mat3 frame) {"));
+    assert!(glsl.contains("vec3 scene_grad(vec3 p, float time, mat3 frame) {"));
 }

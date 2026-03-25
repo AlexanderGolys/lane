@@ -242,6 +242,33 @@ enum ValueExpr {
     Vec2(Box<ValueExpr>, Box<ValueExpr>),
     Vec3(Box<ValueExpr>, Box<ValueExpr>, Box<ValueExpr>),
     Mat3(Box<ValueExpr>, Box<ValueExpr>, Box<ValueExpr>),
+    Derivative {
+        epsilon: Box<ValueExpr>,
+        func: FunctionExpr,
+        at: Box<ValueExpr>,
+    },
+    Partial {
+        axis: usize,
+        epsilon: Box<ValueExpr>,
+        func: FunctionExpr,
+        at: Box<ValueExpr>,
+    },
+    DirectionalDerivative {
+        epsilon: Box<ValueExpr>,
+        direction: Box<ValueExpr>,
+        func: FunctionExpr,
+        at: Box<ValueExpr>,
+    },
+    Gradient {
+        epsilon: Box<ValueExpr>,
+        func: FunctionExpr,
+        at: Box<ValueExpr>,
+    },
+    Divergence {
+        epsilon: Box<ValueExpr>,
+        func: FunctionExpr,
+        at: Box<ValueExpr>,
+    },
 }
 
 impl ValueExpr {
@@ -254,6 +281,11 @@ impl ValueExpr {
             Self::Vec2(_, _) => Type::Vec2,
             Self::Vec3(_, _, _) => Type::Vec3,
             Self::Mat3(_, _, _) => Type::Mat3,
+            Self::Derivative { .. } => Type::Float,
+            Self::Partial { .. } => Type::Float,
+            Self::DirectionalDerivative { .. } => Type::Float,
+            Self::Gradient { at, .. } => at.ty(),
+            Self::Divergence { .. } => Type::Float,
         }
     }
 }
@@ -407,10 +439,12 @@ impl TypedProgram {
         }
 
         let mut signature = vec!["vec3 p".to_string()];
+        let mut scene_input_names = Vec::new();
         for input in &self.inputs {
             match input.ty {
                 Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => {
                     signature.push(format!("{} {}", input.ty.glsl_name(), input.name));
+                    scene_input_names.push(input.name.clone());
                 }
                 Type::Obj3 | Type::Func(_, _) => {}
             }
@@ -427,6 +461,44 @@ impl TypedProgram {
         }
         let output = emit_object_expr(&self.output, "p", &object_names, &helper_names);
         lines.push(format!("    return {};", output));
+        lines.push("}".to_string());
+
+        lines.push(String::new());
+        lines.push(format!("vec3 scene_grad({}) {{", signature.join(", ")));
+        lines.push("    float eps = 0.0005;".to_string());
+        let mut grad_args = vec!["p + vec3(eps, 0.0, 0.0)".to_string()];
+        grad_args.extend(scene_input_names.iter().cloned());
+        lines.push(format!(
+            "    float dx = scene_sdf({}) - scene_sdf({});",
+            grad_args.join(", "),
+            std::iter::once("p - vec3(eps, 0.0, 0.0)".to_string())
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        lines.push(format!(
+            "    float dy = scene_sdf({}) - scene_sdf({});",
+            std::iter::once("p + vec3(0.0, eps, 0.0)".to_string())
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", "),
+            std::iter::once("p - vec3(0.0, eps, 0.0)".to_string())
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        lines.push(format!(
+            "    float dz = scene_sdf({}) - scene_sdf({});",
+            std::iter::once("p + vec3(0.0, 0.0, eps)".to_string())
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", "),
+            std::iter::once("p - vec3(0.0, 0.0, eps)".to_string())
+                .chain(scene_input_names.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        lines.push("    return normalize(vec3(dx, dy, dz));".to_string());
         lines.push("}".to_string());
 
         lines.join("\n")
@@ -740,6 +812,79 @@ impl Default for Registry {
             ("sin", Type::func(Type::Float, Type::Float)),
             ("cos", Type::func(Type::Float, Type::Float)),
             ("pow2", Type::func(Type::Float, Type::Float)),
+            (
+                "derivative",
+                Type::func(
+                    Type::Float,
+                    Type::func(
+                        Type::func(Type::Float, Type::Float),
+                        Type::func(Type::Float, Type::Float),
+                    ),
+                ),
+            ),
+            (
+                "partialX",
+                Type::func(
+                    Type::Float,
+                    Type::func(
+                        Type::func(Type::Vec3, Type::Float),
+                        Type::func(Type::Vec3, Type::Float),
+                    ),
+                ),
+            ),
+            (
+                "partialY",
+                Type::func(
+                    Type::Float,
+                    Type::func(
+                        Type::func(Type::Vec3, Type::Float),
+                        Type::func(Type::Vec3, Type::Float),
+                    ),
+                ),
+            ),
+            (
+                "partialZ",
+                Type::func(
+                    Type::Float,
+                    Type::func(
+                        Type::func(Type::Vec3, Type::Float),
+                        Type::func(Type::Vec3, Type::Float),
+                    ),
+                ),
+            ),
+            (
+                "directionalDerivative",
+                Type::func(
+                    Type::Float,
+                    Type::func(
+                        Type::Vec3,
+                        Type::func(
+                            Type::func(Type::Vec3, Type::Float),
+                            Type::func(Type::Vec3, Type::Float),
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "gradient",
+                Type::func(
+                    Type::Float,
+                    Type::func(
+                        Type::func(Type::Vec3, Type::Float),
+                        Type::func(Type::Vec3, Type::Vec3),
+                    ),
+                ),
+            ),
+            (
+                "divergence",
+                Type::func(
+                    Type::Float,
+                    Type::func(
+                        Type::func(Type::Vec3, Type::Vec3),
+                        Type::func(Type::Vec3, Type::Float),
+                    ),
+                ),
+            ),
         ]);
 
         Self {
@@ -1148,6 +1293,9 @@ fn infer_value_expr(
         Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
         Expr::Tuple(items) => infer_tuple_value_expr(items, env, lift_param),
         Expr::Call { callee, args } => {
+            if let Some(result) = infer_differential_builtin(expr, env, lift_param)? {
+                return Ok(result);
+            }
             let name = match &**callee {
                 Expr::Ident(name) => name,
                 _ => return Err(Error::new("only named value functions are supported")),
@@ -1246,6 +1394,168 @@ fn infer_tuple_value_expr(
             "only vec2, vec3, and mat3 tuples are supported in value expressions",
         )),
     }
+}
+
+fn infer_differential_builtin(
+    expr: &Expr,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<Option<ValueExpr>, Error> {
+    let (name, args) = match flatten_call(expr) {
+        Ok(parts) => parts,
+        Err(_) => return Ok(None),
+    };
+
+    let result = match name.as_str() {
+        "derivative" => Some(infer_derivative_builtin(&args, env, lift_param)?),
+        "partialX" => Some(infer_partial_builtin(&args, env, 0)?),
+        "partialY" => Some(infer_partial_builtin(&args, env, 1)?),
+        "partialZ" => Some(infer_partial_builtin(&args, env, 2)?),
+        "directionalDerivative" => Some(infer_directional_derivative_builtin(&args, env)?),
+        "gradient" => Some(infer_gradient_builtin(&args, env)?),
+        "divergence" => Some(infer_divergence_builtin(&args, env)?),
+        _ => None,
+    };
+
+    Ok(result)
+}
+
+fn infer_derivative_builtin(
+    args: &[&Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    if args.len() != 3 && !(args.len() == 2 && lift_param.is_some()) {
+        return Err(Error::new(
+            "derivative expects epsilon, a unary function, and an evaluation point",
+        ));
+    }
+    let epsilon = infer_value_expr(args[0], env, None)?;
+    ensure_type(&epsilon.ty(), &Type::Float, "derivative epsilon")?;
+    let func = infer_function_expr(args[1], env)?;
+    if func.input != Type::Float || func.output != Type::Float {
+        return Err(Error::new("derivative expects a func(float -> float)"));
+    }
+    let at = if let Some(expr) = args.get(2) {
+        let at = infer_value_expr(expr, env, None)?;
+        ensure_type(&at.ty(), &Type::Float, "derivative evaluation point")?;
+        at
+    } else {
+        ValueExpr::Var(lift_param.unwrap().to_string(), Type::Float)
+    };
+    Ok(ValueExpr::Derivative {
+        epsilon: Box::new(epsilon),
+        func,
+        at: Box::new(at),
+    })
+}
+
+fn infer_partial_builtin(args: &[&Expr], env: &Env<'_>, axis: usize) -> Result<ValueExpr, Error> {
+    if args.len() != 3 {
+        return Err(Error::new(
+            "partial derivative expects epsilon, a scalar field, and an evaluation point",
+        ));
+    }
+    let epsilon = infer_value_expr(args[0], env, None)?;
+    ensure_type(&epsilon.ty(), &Type::Float, "partial derivative epsilon")?;
+    let func = infer_function_expr(args[1], env)?;
+    if func.input != Type::Vec3 || func.output != Type::Float {
+        return Err(Error::new(
+            "partial derivatives currently expect a func(vec3 -> float)",
+        ));
+    }
+    let at = infer_value_expr(args[2], env, None)?;
+    ensure_type(&at.ty(), &Type::Vec3, "partial derivative evaluation point")?;
+    Ok(ValueExpr::Partial {
+        axis,
+        epsilon: Box::new(epsilon),
+        func,
+        at: Box::new(at),
+    })
+}
+
+fn infer_directional_derivative_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, Error> {
+    if args.len() != 4 {
+        return Err(Error::new(
+            "directionalDerivative expects epsilon, a direction, a scalar field, and an evaluation point",
+        ));
+    }
+    let epsilon = infer_value_expr(args[0], env, None)?;
+    ensure_type(
+        &epsilon.ty(),
+        &Type::Float,
+        "directional derivative epsilon",
+    )?;
+    let direction = infer_value_expr(args[1], env, None)?;
+    ensure_type(
+        &direction.ty(),
+        &Type::Vec3,
+        "directional derivative direction",
+    )?;
+    let func = infer_function_expr(args[2], env)?;
+    if func.input != Type::Vec3 || func.output != Type::Float {
+        return Err(Error::new(
+            "directionalDerivative currently expects a func(vec3 -> float)",
+        ));
+    }
+    let at = infer_value_expr(args[3], env, None)?;
+    ensure_type(
+        &at.ty(),
+        &Type::Vec3,
+        "directional derivative evaluation point",
+    )?;
+    Ok(ValueExpr::DirectionalDerivative {
+        epsilon: Box::new(epsilon),
+        direction: Box::new(direction),
+        func,
+        at: Box::new(at),
+    })
+}
+
+fn infer_gradient_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, Error> {
+    if args.len() != 3 {
+        return Err(Error::new(
+            "gradient expects epsilon, a scalar field, and an evaluation point",
+        ));
+    }
+    let epsilon = infer_value_expr(args[0], env, None)?;
+    ensure_type(&epsilon.ty(), &Type::Float, "gradient epsilon")?;
+    let func = infer_function_expr(args[1], env)?;
+    if func.input != Type::Vec3 || func.output != Type::Float {
+        return Err(Error::new(
+            "gradient currently expects a func(vec3 -> float)",
+        ));
+    }
+    let at = infer_value_expr(args[2], env, None)?;
+    ensure_type(&at.ty(), &Type::Vec3, "gradient evaluation point")?;
+    Ok(ValueExpr::Gradient {
+        epsilon: Box::new(epsilon),
+        func,
+        at: Box::new(at),
+    })
+}
+
+fn infer_divergence_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, Error> {
+    if args.len() != 3 {
+        return Err(Error::new(
+            "divergence expects epsilon, a vector field, and an evaluation point",
+        ));
+    }
+    let epsilon = infer_value_expr(args[0], env, None)?;
+    ensure_type(&epsilon.ty(), &Type::Float, "divergence epsilon")?;
+    let func = infer_function_expr(args[1], env)?;
+    if func.input != Type::Vec3 || func.output != Type::Vec3 {
+        return Err(Error::new(
+            "divergence currently expects a func(vec3 -> vec3)",
+        ));
+    }
+    let at = infer_value_expr(args[2], env, None)?;
+    ensure_type(&at.ty(), &Type::Vec3, "divergence evaluation point")?;
+    Ok(ValueExpr::Divergence {
+        epsilon: Box::new(epsilon),
+        func,
+        at: Box::new(at),
+    })
 }
 
 fn infer_vec2_list_expr(
@@ -1507,6 +1817,219 @@ fn emit_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> 
             emit_value_expr(r1, helper_names),
             emit_value_expr(r2, helper_names)
         ),
+        ValueExpr::Derivative { epsilon, func, at } => {
+            emit_scalar_derivative(func, epsilon, at, helper_names)
+        }
+        ValueExpr::Partial {
+            axis,
+            epsilon,
+            func,
+            at,
+        } => emit_partial_derivative(*axis, func, epsilon, at, helper_names),
+        ValueExpr::DirectionalDerivative {
+            epsilon,
+            direction,
+            func,
+            at,
+        } => emit_directional_derivative(func, epsilon, direction, at, helper_names),
+        ValueExpr::Gradient { epsilon, func, at } => emit_gradient(func, epsilon, at, helper_names),
+        ValueExpr::Divergence { epsilon, func, at } => {
+            emit_divergence(func, epsilon, at, helper_names)
+        }
+    }
+}
+
+fn emit_function_application(
+    func: &FunctionExpr,
+    arg: ValueExpr,
+    helper_names: &HashMap<String, String>,
+) -> String {
+    emit_value_expr(&apply_function_expr(func, arg), helper_names)
+}
+
+fn emit_scalar_derivative(
+    func: &FunctionExpr,
+    epsilon: &ValueExpr,
+    at: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+) -> String {
+    let plus = ValueExpr::Binary {
+        op: BinOp::Add,
+        left: Box::new(at.clone()),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Float,
+    };
+    let minus = ValueExpr::Binary {
+        op: BinOp::Sub,
+        left: Box::new(at.clone()),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Float,
+    };
+    let twice = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Float(2.0)),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Float,
+    };
+    format!(
+        "(({} - {}) / {})",
+        emit_function_application(func, plus, helper_names),
+        emit_function_application(func, minus, helper_names),
+        emit_value_expr(&twice, helper_names)
+    )
+}
+
+fn emit_partial_derivative(
+    axis: usize,
+    func: &FunctionExpr,
+    epsilon: &ValueExpr,
+    at: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+) -> String {
+    let plus = emit_vec3_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Add);
+    let minus = emit_vec3_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Sub);
+    let twice = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Float(2.0)),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Float,
+    };
+    format!(
+        "(({} - {}) / {})",
+        emit_function_application(func, plus, helper_names),
+        emit_function_application(func, minus, helper_names),
+        emit_value_expr(&twice, helper_names)
+    )
+}
+
+fn emit_directional_derivative(
+    func: &FunctionExpr,
+    epsilon: &ValueExpr,
+    direction: &ValueExpr,
+    at: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+) -> String {
+    let direction_step = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Call {
+            func: "normalize".to_string(),
+            args: vec![direction.clone()],
+            ty: Type::Vec3,
+        }),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Vec3,
+    };
+    let plus = ValueExpr::Binary {
+        op: BinOp::Add,
+        left: Box::new(at.clone()),
+        right: Box::new(direction_step.clone()),
+        ty: Type::Vec3,
+    };
+    let minus = ValueExpr::Binary {
+        op: BinOp::Sub,
+        left: Box::new(at.clone()),
+        right: Box::new(direction_step),
+        ty: Type::Vec3,
+    };
+    let twice = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Float(2.0)),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Float,
+    };
+    format!(
+        "(({} - {}) / {})",
+        emit_function_application(func, plus, helper_names),
+        emit_function_application(func, minus, helper_names),
+        emit_value_expr(&twice, helper_names)
+    )
+}
+
+fn emit_gradient(
+    func: &FunctionExpr,
+    epsilon: &ValueExpr,
+    at: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+) -> String {
+    format!(
+        "vec3({}, {}, {})",
+        emit_partial_derivative(0, func, epsilon, at, helper_names),
+        emit_partial_derivative(1, func, epsilon, at, helper_names),
+        emit_partial_derivative(2, func, epsilon, at, helper_names)
+    )
+}
+
+fn emit_divergence(
+    func: &FunctionExpr,
+    epsilon: &ValueExpr,
+    at: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+) -> String {
+    let twice = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Float(2.0)),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Float,
+    };
+    let denom = emit_value_expr(&twice, helper_names);
+    let dx_plus = emit_function_application(
+        func,
+        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 0, BinOp::Add),
+        helper_names,
+    );
+    let dx_minus = emit_function_application(
+        func,
+        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 0, BinOp::Sub),
+        helper_names,
+    );
+    let dy_plus = emit_function_application(
+        func,
+        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 1, BinOp::Add),
+        helper_names,
+    );
+    let dy_minus = emit_function_application(
+        func,
+        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 1, BinOp::Sub),
+        helper_names,
+    );
+    let dz_plus = emit_function_application(
+        func,
+        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 2, BinOp::Add),
+        helper_names,
+    );
+    let dz_minus = emit_function_application(
+        func,
+        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 2, BinOp::Sub),
+        helper_names,
+    );
+    format!(
+        "((({dx_plus}).x - ({dx_minus}).x) / {denom} + (({dy_plus}).y - ({dy_minus}).y) / {denom} + (({dz_plus}).z - ({dz_minus}).z) / {denom})"
+    )
+}
+
+fn emit_vec3_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: BinOp) -> ValueExpr {
+    let offset = match axis {
+        0 => ValueExpr::Vec3(
+            Box::new(epsilon),
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(ValueExpr::Float(0.0)),
+        ),
+        1 => ValueExpr::Vec3(
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(epsilon),
+            Box::new(ValueExpr::Float(0.0)),
+        ),
+        _ => ValueExpr::Vec3(
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(epsilon),
+        ),
+    };
+    ValueExpr::Binary {
+        op,
+        left: Box::new(base),
+        right: Box::new(offset),
+        ty: Type::Vec3,
     }
 }
 

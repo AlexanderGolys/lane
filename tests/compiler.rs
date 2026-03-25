@@ -132,6 +132,10 @@ fn lists_builtin_lane_objects() {
         object.name == "SmoothUnion"
             && object.ty == "func(float -> func(Obj3 -> func(Obj3 -> Obj3)))"
     }));
+    assert!(objects.iter().any(|object| {
+        object.name == "gradient"
+            && object.ty == "func(float -> func(func(vec3 -> float) -> func(vec3 -> vec3)))"
+    }));
 }
 
 #[test]
@@ -155,6 +159,15 @@ fn composes_unary_functions_in_function_bodies() {
 
     assert!(glsl.contains("float dsl_wobble(float t) {"));
     assert!(glsl.contains("return sin(sin(t));"));
+}
+
+#[test]
+fn supports_derivative_operator_in_function_bodies() {
+    let source = "func(float -> float) slope = derivative(0.01)(sin)\nout: Ball3D(r=slope(0))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float dsl_slope(float t) {"));
+    assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
 }
 
 #[test]
@@ -191,6 +204,7 @@ fn emits_only_used_support_code() {
     assert!(glsl.contains("struct ParamBall3D"));
     assert!(glsl.contains("float sdf0_Ball3D"));
     assert!(!glsl.contains("op_smooth_union"));
+    assert!(glsl.contains("vec3 scene_grad(vec3 p) {"));
 }
 
 #[test]
