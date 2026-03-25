@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list-primitives\n  lane --list2d\n  lane --list3d\n  lane --list-preregistered\n  lane --show-preregistered <NAME>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane list\n  lane --list2d\n  lane --list3d\n  lane --list-preregistered\n  lane --show-preregistered <NAME>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
 
 fn main() {
     if let Err(err) = run() {
@@ -20,7 +20,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_help();
             Ok(())
         }
-        [flag] if flag == "--list-primitives" => {
+        [command] if command == "list" => {
             print_known_primitives();
             Ok(())
         }

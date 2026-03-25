@@ -33,7 +33,7 @@ cargo test
 List the known primitives, including each generated SDF signature and parameter domain, with:
 
 ```sh
-cargo run -- --list-primitives
+cargo run -- list
 ```
 
 List only 2D or only 3D primitives with:

@@ -3,7 +3,7 @@ use std::process::Command;
 #[test]
 fn lists_known_primitives_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("--list-primitives")
+        .arg("list")
         .output()
         .unwrap();
 
@@ -89,10 +89,24 @@ fn prints_help_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Usage:"));
+    assert!(stdout.contains("lane list"));
     assert!(stdout.contains("lane --list2d"));
     assert!(stdout.contains("lane --list3d"));
     assert!(stdout.contains("lane --show-preregistered <NAME>"));
     assert!(stdout.contains("lane -h"));
+}
+
+#[test]
+fn treats_old_list_flag_as_invalid() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg("--list-primitives")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("No such file or directory"));
 }
 
 #[test]
