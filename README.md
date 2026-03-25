@@ -57,13 +57,11 @@ cargo run -- --list3d
 cargo run -- -l3
 ```
 
-List known predefined GLSL functions or generated parameter structs with:
+List known builtin Lane objects with their Lane types with:
 
 ```sh
-cargo run -- --list-functions
-cargo run -- -lf
-cargo run -- --list-types
-cargo run -- -lt
+cargo run -- --list-objects
+cargo run -- -lo
 ```
 
 Print shell completion scripts with:
@@ -81,4 +79,4 @@ Show CLI usage with:
 cargo run -- --help
 ```
 
-CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive, and 2D primitives expose local `vec2` evaluators while 3D primitives expose local `vec3` evaluators.
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive, `lane --list-objects` prints builtin Lane objects as `type name`, and 2D primitives expose local `vec2` evaluators while 3D primitives expose local `vec3` evaluators.

@@ -124,60 +124,32 @@ fn shows_known_primitive_detail_body_from_cli() {
 }
 
 #[test]
-fn lists_known_predefined_functions_from_cli() {
+fn lists_known_builtin_objects_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("--list-functions")
+        .arg("--list-objects")
         .output()
         .unwrap();
 
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("op_union"));
-    assert!(stdout.contains("op_smooth_union"));
-    assert!(stdout.contains("sdf0_Ball3D"));
-    assert!(!stdout.contains("ParamBall3D"));
-}
-
-#[test]
-fn lists_known_predefined_functions_from_short_flag() {
-    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("-lf")
-        .output()
-        .unwrap();
-
-    assert!(output.status.success());
-
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("op_union"));
-}
-
-#[test]
-fn lists_known_predefined_types_from_cli() {
-    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("--list-types")
-        .output()
-        .unwrap();
-
-    assert!(output.status.success());
-
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("ParamBall3D"));
-    assert!(stdout.contains("ParamBox2D"));
+    assert!(stdout.contains("func(float -> float) sin"));
+    assert!(stdout.contains("func(Obj3 -> func(Obj3 -> Obj3)) Union"));
+    assert!(stdout.contains("func(float -> func(Obj3 -> func(Obj3 -> Obj3))) SmoothUnion"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
 
 #[test]
-fn lists_known_predefined_types_from_short_flag() {
+fn lists_known_builtin_objects_from_short_flag() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("-lt")
+        .arg("-lo")
         .output()
         .unwrap();
 
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("ParamBox2D"));
+    assert!(stdout.contains("func(float -> float) cos"));
 }
 
 #[test]
@@ -195,6 +167,7 @@ fn prints_bash_completion_from_cli() {
     assert!(stdout.contains("-pc"));
     assert!(stdout.contains("--list"));
     assert!(stdout.contains("-l2"));
+    assert!(stdout.contains("--list-objects"));
 }
 
 #[test]
@@ -227,10 +200,8 @@ fn prints_help_from_cli() {
     assert!(stdout.contains("lane -l2"));
     assert!(stdout.contains("lane --list3d"));
     assert!(stdout.contains("lane -l3"));
-    assert!(stdout.contains("lane --list-functions"));
-    assert!(stdout.contains("lane -lf"));
-    assert!(stdout.contains("lane --list-types"));
-    assert!(stdout.contains("lane -lt"));
+    assert!(stdout.contains("lane --list-objects"));
+    assert!(stdout.contains("lane -lo"));
     assert!(stdout.contains("lane --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -pc <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h"));

@@ -30,6 +30,11 @@ pub fn known_preregistered_objects() -> Vec<PreregisteredObject> {
     registry.preregistered_objects()
 }
 
+pub fn known_builtin_objects() -> Vec<KnownBuiltinObject> {
+    let registry = Registry::default();
+    registry.known_builtin_objects()
+}
+
 pub fn preregistered_object(name: &str) -> Option<PreregisteredObject> {
     let registry = Registry::default();
     registry.preregistered_object(name)
@@ -85,6 +90,12 @@ impl ShapeDimension {
 pub struct KnownPrimitiveField {
     pub name: String,
     pub domain: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnownBuiltinObject {
+    pub name: String,
+    pub ty: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -769,6 +780,31 @@ impl Registry {
             .find(|primitive| primitive.name == name)
     }
 
+    fn known_builtin_objects(&self) -> Vec<KnownBuiltinObject> {
+        let mut objects = Vec::new();
+
+        let mut builtin_names: Vec<_> = self.builtins.keys().copied().collect();
+        builtin_names.sort_unstable();
+        for name in builtin_names {
+            objects.push(KnownBuiltinObject {
+                name: name.to_string(),
+                ty: format_type(&self.builtins[name]),
+            });
+        }
+
+        let mut op_names: Vec<_> = self.object_ops.keys().copied().collect();
+        op_names.sort_unstable();
+        for name in op_names {
+            let op = &self.object_ops[name];
+            objects.push(KnownBuiltinObject {
+                name: op.name.to_string(),
+                ty: format_type(&object_op_type(op)),
+            });
+        }
+
+        objects
+    }
+
     fn preregistered_objects(&self) -> Vec<PreregisteredObject> {
         let mut objects = Vec::new();
         let mut primitive_names: Vec<_> = self.primitives.keys().copied().collect();
@@ -901,14 +937,7 @@ impl<'a> Env<'a> {
             types.insert((*name).to_string(), ty.clone());
         }
         for op in registry.object_ops.values() {
-            let mut ty = Type::Obj3;
-            for _ in 0..op.object_arg_count {
-                ty = Type::func(Type::Obj3, ty);
-            }
-            for value_arg in op.value_arg_types.iter().rev() {
-                ty = Type::func(value_arg.clone(), ty);
-            }
-            types.insert(op.name.to_string(), ty);
+            types.insert(op.name.to_string(), object_op_type(op));
         }
         Self { registry, types }
     }
@@ -1633,6 +1662,17 @@ fn is_vec3_literal(expr: &ValueExpr, expected: [f64; 3]) -> bool {
 
 fn is_float_literal(expr: &ValueExpr, expected: f64) -> bool {
     matches!(expr, ValueExpr::Float(value) if (*value - expected).abs() < f64::EPSILON)
+}
+
+fn object_op_type(op: &ObjectOpDef) -> Type {
+    let mut ty = Type::Obj3;
+    for _ in 0..op.object_arg_count {
+        ty = Type::func(Type::Obj3, ty);
+    }
+    for value_arg in op.value_arg_types.iter().rev() {
+        ty = Type::func(value_arg.clone(), ty);
+    }
+    ty
 }
 
 fn zero_vec3() -> ValueExpr {

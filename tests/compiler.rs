@@ -1,6 +1,7 @@
 use lane::{
-    compile_program, known_preregistered_objects, known_primitive, known_primitives,
-    known_primitives_by_dimension, preregistered_object, PreregisteredObjectKind, ShapeDimension,
+    compile_program, known_builtin_objects, known_preregistered_objects, known_primitive,
+    known_primitives, known_primitives_by_dimension, preregistered_object, PreregisteredObjectKind,
+    ShapeDimension,
 };
 
 #[test]
@@ -114,6 +115,22 @@ fn lists_preregistered_functions_and_types() {
     }));
     assert!(objects.iter().any(|object| {
         object.kind == PreregisteredObjectKind::Type && object.name == "ParamBall3D"
+    }));
+}
+
+#[test]
+fn lists_builtin_lane_objects() {
+    let objects = known_builtin_objects();
+
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "sin" && object.ty == "func(float -> float)"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "Union" && object.ty == "func(Obj3 -> func(Obj3 -> Obj3))"));
+    assert!(objects.iter().any(|object| {
+        object.name == "SmoothUnion"
+            && object.ty == "func(float -> func(Obj3 -> func(Obj3 -> Obj3)))"
     }));
 }
 
