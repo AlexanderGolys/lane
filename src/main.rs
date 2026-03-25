@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, IsTerminal, Read};
 use std::process;
 
 const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list [NAME]\n  lane -l [NAME]\n  lane --list2d\n  lane -l2\n  lane --list3d\n  lane -l3\n  lane --list-objects\n  lane -lo\n  lane --print-completion <bash|zsh|fish>\n  lane -pc <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
@@ -111,7 +111,7 @@ fn compile_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_compiled_program(source: &str) -> Result<(), Box<dyn std::error::Error>> {
     let glsl = lane::compile_program(source)?;
-    println!("{glsl}");
+    print_glsl(&glsl);
     Ok(())
 }
 
@@ -132,10 +132,10 @@ fn print_known_primitive_detail(name: &str) -> Result<(), Box<dyn std::error::Er
         );
         println!();
         if let Some(type_body) = primitive.type_body {
-            println!("{type_body}");
+            print_glsl(&type_body);
             println!();
         }
-        println!("{}", primitive.function_body);
+        print_glsl(&primitive.function_body);
         return Ok(());
     }
     Err(format!("unknown primitive '{name}'").into())
@@ -187,4 +187,116 @@ fn print_known_builtin_objects() {
 
 fn print_known_primitive(primitive: &lane::KnownPrimitive) {
     println!("{}: {}", primitive.name, visible_parameter_space(primitive));
+}
+
+fn print_glsl(source: &str) {
+    if io::stdout().is_terminal() {
+        print!("{}", highlight_glsl(source));
+        if !source.ends_with('\n') {
+            println!();
+        }
+        return;
+    }
+
+    println!("{source}");
+}
+
+fn highlight_glsl(source: &str) -> String {
+    let mut out = String::new();
+    let bytes = source.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let ch = bytes[i] as char;
+        if ch == '/' && i + 1 < bytes.len() && bytes[i + 1] as char == '/' {
+            let start = i;
+            i += 2;
+            while i < bytes.len() && bytes[i] as char != '\n' {
+                i += 1;
+            }
+            out.push_str(&color("90", &source[start..i]));
+            continue;
+        }
+        if ch.is_ascii_digit() {
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                let next = bytes[i] as char;
+                if next.is_ascii_alphanumeric() || matches!(next, '.' | '_' | '+' | '-') {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            out.push_str(&color("36", &source[start..i]));
+            continue;
+        }
+        if ch.is_ascii_alphabetic() || ch == '_' {
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                let next = bytes[i] as char;
+                if next.is_ascii_alphanumeric() || next == '_' {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            let token = &source[start..i];
+            out.push_str(&highlight_ident(token));
+            continue;
+        }
+        out.push(ch);
+        i += 1;
+    }
+    out
+}
+
+fn highlight_ident(token: &str) -> String {
+    if matches!(
+        token,
+        "float"
+            | "int"
+            | "bool"
+            | "void"
+            | "return"
+            | "if"
+            | "else"
+            | "for"
+            | "while"
+            | "const"
+            | "struct"
+    ) {
+        return color("35", token).to_string();
+    }
+    if matches!(token, "vec2" | "vec3" | "vec4" | "mat2" | "mat3" | "mat4") {
+        return color("34", token).to_string();
+    }
+    if token.starts_with("sdf")
+        || token.starts_with("op_")
+        || token.starts_with("scene_")
+        || token.starts_with("Param")
+        || token.starts_with("dsl_")
+    {
+        return color("33", token).to_string();
+    }
+    token.to_string()
+}
+
+fn color<'a>(code: &'a str, text: &'a str) -> String {
+    format!("\x1b[{}m{}\x1b[0m", code, text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::highlight_glsl;
+
+    #[test]
+    fn highlights_glsl_keywords_types_and_numbers() {
+        let highlighted = highlight_glsl("float scene_sdf(vec3 p) { return 1.0; }");
+
+        assert!(highlighted.contains("\x1b[35mfloat\x1b[0m"));
+        assert!(highlighted.contains("\x1b[34mvec3\x1b[0m"));
+        assert!(highlighted.contains("\x1b[33mscene_sdf\x1b[0m"));
+        assert!(highlighted.contains("\x1b[36m1.0\x1b[0m"));
+    }
 }
