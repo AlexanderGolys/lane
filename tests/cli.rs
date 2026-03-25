@@ -12,6 +12,7 @@ fn lists_known_primitives_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Ball3D: {r: R}"));
     assert!(stdout.contains("Box3D: {b: R3}"));
+    assert!(stdout.contains("Segment3D: {a: R3, b: R3}"));
     assert!(stdout.contains("Box2D: {a: R, b: R}"));
     assert!(stdout.contains("Polygon2D: { points: R2 list }"));
     assert!(!stdout.contains("ParamBall3D\n"));
@@ -31,6 +32,7 @@ fn lists_known_primitives_from_short_flag() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Ball3D: {r: R}"));
     assert!(stdout.contains("Box3D: {b: R3}"));
+    assert!(stdout.contains("Segment3D: {a: R3, b: R3}"));
 }
 
 #[test]
@@ -76,6 +78,7 @@ fn lists_only_3d_primitives_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Ball3D: {r: R}"));
     assert!(stdout.contains("Box3D: {b: R3}"));
+    assert!(stdout.contains("Segment3D: {a: R3, b: R3}"));
     assert!(stdout.contains("Simplex3D: {p0: R3, p1: R3, p2: R3, p3: R3}"));
     assert!(stdout.contains("Torus3D: {major: R, minor: R}"));
     assert!(!stdout.contains("[3D]"));

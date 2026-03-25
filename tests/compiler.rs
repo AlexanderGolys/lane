@@ -15,6 +15,10 @@ fn lists_known_primitives_with_lane_types() {
         .iter()
         .find(|primitive| primitive.name == "Box3D")
         .unwrap();
+    let segment3 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Segment3D")
+        .unwrap();
     let polygon = primitives
         .iter()
         .find(|primitive| primitive.name == "Polygon2D")
@@ -45,6 +49,21 @@ fn lists_known_primitives_with_lane_types() {
     assert!(box3
         .function_body
         .contains("float sdf0_Box3D(vec3 p, ParamBox3D params)"));
+
+    assert_eq!(segment3.dimension, ShapeDimension::D3);
+    assert_eq!(segment3.parameter_space, "ParamSegment3D");
+    assert_eq!(segment3.fields[0].name, "a");
+    assert_eq!(segment3.fields[0].domain, "R3");
+    assert_eq!(segment3.fields[1].name, "b");
+    assert_eq!(segment3.fields[1].domain, "R3");
+    assert!(segment3
+        .type_body
+        .as_deref()
+        .unwrap()
+        .contains("struct ParamSegment3D"));
+    assert!(segment3
+        .function_body
+        .contains("float sdf0_Segment3D(vec3 p, ParamSegment3D params)"));
 
     assert_eq!(polygon.dimension, ShapeDimension::D2);
     assert_eq!(polygon.parameter_space, "{ points: R2 list }");
@@ -366,6 +385,17 @@ fn emits_segment_primitive() {
     assert!(glsl.contains("struct ParamSegment2D"));
     assert!(glsl.contains("float sdf0_Segment2D(vec2 p, ParamSegment2D params)"));
     assert!(glsl.contains("sdf0_Segment2D((p).xy, ParamSegment2D(vec2(0.0, 0.0), vec2(2.0, 1.0)))"));
+}
+
+#[test]
+fn emits_segment3d_primitive() {
+    let source = "Obj3 shape = Segment3D(a=(0, 0, 0), b=(2, 1, 3))\nout: shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct ParamSegment3D"));
+    assert!(glsl.contains("float sdf0_Segment3D(vec3 p, ParamSegment3D params)"));
+    assert!(glsl
+        .contains("sdf0_Segment3D(p, ParamSegment3D(vec3(0.0, 0.0, 0.0), vec3(2.0, 1.0, 3.0)))"));
 }
 
 #[test]

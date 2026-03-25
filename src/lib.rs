@@ -711,6 +711,23 @@ impl Default for Registry {
                 },
             ),
             (
+                "Segment3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamSegment3D"),
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "a",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "b",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                    ],
+                    support_glsl: "struct ParamSegment3D {\n    vec3 a;\n    vec3 b;\n};\n\nfloat sdf0_Segment3D(vec3 p, ParamSegment3D params) {\n    vec3 pa = p - params.a;\n    vec3 ba = params.b - params.a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - (ba * h));\n}",
+                },
+            ),
+            (
                 "Torus3D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamTorus3D"),

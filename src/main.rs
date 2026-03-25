@@ -17,7 +17,7 @@ const BASH_COMPLETION: &str = r#"_lane() {
     fi
 
     if [[ "$prev" == "--list" || "$prev" == "-l" ]]; then
-        COMPREPLY=( $(compgen -W "Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D" -- "$cur") )
+        COMPREPLY=( $(compgen -W "Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D" -- "$cur") )
         return
     fi
 
@@ -35,7 +35,7 @@ const ZSH_COMPLETION: &str = r#"#compdef lane
 _lane() {
     _arguments \
         '1:command or file:_files' \
-        '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D)' \
+        '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D)' \
         '(-l2 --list2d)'{-l2,--list2d}'[list only 2D primitives]' \
         '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
         '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects]' \
@@ -48,7 +48,7 @@ _lane "$@"
 
 const FISH_COMPLETION: &str = r#"complete -c lane -f
 complete -c lane -s l -l list -d 'List known primitives'
-complete -c lane -s l -l list -r -a 'Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D' -d 'Show one primitive'
+complete -c lane -s l -l list -r -a 'Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D' -d 'Show one primitive'
 complete -c lane -o l2 -l list2d -d 'List only 2D primitives'
 complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
 complete -c lane -o lo -l list-objects -d 'List builtin Lane objects'
