@@ -1,0 +1,8 @@
+target/
+.clodex/
+
+# Editors and OS noise
+.DS_Store
+*.swp
+*.swo
+notes.typ

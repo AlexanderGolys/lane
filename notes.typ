@@ -47,7 +47,10 @@ Let $f$ approximate the true SDF of a region $Omega$. We distinguish:
 ]
 
 #table(
-  columns: (auto, 1fr, auto),
+  columns: (1.2fr, 2.8fr, 2.6fr),
+  gutter: 0.6em,
+  inset: 0.4em,
+  align: (x, y) => if y == 0 { center + horizon } else { left + top },
   [*Class*], [*Properties*], [*Use cases*],
   [*A. Exact SDF*], [Correct zero set, correct sign, exact magnitude, 1-Lipschitz, $|nabla f| = 1$ a.e. away from cut locus], [Best sphere tracing, offsets/dilations/erosions by adding constants, reliable thickness/shell computation, good curvature approximation, reinitialization target],
   [*B. One-sided exact*], 
