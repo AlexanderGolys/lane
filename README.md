@@ -39,6 +39,14 @@ Run tests with:
 cargo test
 ```
 
+Run the minimal Language Server Protocol server with:
+
+```sh
+cargo run --bin lane-lsp
+```
+
+The LSP currently provides full-document sync and basic compile diagnostics by re-running the Lane compiler on open, change, and save.
+
 List the known primitives with their Lane-level field shapes with:
 
 ```sh
