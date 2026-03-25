@@ -181,7 +181,7 @@ fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
 
 fn print_known_builtin_objects() {
     for object in lane::known_builtin_objects() {
-        println!("{} {}", object.ty, object.name);
+        println!("{}: {}", object.name, object.ty);
     }
 }
 
