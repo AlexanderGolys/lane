@@ -48,3 +48,25 @@ generate Box3D(a=2, b=1, c=3) + (-1, -2, -3)
           (number))
         (unary_expression
           (number))))))
+
+==================
+Scientific Notation
+==================
+
+generate Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)
+
+---
+
+(source_file
+  (output_declaration
+    (binary_expression
+      (call_expression
+        (identifier)
+        (argument_list
+          (named_argument
+            (identifier)
+            (number))))
+      (tuple_expression
+        (number)
+        (number)
+        (number)))))

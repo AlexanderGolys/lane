@@ -205,6 +205,9 @@ module.exports = grammar({
         identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
 
         number: () => token(choice(
+            /\d+(?:\.\d+)?[eE][+-]?\d+/,
+            /\d+\.[eE][+-]?\d+/,
+            /\.\d+[eE][+-]?\d+/,
             /\d+\.\d+/,
             /\d+\./,
             /\.\d+/,

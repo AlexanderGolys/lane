@@ -977,6 +977,18 @@
         "members": [
           {
             "type": "PATTERN",
+            "value": "\\d+(?:\\.\\d+)?[eE][+-]?\\d+"
+          },
+          {
+            "type": "PATTERN",
+            "value": "\\d+\\.[eE][+-]?\\d+"
+          },
+          {
+            "type": "PATTERN",
+            "value": "\\.\\d+[eE][+-]?\\d+"
+          },
+          {
+            "type": "PATTERN",
             "value": "\\d+\\.\\d+"
           },
           {

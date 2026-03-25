@@ -403,6 +403,15 @@ fn supports_negative_tuple_components() {
 }
 
 #[test]
+fn supports_scientific_notation_literals() {
+    let source = "Obj3 shape = Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D(0.1)"));
+    assert!(glsl.contains("vec3(2.0, 5.0, 0.3)"));
+}
+
+#[test]
 fn emits_primitive_with_positional_arguments() {
     let source = "Obj3 shape = Box2D(2, 1)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();

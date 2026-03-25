@@ -3363,6 +3363,20 @@ fn tokenize(source: &str) -> Vec<Token> {
             while index < chars.len() && (chars[index].is_ascii_digit() || chars[index] == '.') {
                 index += 1;
             }
+            if index < chars.len() && matches!(chars[index], 'e' | 'E') {
+                let exponent_start = index;
+                index += 1;
+                if index < chars.len() && matches!(chars[index], '+' | '-') {
+                    index += 1;
+                }
+                let digit_start = index;
+                while index < chars.len() && chars[index].is_ascii_digit() {
+                    index += 1;
+                }
+                if digit_start == index {
+                    index = exponent_start;
+                }
+            }
             tokens.push(Token::Number(chars[start..index].iter().collect()));
             continue;
         }
