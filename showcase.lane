@@ -1,0 +1,35 @@
+in: float time
+in: func(float -> float) radiusB
+in: func(float -> vec3) anchor3
+in: mat3 frame
+
+func(float -> float) pulse = pow2 @ sin + .35
+func(float -> float) ripple = pow2 @ cos + .15
+func(float -> vec3) drift = (sin, cos, sin) + anchor3 / 3
+func(float -> vec2) anchor2 = (cos, sin)
+func(float -> mat3) spin = ((cos, 0 - sin, 0), (sin, cos, 0), (0, 0, 1))
+
+Obj3 ball = Ball3D(r=2 + pulse(time)) + drift(time)
+Obj3 orbit = Ball3D(r=radiusB(time)) + (1.5, 0, 0)
+Obj3 torus = frame * (Torus3D(major=2.5, minor=.35) + (0, 0, 1))
+Obj3 simplex = spin(time) * Simplex3D(p0=(0, 0, .8), p1=(.8, 0, 0), p2=(0, .8, 0), p3=(0 - .4, 0 - .4, 0 - .6)) + (0, 0, 0 - .25)
+Obj3 cut = Halfspace3D(n=(0, 1, 0), h=.15)
+
+Obj3 box = spin(time) * Box2D(a=1.3, b=.45) + (0, 0, .5)
+Obj3 segment = Segment2D(a=(0 - 1.2, 0 - .3), b=(1.2, .3)) + (0, 0, 0 - .75)
+Obj3 tri = Triangle2D(p0=(0 - .8, 0 - .6), p1=(.9, 0 - .4), p2=(0, 1.1)) + (0, 0, .2)
+Obj3 poly = Polygon2D(points=((0 - 1, 0 - 1), (1, 0 - 1), (1.2, .2), (0, 1.1), (0 - 1, .7))) + (0, 0, 0 - .2)
+Obj3 bead = Point2D(at=anchor2(time))
+
+Obj3 planar_union = Union(box, segment)
+Obj3 planar_clip = Intersection(planar_union, tri)
+Obj3 planar_hole = Difference(planar_clip, bead)
+Obj3 planar_twist = Xor(planar_hole, poly)
+
+Obj3 smooth_pair = SmoothUnion(pulse(time))(ball, torus)
+Obj3 smooth_cut = SmoothDifference(ripple(time))(smooth_pair, cut)
+Obj3 smooth_mix = SmoothIntersection(.25 + pulse(time))(smooth_cut, simplex)
+Obj3 smooth_x = SmoothXor(.2 + ripple(time))(smooth_mix, orbit)
+Obj3 final = SmoothUnion(.3)(smooth_x, spin(time) * planar_twist)
+
+out: final

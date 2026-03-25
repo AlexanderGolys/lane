@@ -1,4 +1,5 @@
 use lane::compile_program;
+use std::fs;
 
 #[test]
 fn compiles_sample_program_to_glsl() {
@@ -53,4 +54,15 @@ float scene_sdf(vec3 p, float time) {
 }"#;
 
     assert_eq!(glsl, expected);
+}
+
+#[test]
+fn compiles_showcase_program_to_glsl() {
+    let source = fs::read_to_string("showcase.lane").unwrap();
+    let glsl = compile_program(&source).unwrap();
+
+    assert!(glsl.contains("float op_union(float a, float b) {"));
+    assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
+    assert!(glsl.contains("mat3 dsl_spin(float t) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p, float time, mat3 frame) {"));
 }

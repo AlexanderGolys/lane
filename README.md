@@ -17,12 +17,13 @@ Current slice:
 - output uses `out: value`, for example `out: C`
 - polygons use `Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))` and currently support up to 16 vertices
 
-Example input lives in `test.lane`.
+Example inputs live in `test.lane` and `showcase.lane`. The showcase file combines all current primitives, object operators, value functions, and ambient action sugars in one scene.
 
 Run it with:
 
 ```sh
 cargo run -- test.lane
+cargo run -- showcase.lane
 ```
 
 Run tests with:
