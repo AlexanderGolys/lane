@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list [NAME]\n  lane --list2d\n  lane --list3d\n  lane --list-functions\n  lane --list-types\n  lane --print-completion <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list [NAME]\n  lane -l [NAME]\n  lane --list2d\n  lane -l2\n  lane --list3d\n  lane -l3\n  lane --list-functions\n  lane -lf\n  lane --list-types\n  lane -lt\n  lane --print-completion <bash|zsh|fish>\n  lane -pc <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
 
 const BASH_COMPLETION: &str = r#"_lane() {
     local cur prev
@@ -11,18 +11,18 @@ const BASH_COMPLETION: &str = r#"_lane() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    if [[ "$prev" == "--print-completion" ]]; then
+    if [[ "$prev" == "--print-completion" || "$prev" == "-pc" ]]; then
         COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
         return
     fi
 
-    if [[ "$prev" == "--list" ]]; then
+    if [[ "$prev" == "--list" || "$prev" == "-l" ]]; then
         COMPREPLY=( $(compgen -W "Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D" -- "$cur") )
         return
     fi
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--list --list2d --list3d --list-functions --list-types --print-completion --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--list -l --list2d -l2 --list3d -l3 --list-functions -lf --list-types -lt --print-completion -pc --help -h" -- "$cur") )
         return
     fi
 }
@@ -35,12 +35,12 @@ const ZSH_COMPLETION: &str = r#"#compdef lane
 _lane() {
     _arguments \
         '1:command or file:_files' \
-        '--list[list known primitives or show one primitive]:name:(Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D)' \
-        '--list2d[list only 2D primitives]' \
-        '--list3d[list only 3D primitives]' \
-        '--list-functions[list known predefined functions]' \
-        '--list-types[list known predefined types]' \
-        '--print-completion[print a completion script]:shell:(bash zsh fish)' \
+        '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D)' \
+        '(-l2 --list2d)'{-l2,--list2d}'[list only 2D primitives]' \
+        '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
+        '(-lf --list-functions)'{-lf,--list-functions}'[list known predefined functions]' \
+        '(-lt --list-types)'{-lt,--list-types}'[list known predefined types]' \
+        '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-h --help)'{-h,--help}'[show help]'
 }
 
@@ -48,13 +48,13 @@ _lane "$@"
 "#;
 
 const FISH_COMPLETION: &str = r#"complete -c lane -f
-complete -c lane -l list -d 'List known primitives'
-complete -c lane -l list -r -a 'Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D' -d 'Show one primitive'
-complete -c lane -l list2d -d 'List only 2D primitives'
-complete -c lane -l list3d -d 'List only 3D primitives'
-complete -c lane -l list-functions -d 'List predefined functions'
-complete -c lane -l list-types -d 'List predefined types'
-complete -c lane -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
+complete -c lane -s l -l list -d 'List known primitives'
+complete -c lane -s l -l list -r -a 'Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D' -d 'Show one primitive'
+complete -c lane -o l2 -l list2d -d 'List only 2D primitives'
+complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
+complete -c lane -o lf -l list-functions -d 'List predefined functions'
+complete -c lane -o lt -l list-types -d 'List predefined types'
+complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s h -l help -d 'Show help'
 "#;
 
@@ -73,28 +73,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_help();
             Ok(())
         }
-        [flag] if flag == "--list" => {
+        [flag] if matches!(flag.as_str(), "--list" | "-l") => {
             print_known_primitives();
             Ok(())
         }
-        [flag, name] if flag == "--list" => print_known_primitive_detail(name),
-        [flag] if flag == "--list2d" => {
+        [flag, name] if matches!(flag.as_str(), "--list" | "-l") => {
+            print_known_primitive_detail(name)
+        }
+        [flag] if matches!(flag.as_str(), "--list2d" | "-l2") => {
             print_known_primitives_for_dimension(lane::ShapeDimension::D2);
             Ok(())
         }
-        [flag] if flag == "--list3d" => {
+        [flag] if matches!(flag.as_str(), "--list3d" | "-l3") => {
             print_known_primitives_for_dimension(lane::ShapeDimension::D3);
             Ok(())
         }
-        [flag] if flag == "--list-functions" => {
+        [flag] if matches!(flag.as_str(), "--list-functions" | "-lf") => {
             print_preregistered_objects_of_kind(lane::PreregisteredObjectKind::Function);
             Ok(())
         }
-        [flag] if flag == "--list-types" => {
+        [flag] if matches!(flag.as_str(), "--list-types" | "-lt") => {
             print_preregistered_objects_of_kind(lane::PreregisteredObjectKind::Type);
             Ok(())
         }
-        [flag, shell] if flag == "--print-completion" => print_completion(shell),
+        [flag, shell] if matches!(flag.as_str(), "--print-completion" | "-pc") => {
+            print_completion(shell)
+        }
         [path] => compile_path(path),
         _ => Err("unexpected arguments; run `lane --help` for usage".into()),
     }

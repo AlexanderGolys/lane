@@ -38,32 +38,39 @@ List the known primitives with their Lane-level field shapes with:
 
 ```sh
 cargo run -- --list
+cargo run -- -l
 ```
 
 Show the full field shape, struct definition, and evaluator definition for one primitive with:
 
 ```sh
 cargo run -- --list Box2D
+cargo run -- -l Box2D
 ```
 
 List only 2D or only 3D primitives with:
 
 ```sh
 cargo run -- --list2d
+cargo run -- -l2
 cargo run -- --list3d
+cargo run -- -l3
 ```
 
 List known predefined GLSL functions or generated parameter structs with:
 
 ```sh
 cargo run -- --list-functions
+cargo run -- -lf
 cargo run -- --list-types
+cargo run -- -lt
 ```
 
 Print shell completion scripts with:
 
 ```sh
 cargo run -- --print-completion bash
+cargo run -- -pc bash
 cargo run -- --print-completion zsh
 cargo run -- --print-completion fish
 ```
