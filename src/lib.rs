@@ -3578,14 +3578,14 @@ fn parse_type(source: &str) -> Result<Type, Error> {
         return Ok(Type::Product(parsed));
     }
     match source {
-        "Float" | "R" | "float" => Ok(Type::Float),
-        "Int" | "Z" | "int" => Ok(Type::Int),
-        "Vec2" | "R2" | "vec2" => Ok(Type::Vec2),
-        "Vec3" | "R3" | "vec3" => Ok(Type::Vec3),
-        "Vec4" | "R4" | "vec4" => Ok(Type::Vec4),
-        "Mat2" | "mat2" => Ok(Type::Mat2),
-        "Mat3" | "mat3" => Ok(Type::Mat3),
-        "Mat4" | "mat4" => Ok(Type::Mat4),
+        "Float" | "R" => Ok(Type::Float),
+        "Int" | "Z" => Ok(Type::Int),
+        "Vec2" | "R2" => Ok(Type::Vec2),
+        "Vec3" | "R3" => Ok(Type::Vec3),
+        "Vec4" | "R4" => Ok(Type::Vec4),
+        "Mat2" => Ok(Type::Mat2),
+        "Mat3" => Ok(Type::Mat3),
+        "Mat4" => Ok(Type::Mat4),
         "Obj3" => Ok(Type::Obj3),
         _ => Err(Error::new(format!("unsupported type '{}'", source))),
     }

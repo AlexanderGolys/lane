@@ -320,7 +320,7 @@ fn rejects_fragment_shader_wrapper_for_lane_inputs() {
                 .stdin
                 .as_mut()
                 .unwrap()
-                .write_all(b"// fragment-shader: #version 330 core\nprovided float time\ngenerate Ball3D(r=time)\n")?;
+                .write_all(b"// fragment-shader: #version 330 core\nprovided Float time\ngenerate Ball3D(r=time)\n")?;
             child.wait_with_output()
         })
         .unwrap();

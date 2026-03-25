@@ -4,12 +4,12 @@ use std::fs;
 #[test]
 fn compiles_sample_program_to_glsl() {
     let source = r#"
-provided float time
-provided func(float -> float) rB
-provided func(float -> vec3) centerA
+provided Float time
+provided func(Float -> Float) rB
+provided func(Float -> Vec3) centerA
 
-    func(float -> float) hardness = pow2 @ sin + .5
-    func(float -> vec3) centerB = (1, sin, cos) + centerA / 2
+    func(Float -> Float) hardness = pow2 @ sin + .5
+    func(Float -> Vec3) centerB = (1, sin, cos) + centerA / 2
 
     Obj3 A = Ball3D(r=3) + centerA(time)
     Obj3 B = Ball3D(r=rB(time)) + centerB(time)

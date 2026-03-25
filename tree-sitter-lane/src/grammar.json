@@ -403,19 +403,11 @@
           },
           {
             "type": "STRING",
-            "value": "float"
-          },
-          {
-            "type": "STRING",
             "value": "Int"
           },
           {
             "type": "STRING",
             "value": "Z"
-          },
-          {
-            "type": "STRING",
-            "value": "int"
           },
           {
             "type": "STRING",
@@ -427,19 +419,11 @@
           },
           {
             "type": "STRING",
-            "value": "vec2"
-          },
-          {
-            "type": "STRING",
             "value": "Vec3"
           },
           {
             "type": "STRING",
             "value": "R3"
-          },
-          {
-            "type": "STRING",
-            "value": "vec3"
           },
           {
             "type": "STRING",
@@ -451,15 +435,7 @@
           },
           {
             "type": "STRING",
-            "value": "vec4"
-          },
-          {
-            "type": "STRING",
             "value": "Mat2"
-          },
-          {
-            "type": "STRING",
-            "value": "mat2"
           },
           {
             "type": "STRING",
@@ -467,15 +443,7 @@
           },
           {
             "type": "STRING",
-            "value": "mat3"
-          },
-          {
-            "type": "STRING",
             "value": "Mat4"
-          },
-          {
-            "type": "STRING",
-            "value": "mat4"
           },
           {
             "type": "STRING",

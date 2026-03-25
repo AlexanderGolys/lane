@@ -201,6 +201,14 @@ fn rejects_removed_constraint_type_alias() {
 }
 
 #[test]
+fn rejects_lowercase_builtin_type_names() {
+    let source = "provided float time\ngenerate Ball3D(r=1)\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("unsupported type 'float'"));
+}
+
+#[test]
 fn looks_up_preregistered_body_by_name() {
     let param_body = preregistered_object("ParamBall3D").unwrap();
     let sdf_body = preregistered_object("sdf0_Ball3D").unwrap();
@@ -216,7 +224,7 @@ fn looks_up_preregistered_body_by_name() {
 
 #[test]
 fn composes_unary_functions_in_function_bodies() {
-    let source = "func(float -> float) wobble = sin @ sin\ngenerate Ball3D(r=wobble(0))\n";
+    let source = "func(Float -> Float) wobble = sin @ sin\ngenerate Ball3D(r=wobble(0))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float dsl_wobble(float t) {"));
@@ -226,7 +234,7 @@ fn composes_unary_functions_in_function_bodies() {
 #[test]
 fn supports_derivative_operator_in_function_bodies() {
     let source =
-        "func(float -> float) slope = derivative(0.01)(sin)\ngenerate Ball3D(r=slope(0))\n";
+        "func(Float -> Float) slope = derivative(0.01)(sin)\ngenerate Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float dsl_slope(float t) {"));
@@ -236,7 +244,7 @@ fn supports_derivative_operator_in_function_bodies() {
 #[test]
 fn emits_support_for_custom_complex_functions() {
     let source =
-        "Vec2 seed = (1, 0)\nfunc(float -> vec2) orbit = cexp(seed)\ngenerate Ball3D(r=1)\n";
+        "Vec2 seed = (1, 0)\nfunc(Float -> Vec2) orbit = cexp(seed)\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 cexp(vec2 z) {"));
@@ -246,7 +254,7 @@ fn emits_support_for_custom_complex_functions() {
 
 #[test]
 fn rejects_invalid_function_composition() {
-    let source = "provided func(float -> vec3) center\nfunc(float -> float) wobble = sin @ center\ngenerate Ball3D(r=1)\n";
+    let source = "provided func(Float -> Vec3) center\nfunc(Float -> Float) wobble = sin @ center\ngenerate Ball3D(r=1)\n";
     let error = compile_program(source).unwrap_err().to_string();
 
     assert!(error.contains("cannot compose sin @ center"));
@@ -271,7 +279,7 @@ fn supports_construct_alias() {
 #[test]
 fn supports_full_line_comments() {
     let source =
-        "// input animation\nprovided float time\n// object body\ngenerate Ball3D(r=1 + time)\n";
+        "// input animation\nprovided Float time\n// object body\ngenerate Ball3D(r=1 + time)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
@@ -280,7 +288,7 @@ fn supports_full_line_comments() {
 
 #[test]
 fn supports_trailing_line_comments() {
-    let source = "provided float time // animation clock\nObj3 A = Ball3D(r=1) + (1, 0, 0) // translated sphere\ngenerate A // final object\n";
+    let source = "provided Float time // animation clock\nObj3 A = Ball3D(r=1) + (1, 0, 0) // translated sphere\ngenerate A // final object\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
@@ -299,7 +307,7 @@ fn emits_generated_object_helpers() {
 
 #[test]
 fn generated_helpers_capture_scene_inputs_in_their_signatures() {
-    let source = "provided float time\nconstruct Obj3 shell = Ball3D(r=1 + time)\ngenerate shell\n";
+    let source = "provided Float time\nconstruct Obj3 shell = Ball3D(r=1 + time)\ngenerate shell\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
@@ -309,7 +317,7 @@ fn generated_helpers_capture_scene_inputs_in_their_signatures() {
 
 #[test]
 fn renames_generated_locals_on_name_conflicts() {
-    let source = "provided float p\nprovided float eps\ngenerate Ball3D(r=eps) + (p, 0, 0)\n";
+    let source = "provided Float p\nprovided Float eps\ngenerate Ball3D(r=eps) + (p, 0, 0)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p_r"));
@@ -554,7 +562,7 @@ fn emits_translation_action_from_addition_sugar() {
 
 #[test]
 fn emits_rotation_action_from_mat3_input() {
-    let source = "provided mat3 R\ngenerate R * Ball3D(r=1)\n";
+    let source = "provided Mat3 R\ngenerate R * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p, mat3 R) {"));
@@ -563,7 +571,7 @@ fn emits_rotation_action_from_mat3_input() {
 
 #[test]
 fn emits_mat3_helpers_and_uses_them_in_object_actions() {
-    let source = "provided float time\nfunc(float -> mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))\ngenerate spin(time) * Ball3D(r=1)\n";
+    let source = "provided Float time\nfunc(Float -> Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))\ngenerate spin(time) * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("mat3 dsl_spin(float t) {"));
