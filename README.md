@@ -4,13 +4,14 @@ A small Rust prototype for the lane DSL that compiles object expressions into GL
 
 Current slice:
 
-- pre-registered `Ball3D(r=...)`, `Simplex3D(size=...)`, `Halfspace3D(n=..., h=...)`, and `Torus3D(major=..., minor=...)` primitives
-- pre-registered 2D `Box2D`, `Segment2D`, `Triangle2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
-- pre-registered `SmoothUnion(k)` operator
+- pre-registered `Ball3D(r=...)`, `Simplex3D(p0=..., p1=..., p2=..., p3=...)`, `Halfspace3D(n=..., h=...)`, and `Torus3D(major=..., minor=...)` primitives
+- pre-registered 2D `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
+- pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
 - value functions `sin`, `cos`, `pow2`
 - unary function composition with `f @ g`, meaning `x |-> f(g(x))`
-- `vec2` and `vec3` tuple literals in value expressions
-- `Obj3 + vec3` placement sugar
+- `vec2`, `vec3`, and nested-row `mat3` tuple literals in value expressions
+- ambient object actions with `Obj3 + vec3` translation sugar and `mat3 * Obj3` orthogonal action
+- 2D and 3D primitives stay distinct semantic families even though the current object surface type is `Obj3`
 - top-level `in`, `func`, typed object bindings, and `out`
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
 - output uses `out: value`, for example `out: C`
@@ -30,10 +31,16 @@ Run tests with:
 cargo test
 ```
 
-List the known primitives, including each generated SDF signature and parameter domain, with:
+List the known primitives with their Lane-level field shapes with:
 
 ```sh
 cargo run -- --list
+```
+
+Show the full field shape, struct definition, and evaluator definition for one primitive with:
+
+```sh
+cargo run -- --list Box2D
 ```
 
 List only 2D or only 3D primitives with:
@@ -43,12 +50,11 @@ cargo run -- --list2d
 cargo run -- --list3d
 ```
 
-Inspect preregistered GLSL support objects with:
+List known predefined GLSL functions or generated parameter structs with:
 
 ```sh
-cargo run -- --list-preregistered
-cargo run -- --show ParamBall3D
-cargo run -- --show sdf0_Ball3D
+cargo run -- --list-functions
+cargo run -- --list-types
 ```
 
 Print shell completion scripts with:
@@ -65,4 +71,4 @@ Show CLI usage with:
 cargo run -- --help
 ```
 
-CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings also show a `[2D]` or `[3D]` prefix inferred from the primitive name suffix.
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive, and the predefined support objects can be listed separately by kind.

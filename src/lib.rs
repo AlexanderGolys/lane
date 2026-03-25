@@ -20,6 +20,11 @@ pub fn known_primitives_by_dimension(dimension: ShapeDimension) -> Vec<KnownPrim
         .collect()
 }
 
+pub fn known_primitive(name: &str) -> Option<KnownPrimitive> {
+    let registry = Registry::default();
+    registry.known_primitive(name)
+}
+
 pub fn known_preregistered_objects() -> Vec<PreregisteredObject> {
     let registry = Registry::default();
     registry.preregistered_objects()
@@ -54,11 +59,11 @@ impl std::error::Error for Error {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KnownPrimitive {
     pub name: String,
-    pub sdf_name: String,
     pub dimension: ShapeDimension,
-    pub domain: String,
-    pub parameter_type: Option<String>,
+    pub parameter_space: String,
     pub fields: Vec<KnownPrimitiveField>,
+    pub type_body: Option<String>,
+    pub function_body: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,6 +105,7 @@ enum Type {
     Float,
     Vec2,
     Vec3,
+    Mat3,
     Obj3,
     Func(Box<Type>, Box<Type>),
 }
@@ -114,6 +120,7 @@ impl Type {
             Self::Float => "float",
             Self::Vec2 => "vec2",
             Self::Vec3 => "vec3",
+            Self::Mat3 => "mat3",
             Self::Obj3 | Self::Func(_, _) => "",
         }
     }
@@ -123,6 +130,7 @@ impl Type {
             Self::Float => "float",
             Self::Vec2 => "vec2",
             Self::Vec3 => "vec3",
+            Self::Mat3 => "mat3",
             Self::Obj3 => "Obj3",
             Self::Func(_, _) => "func",
         }
@@ -216,6 +224,7 @@ enum ValueExpr {
     },
     Vec2(Box<ValueExpr>, Box<ValueExpr>),
     Vec3(Box<ValueExpr>, Box<ValueExpr>, Box<ValueExpr>),
+    Mat3(Box<ValueExpr>, Box<ValueExpr>, Box<ValueExpr>),
 }
 
 impl ValueExpr {
@@ -227,6 +236,7 @@ impl ValueExpr {
             Self::Binary { ty, .. } => ty.clone(),
             Self::Vec2(_, _) => Type::Vec2,
             Self::Vec3(_, _, _) => Type::Vec3,
+            Self::Mat3(_, _, _) => Type::Mat3,
         }
     }
 }
@@ -245,9 +255,10 @@ enum ObjectExpr {
         kind: PrimitiveKind,
         fields: Vec<(String, PrimitiveArgExpr)>,
     },
-    Shift {
+    AmbientTransform {
         object: Box<ObjectExpr>,
-        offset: ValueExpr,
+        translation: ValueExpr,
+        linear: ValueExpr,
     },
     RegisteredOp {
         name: String,
@@ -312,9 +323,13 @@ impl TypedProgram {
                     func.name
                 )));
             }
-            if output_ty != Type::Float && output_ty != Type::Vec2 && output_ty != Type::Vec3 {
+            if output_ty != Type::Float
+                && output_ty != Type::Vec2
+                && output_ty != Type::Vec3
+                && output_ty != Type::Mat3
+            {
                 return Err(Error::new(format!(
-                    "function '{}' currently only supports float, vec2, or vec3 outputs",
+                    "function '{}' currently only supports float, vec2, vec3, or mat3 outputs",
                     func.name
                 )));
             }
@@ -377,7 +392,7 @@ impl TypedProgram {
         let mut signature = vec!["vec3 p".to_string()];
         for input in &self.inputs {
             match input.ty {
-                Type::Float | Type::Vec2 | Type::Vec3 => {
+                Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => {
                     signature.push(format!("{} {}", input.ty.glsl_name(), input.name));
                 }
                 Type::Obj3 | Type::Func(_, _) => {}
@@ -487,11 +502,25 @@ impl Default for Registry {
                 "Simplex3D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamSimplex3D"),
-                    fields: vec![PrimitiveFieldDef {
-                        name: "size",
-                        kind: PrimitiveFieldKind::Value(Type::Float),
-                    }],
-                    support_glsl: "struct ParamSimplex3D {\n    float size;\n};\n\nfloat sdf0_Simplex3D(vec3 p, ParamSimplex3D params) {\n    float k = sqrt(2.0);\n    vec3 q = p;\n    q.x = abs(q.x);\n    q.z = abs(q.z);\n    if (q.z > q.x) {\n        q.xz = q.zx;\n    }\n    q.x -= params.size;\n    q.y += params.size / k;\n    if ((q.x + (k * q.y)) > 0.0) {\n        q.xy = vec2(q.x - (k * q.y), (-k * q.x) - q.y) * 0.5;\n    }\n    q.x -= clamp(q.x, -2.0 * params.size, 0.0);\n    return -length(q) * sign(q.y);\n}",
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "p0",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p1",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p2",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                        PrimitiveFieldDef {
+                            name: "p3",
+                            kind: PrimitiveFieldKind::Value(Type::Vec3),
+                        },
+                    ],
+                    support_glsl: "struct ParamSimplex3D {\n    vec3 p0;\n    vec3 p1;\n    vec3 p2;\n    vec3 p3;\n};\n\nfloat sdf0_Simplex3D(vec3 p, ParamSimplex3D params) {\n    vec3 vertices[4] = vec3[4](params.p0, params.p1, params.p2, params.p3);\n    ivec3 faces[4] = ivec3[4](ivec3(0, 1, 2), ivec3(0, 3, 1), ivec3(0, 2, 3), ivec3(1, 3, 2));\n    float max_plane = -1e30;\n    for (int i = 0; i < 4; i++) {\n        ivec3 face = faces[i];\n        vec3 a = vertices[face.x];\n        vec3 b = vertices[face.y];\n        vec3 c = vertices[face.z];\n        vec3 n = normalize(cross(b - a, c - a));\n        int opposite = 6 - face.x - face.y - face.z;\n        if (dot(n, vertices[opposite] - a) > 0.0) {\n            n = -n;\n        }\n        max_plane = max(max_plane, dot(n, p - a));\n    }\n    return max_plane;\n}",
                 },
             ),
             (
@@ -532,11 +561,17 @@ impl Default for Registry {
                 "Box2D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamBox2D"),
-                    fields: vec![PrimitiveFieldDef {
-                        name: "b",
-                        kind: PrimitiveFieldKind::Value(Type::Vec2),
-                    }],
-                    support_glsl: "struct ParamBox2D {\n    vec2 b;\n};\n\nfloat sdf0_Box2D(vec3 p, ParamBox2D params) {\n    vec2 d = abs(p.xy) - params.b;\n    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);\n}",
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "a",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                        PrimitiveFieldDef {
+                            name: "b",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                    ],
+                    support_glsl: "struct ParamBox2D {\n    float a;\n    float b;\n};\n\nfloat sdf0_Box2D(vec3 p, ParamBox2D params) {\n    vec2 d = abs(p.xy) - vec2(params.a, params.b);\n    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);\n}",
                 },
             ),
             (
@@ -601,16 +636,88 @@ impl Default for Registry {
             ),
         ]);
 
-        let object_ops = HashMap::from([(
-            "SmoothUnion",
-            ObjectOpDef {
-                name: "SmoothUnion",
-                value_arg_types: vec![Type::Float],
-                object_arg_count: 2,
-                glsl_name: "op_smooth_union",
-                support_glsl: "float op_smooth_union(float a, float b, float k) {\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - ((h * h) * k * 0.25);\n}",
-            },
-        )]);
+        let object_ops = HashMap::from([
+            (
+                "SmoothUnion",
+                ObjectOpDef {
+                    name: "SmoothUnion",
+                    value_arg_types: vec![Type::Float],
+                    object_arg_count: 2,
+                    glsl_name: "op_smooth_union",
+                    support_glsl: "float op_smooth_union_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_union(float a, float b, float k) {\n    return op_smooth_union_min(a, b, k);\n}",
+                },
+            ),
+            (
+                "Union",
+                ObjectOpDef {
+                    name: "Union",
+                    value_arg_types: vec![],
+                    object_arg_count: 2,
+                    glsl_name: "op_union",
+                    support_glsl: "float op_union(float a, float b) {\n    return min(a, b);\n}",
+                },
+            ),
+            (
+                "Intersection",
+                ObjectOpDef {
+                    name: "Intersection",
+                    value_arg_types: vec![],
+                    object_arg_count: 2,
+                    glsl_name: "op_intersection",
+                    support_glsl: "float op_intersection(float a, float b) {\n    return max(a, b);\n}",
+                },
+            ),
+            (
+                "Difference",
+                ObjectOpDef {
+                    name: "Difference",
+                    value_arg_types: vec![],
+                    object_arg_count: 2,
+                    glsl_name: "op_difference",
+                    support_glsl: "float op_difference(float a, float b) {\n    return max(a, -b);\n}",
+                },
+            ),
+            (
+                "Xor",
+                ObjectOpDef {
+                    name: "Xor",
+                    value_arg_types: vec![],
+                    object_arg_count: 2,
+                    glsl_name: "op_xor",
+                    support_glsl: "float op_xor(float a, float b) {\n    return max(min(a, b), -max(a, b));\n}",
+                },
+            ),
+            (
+                "SmoothIntersection",
+                ObjectOpDef {
+                    name: "SmoothIntersection",
+                    value_arg_types: vec![Type::Float],
+                    object_arg_count: 2,
+                    glsl_name: "op_smooth_intersection",
+                    support_glsl: "float op_smooth_intersection_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_intersection_max(float a, float b, float k) {\n    return -op_smooth_intersection_min(-a, -b, k);\n}\n\nfloat op_smooth_intersection(float a, float b, float k) {\n    return op_smooth_intersection_max(a, b, k);\n}",
+                },
+            ),
+            (
+                "SmoothDifference",
+                ObjectOpDef {
+                    name: "SmoothDifference",
+                    value_arg_types: vec![Type::Float],
+                    object_arg_count: 2,
+                    glsl_name: "op_smooth_difference",
+                    support_glsl: "float op_smooth_difference_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_difference_max(float a, float b, float k) {\n    return -op_smooth_difference_min(-a, -b, k);\n}\n\nfloat op_smooth_difference(float a, float b, float k) {\n    return op_smooth_difference_max(a, -b, k);\n}",
+                },
+            ),
+            (
+                "SmoothXor",
+                ObjectOpDef {
+                    name: "SmoothXor",
+                    value_arg_types: vec![Type::Float],
+                    object_arg_count: 2,
+                    glsl_name: "op_smooth_xor",
+                    support_glsl: "float op_smooth_xor_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_xor_max(float a, float b, float k) {\n    return -op_smooth_xor_min(-a, -b, k);\n}\n\nfloat op_smooth_xor(float a, float b, float k) {\n    return op_smooth_xor_max(op_smooth_xor_min(a, b, k), -op_smooth_xor_max(a, b, k), k);\n}",
+                },
+            ),
+        ]);
 
         let builtins = HashMap::from([
             ("sin", Type::func(Type::Float, Type::Float)),
@@ -636,18 +743,24 @@ impl Registry {
                 let primitive = &self.primitives[name];
                 KnownPrimitive {
                     name: name.to_string(),
-                    sdf_name: format!("sdf0_{name}"),
                     dimension: shape_dimension(name),
-                    domain: primitive.domain(name),
-                    parameter_type: primitive.parameter_type(),
+                    parameter_space: primitive.parameter_space(),
                     fields: primitive
                         .fields
                         .iter()
                         .map(KnownPrimitiveField::from_def)
                         .collect(),
+                    type_body: primitive.type_body(),
+                    function_body: primitive.function_body(name),
                 }
             })
             .collect()
+    }
+
+    fn known_primitive(&self, name: &str) -> Option<KnownPrimitive> {
+        self.known_primitives()
+            .into_iter()
+            .find(|primitive| primitive.name == name)
     }
 
     fn preregistered_objects(&self) -> Vec<PreregisteredObject> {
@@ -691,23 +804,41 @@ fn shape_dimension(name: &str) -> ShapeDimension {
 }
 
 impl PrimitiveDef {
-    fn domain(&self, name: &str) -> String {
+    fn parameter_space(&self) -> String {
         match &self.kind {
-            PrimitiveKind::ParamStruct(param_type) => {
-                format!("sdf0_{name}(vec3 p, {param_type} params) -> float")
-            }
-            PrimitiveKind::Polygon2D => {
-                "sdf0_Polygon2D(vec2 p, vec2 vertices[POLYGON2D_MAX_VERTICES], int count) -> float"
-                    .to_string()
-            }
+            PrimitiveKind::ParamStruct(param_type) => (*param_type).to_string(),
+            PrimitiveKind::Polygon2D => format!("{{ {} }}", self.field_summary()),
         }
     }
 
-    fn parameter_type(&self) -> Option<String> {
+    fn type_body(&self) -> Option<String> {
         match &self.kind {
-            PrimitiveKind::ParamStruct(param_type) => Some((*param_type).to_string()),
+            PrimitiveKind::ParamStruct(_) => self
+                .support_glsl
+                .split_once("\n\n")
+                .map(|(struct_body, _)| struct_body.to_string()),
             PrimitiveKind::Polygon2D => None,
         }
+    }
+
+    fn function_body(&self, name: &str) -> String {
+        match &self.kind {
+            PrimitiveKind::ParamStruct(_) => self
+                .support_glsl
+                .split_once("\n\n")
+                .map(|(_, function_body)| function_body.to_string())
+                .unwrap_or_else(|| format!("float sdf0_{name}(...) {{}}")),
+            PrimitiveKind::Polygon2D => self.support_glsl.to_string(),
+        }
+    }
+
+    fn field_summary(&self) -> String {
+        self.fields
+            .iter()
+            .map(KnownPrimitiveField::from_def)
+            .map(|field| format!("{}: {}", field.name, field.domain))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn preregistered_objects(&self, name: &str) -> Vec<PreregisteredObject> {
@@ -856,9 +987,24 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             let object = infer_object_expr(left, env)?;
             let offset = infer_value_expr(right, env, None)?;
             ensure_type(&offset.ty(), &Type::Vec3, "object shift")?;
-            Ok(ObjectExpr::Shift {
+            Ok(ObjectExpr::AmbientTransform {
                 object: Box::new(object),
-                offset,
+                translation: offset,
+                linear: identity_mat3(),
+            })
+        }
+        Expr::Binary {
+            op: BinOp::Mul,
+            left,
+            right,
+        } => {
+            let linear = infer_value_expr(left, env, None)?;
+            ensure_type(&linear.ty(), &Type::Mat3, "object action")?;
+            let object = infer_object_expr(right, env)?;
+            Ok(ObjectExpr::AmbientTransform {
+                object: Box::new(object),
+                translation: zero_vec3(),
+                linear,
             })
         }
         Expr::Call { .. } => infer_object_call(expr, env),
@@ -914,7 +1060,7 @@ fn collect_object_support<'a>(expr: &'a ObjectExpr, names: &mut BTreeSet<&'a str
         ObjectExpr::Primitive { name, .. } => {
             names.insert(name.as_str());
         }
-        ObjectExpr::Shift { object, .. } => collect_object_support(object, names),
+        ObjectExpr::AmbientTransform { object, .. } => collect_object_support(object, names),
         ObjectExpr::RegisteredOp {
             name, object_args, ..
         } => {
@@ -962,7 +1108,7 @@ fn infer_value_expr(
             }
 
             match current_ty {
-                Type::Float | Type::Vec2 | Type::Vec3 => Ok(ValueExpr::Call {
+                Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => Ok(ValueExpr::Call {
                     func: name.clone(),
                     args: typed_args,
                     ty: current_ty,
@@ -1012,13 +1158,16 @@ fn infer_tuple_value_expr(
             let x = infer_value_expr(&items[0], env, lift_param)?;
             let y = infer_value_expr(&items[1], env, lift_param)?;
             let z = infer_value_expr(&items[2], env, lift_param)?;
-            ensure_type(&x.ty(), &Type::Float, "vec3 element 1")?;
-            ensure_type(&y.ty(), &Type::Float, "vec3 element 2")?;
-            ensure_type(&z.ty(), &Type::Float, "vec3 element 3")?;
-            Ok(ValueExpr::Vec3(Box::new(x), Box::new(y), Box::new(z)))
+            if x.ty() == Type::Float && y.ty() == Type::Float && z.ty() == Type::Float {
+                return Ok(ValueExpr::Vec3(Box::new(x), Box::new(y), Box::new(z)));
+            }
+            ensure_type(&x.ty(), &Type::Vec3, "mat3 row 1")?;
+            ensure_type(&y.ty(), &Type::Vec3, "mat3 row 2")?;
+            ensure_type(&z.ty(), &Type::Vec3, "mat3 row 3")?;
+            Ok(ValueExpr::Mat3(Box::new(x), Box::new(y), Box::new(z)))
         }
         _ => Err(Error::new(
-            "only vec2 and vec3 tuples are supported in value expressions",
+            "only vec2, vec3, and mat3 tuples are supported in value expressions",
         )),
     }
 }
@@ -1114,7 +1263,7 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                     output: (*output).clone(),
                     kind: FunctionExprKind::Named(name.clone()),
                 }),
-                Type::Float | Type::Vec2 | Type::Vec3 => {
+                Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => {
                     Err(Error::new(format!("'{}' is a value, not a function", name)))
                 }
                 Type::Obj3 => Err(Error::new(format!(
@@ -1191,7 +1340,9 @@ fn infer_identifier_value(
         .cloned()
         .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
     match ty {
-        Type::Float | Type::Vec2 | Type::Vec3 => Ok(ValueExpr::Var(name.to_string(), ty)),
+        Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => {
+            Ok(ValueExpr::Var(name.to_string(), ty))
+        }
         Type::Func(input, output) => {
             if lift_param.is_none() {
                 return Err(Error::new(format!(
@@ -1274,6 +1425,12 @@ fn emit_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> 
             emit_value_expr(y, helper_names),
             emit_value_expr(z, helper_names)
         ),
+        ValueExpr::Mat3(r0, r1, r2) => format!(
+            "transpose(mat3({}, {}, {}))",
+            emit_value_expr(r0, helper_names),
+            emit_value_expr(r1, helper_names),
+            emit_value_expr(r2, helper_names)
+        ),
     }
 }
 
@@ -1319,10 +1476,14 @@ fn emit_object_expr(
                 )
             }
         },
-        ObjectExpr::Shift { object, offset } => {
-            let offset = emit_value_expr(offset, helper_names);
-            let shifted_point = format!("({} - {})", point_expr, offset);
-            emit_object_expr(object, &shifted_point, object_names, helper_names)
+        ObjectExpr::AmbientTransform {
+            object,
+            translation,
+            linear,
+        } => {
+            let transformed_point =
+                emit_transformed_point(point_expr, translation, linear, helper_names);
+            emit_object_expr(object, &transformed_point, object_names, helper_names)
         }
         ObjectExpr::RegisteredOp {
             name: _,
@@ -1357,6 +1518,97 @@ fn emit_polygon_vertices(vertices: &[ValueExpr], helper_names: &HashMap<String, 
         rendered.push(fill.clone());
     }
     format!("vec2[16]({})", rendered.join(", "))
+}
+
+fn emit_transformed_point(
+    point_expr: &str,
+    translation: &ValueExpr,
+    linear: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+) -> String {
+    if is_identity_mat3(linear) {
+        return format!(
+            "({} - {})",
+            point_expr,
+            emit_value_expr(translation, helper_names)
+        );
+    }
+    if is_zero_vec3(translation) {
+        return format!(
+            "(transpose({}) * {})",
+            emit_value_expr(linear, helper_names),
+            point_expr
+        );
+    }
+    format!(
+        "(transpose({}) * (({}) - {}))",
+        emit_value_expr(linear, helper_names),
+        point_expr,
+        emit_value_expr(translation, helper_names)
+    )
+}
+
+fn is_zero_vec3(expr: &ValueExpr) -> bool {
+    match expr {
+        ValueExpr::Vec3(x, y, z) => {
+            is_float_literal(x, 0.0) && is_float_literal(y, 0.0) && is_float_literal(z, 0.0)
+        }
+        _ => false,
+    }
+}
+
+fn is_identity_mat3(expr: &ValueExpr) -> bool {
+    match expr {
+        ValueExpr::Mat3(r0, r1, r2) => {
+            is_vec3_literal(r0, [1.0, 0.0, 0.0])
+                && is_vec3_literal(r1, [0.0, 1.0, 0.0])
+                && is_vec3_literal(r2, [0.0, 0.0, 1.0])
+        }
+        _ => false,
+    }
+}
+
+fn is_vec3_literal(expr: &ValueExpr, expected: [f64; 3]) -> bool {
+    match expr {
+        ValueExpr::Vec3(x, y, z) => {
+            is_float_literal(x, expected[0])
+                && is_float_literal(y, expected[1])
+                && is_float_literal(z, expected[2])
+        }
+        _ => false,
+    }
+}
+
+fn is_float_literal(expr: &ValueExpr, expected: f64) -> bool {
+    matches!(expr, ValueExpr::Float(value) if (*value - expected).abs() < f64::EPSILON)
+}
+
+fn zero_vec3() -> ValueExpr {
+    ValueExpr::Vec3(
+        Box::new(ValueExpr::Float(0.0)),
+        Box::new(ValueExpr::Float(0.0)),
+        Box::new(ValueExpr::Float(0.0)),
+    )
+}
+
+fn identity_mat3() -> ValueExpr {
+    ValueExpr::Mat3(
+        Box::new(ValueExpr::Vec3(
+            Box::new(ValueExpr::Float(1.0)),
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(ValueExpr::Float(0.0)),
+        )),
+        Box::new(ValueExpr::Vec3(
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(ValueExpr::Float(1.0)),
+            Box::new(ValueExpr::Float(0.0)),
+        )),
+        Box::new(ValueExpr::Vec3(
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(ValueExpr::Float(0.0)),
+            Box::new(ValueExpr::Float(1.0)),
+        )),
+    )
 }
 
 fn emitted_function_name(name: &str, helper_names: &HashMap<String, String>) -> String {
@@ -1395,6 +1647,7 @@ fn format_type(ty: &Type) -> String {
         Type::Float => "float".to_string(),
         Type::Vec2 => "vec2".to_string(),
         Type::Vec3 => "vec3".to_string(),
+        Type::Mat3 => "mat3".to_string(),
         Type::Obj3 => "Obj3".to_string(),
         Type::Func(input, output) => {
             format!("func({} -> {})", format_type(input), format_type(output))
@@ -1790,6 +2043,7 @@ fn parse_type(source: &str) -> Result<Type, Error> {
         "float" => Ok(Type::Float),
         "vec2" => Ok(Type::Vec2),
         "vec3" => Ok(Type::Vec3),
+        "mat3" => Ok(Type::Mat3),
         "Obj3" => Ok(Type::Obj3),
         _ => Err(Error::new(format!("unsupported type '{}'", source))),
     }

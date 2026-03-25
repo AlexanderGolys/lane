@@ -27,9 +27,14 @@ float sdf0_Ball3D(vec3 p, ParamBall3D params) {
     return length(p) - params.r;
 }
 
-float op_smooth_union(float a, float b, float k) {
+float op_smooth_union_min(float a, float b, float k) {
+    k *= 1.0 / (1.0 - sqrt(0.5));
     float h = max(k - abs(a - b), 0.0) / k;
-    return min(a, b) - ((h * h) * k * 0.25);
+    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));
+}
+
+float op_smooth_union(float a, float b, float k) {
+    return op_smooth_union_min(a, b, k);
 }
 
 float dsl_hardness(float t) {

@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list\n  lane --list2d\n  lane --list3d\n  lane --list-preregistered\n  lane --show <NAME>\n  lane --print-completion <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list [NAME]\n  lane --list2d\n  lane --list3d\n  lane --list-functions\n  lane --list-types\n  lane --print-completion <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
 
 const BASH_COMPLETION: &str = r#"_lane() {
     local cur prev
@@ -16,8 +16,13 @@ const BASH_COMPLETION: &str = r#"_lane() {
         return
     fi
 
+    if [[ "$prev" == "--list" ]]; then
+        COMPREPLY=( $(compgen -W "Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D" -- "$cur") )
+        return
+    fi
+
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--list --list2d --list3d --list-preregistered --show --print-completion --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--list --list2d --list3d --list-functions --list-types --print-completion --help -h" -- "$cur") )
         return
     fi
 }
@@ -30,10 +35,11 @@ const ZSH_COMPLETION: &str = r#"#compdef lane
 _lane() {
     _arguments \
         '1:command or file:_files' \
+        '--list[list known primitives or show one primitive]:name:(Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D)' \
         '--list2d[list only 2D primitives]' \
         '--list3d[list only 3D primitives]' \
-        '--list-preregistered[list preregistered objects]' \
-        '--show[show one preregistered object]:name' \
+        '--list-functions[list known predefined functions]' \
+        '--list-types[list known predefined types]' \
         '--print-completion[print a completion script]:shell:(bash zsh fish)' \
         '(-h --help)'{-h,--help}'[show help]'
 }
@@ -43,10 +49,11 @@ _lane "$@"
 
 const FISH_COMPLETION: &str = r#"complete -c lane -f
 complete -c lane -l list -d 'List known primitives'
+complete -c lane -l list -r -a 'Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Simplex3D Torus3D Triangle2D' -d 'Show one primitive'
 complete -c lane -l list2d -d 'List only 2D primitives'
 complete -c lane -l list3d -d 'List only 3D primitives'
-complete -c lane -l list-preregistered -d 'List preregistered objects'
-complete -c lane -l show -r -d 'Show one preregistered object'
+complete -c lane -l list-functions -d 'List predefined functions'
+complete -c lane -l list-types -d 'List predefined types'
 complete -c lane -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s h -l help -d 'Show help'
 "#;
@@ -70,6 +77,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_known_primitives();
             Ok(())
         }
+        [flag, name] if flag == "--list" => print_known_primitive_detail(name),
         [flag] if flag == "--list2d" => {
             print_known_primitives_for_dimension(lane::ShapeDimension::D2);
             Ok(())
@@ -78,11 +86,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_known_primitives_for_dimension(lane::ShapeDimension::D3);
             Ok(())
         }
-        [flag] if flag == "--list-preregistered" => {
-            print_preregistered_objects();
+        [flag] if flag == "--list-functions" => {
+            print_preregistered_objects_of_kind(lane::PreregisteredObjectKind::Function);
             Ok(())
         }
-        [flag, name] if flag == "--show" => print_preregistered_object(name),
+        [flag] if flag == "--list-types" => {
+            print_preregistered_objects_of_kind(lane::PreregisteredObjectKind::Type);
+            Ok(())
+        }
         [flag, shell] if flag == "--print-completion" => print_completion(shell),
         [path] => compile_path(path),
         _ => Err("unexpected arguments; run `lane --help` for usage".into()),
@@ -114,14 +125,37 @@ fn is_help(arg: &str) -> bool {
     matches!(arg, "-h" | "--help")
 }
 
-fn print_preregistered_object(name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(object) = lane::preregistered_object(name) {
-        println!("{} {}", kind_name(object.kind), object.name);
+fn print_known_primitive_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(primitive) = lane::known_primitive(name) {
+        println!(
+            "{}: {}",
+            primitive.name,
+            visible_parameter_space(&primitive)
+        );
         println!();
-        println!("{}", object.body);
+        if let Some(type_body) = primitive.type_body {
+            println!("{type_body}");
+            println!();
+        }
+        println!("{}", primitive.function_body);
         return Ok(());
     }
-    Err(format!("unknown preregistered object '{name}'").into())
+    Err(format!("unknown primitive '{name}'").into())
+}
+
+fn visible_parameter_space(primitive: &lane::KnownPrimitive) -> String {
+    let derived_name = format!("Param{}", primitive.name);
+    if primitive.parameter_space == derived_name {
+        let fields = primitive
+            .fields
+            .iter()
+            .map(|field| format!("{}: {}", field.name, field.domain))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return format!("{{{fields}}}");
+    }
+
+    primitive.parameter_space.clone()
 }
 
 fn print_completion(shell: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -147,54 +181,14 @@ fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
     }
 }
 
+fn print_preregistered_objects_of_kind(kind: lane::PreregisteredObjectKind) {
+    for object in lane::known_preregistered_objects() {
+        if object.kind == kind {
+            println!("{}", object.name);
+        }
+    }
+}
+
 fn print_known_primitive(primitive: &lane::KnownPrimitive) {
-    let fields = primitive
-        .fields
-        .iter()
-        .map(|field| format!("{}: {}", field.name, field.domain))
-        .collect::<Vec<_>>()
-        .join(", ");
-    match &primitive.parameter_type {
-        Some(parameter_type) => {
-            println!(
-                "[{}] {}: {} | params {} {{{}}}",
-                primitive.dimension.label(),
-                primitive.name,
-                primitive.domain,
-                parameter_type,
-                fields
-            );
-        }
-        None => {
-            println!(
-                "[{}] {}: {} | fields {{{}}}",
-                primitive.dimension.label(),
-                primitive.name,
-                primitive.domain,
-                fields
-            );
-        }
-    }
-}
-
-fn print_preregistered_objects() {
-    for kind in [
-        lane::PreregisteredObjectKind::Function,
-        lane::PreregisteredObjectKind::Type,
-    ] {
-        println!("{}:", kind_name(kind));
-        for object in lane::known_preregistered_objects() {
-            if object.kind == kind {
-                println!("{}", object.name);
-            }
-        }
-        println!();
-    }
-}
-
-fn kind_name(kind: lane::PreregisteredObjectKind) -> &'static str {
-    match kind {
-        lane::PreregisteredObjectKind::Function => "function",
-        lane::PreregisteredObjectKind::Type => "type",
-    }
+    println!("{}: {}", primitive.name, visible_parameter_space(primitive));
 }
