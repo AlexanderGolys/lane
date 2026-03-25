@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list-primitives\n  lane --list-preregistered\n  lane --show-preregistered <NAME>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list-primitives\n  lane --list2d\n  lane --list3d\n  lane --list-preregistered\n  lane --show-preregistered <NAME>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
 
 fn main() {
     if let Err(err) = run() {
@@ -22,6 +22,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         [flag] if flag == "--list-primitives" => {
             print_known_primitives();
+            Ok(())
+        }
+        [flag] if flag == "--list2d" => {
+            print_known_primitives_for_dimension(lane::ShapeDimension::D2);
+            Ok(())
+        }
+        [flag] if flag == "--list3d" => {
+            print_known_primitives_for_dimension(lane::ShapeDimension::D3);
             Ok(())
         }
         [flag] if flag == "--list-preregistered" => {
@@ -71,25 +79,42 @@ fn print_preregistered_object(name: &str) -> Result<(), Box<dyn std::error::Erro
 
 fn print_known_primitives() {
     for primitive in lane::known_primitives() {
-        let fields = primitive
-            .fields
-            .iter()
-            .map(|field| format!("{}: {}", field.name, field.domain))
-            .collect::<Vec<_>>()
-            .join(", ");
-        match &primitive.parameter_type {
-            Some(parameter_type) => {
-                println!(
-                    "{}: {} | params {} {{{}}}",
-                    primitive.name, primitive.domain, parameter_type, fields
-                );
-            }
-            None => {
-                println!(
-                    "{}: {} | fields {{{}}}",
-                    primitive.name, primitive.domain, fields
-                );
-            }
+        print_known_primitive(&primitive);
+    }
+}
+
+fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
+    for primitive in lane::known_primitives_by_dimension(dimension) {
+        print_known_primitive(&primitive);
+    }
+}
+
+fn print_known_primitive(primitive: &lane::KnownPrimitive) {
+    let fields = primitive
+        .fields
+        .iter()
+        .map(|field| format!("{}: {}", field.name, field.domain))
+        .collect::<Vec<_>>()
+        .join(", ");
+    match &primitive.parameter_type {
+        Some(parameter_type) => {
+            println!(
+                "[{}] {}: {} | params {} {{{}}}",
+                primitive.dimension.label(),
+                primitive.name,
+                primitive.domain,
+                parameter_type,
+                fields
+            );
+        }
+        None => {
+            println!(
+                "[{}] {}: {} | fields {{{}}}",
+                primitive.dimension.label(),
+                primitive.name,
+                primitive.domain,
+                fields
+            );
         }
     }
 }

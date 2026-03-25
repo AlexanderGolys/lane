@@ -13,6 +13,13 @@ pub fn known_primitives() -> Vec<KnownPrimitive> {
     registry.known_primitives()
 }
 
+pub fn known_primitives_by_dimension(dimension: ShapeDimension) -> Vec<KnownPrimitive> {
+    known_primitives()
+        .into_iter()
+        .filter(|primitive| primitive.dimension == dimension)
+        .collect()
+}
+
 pub fn known_preregistered_objects() -> Vec<PreregisteredObject> {
     let registry = Registry::default();
     registry.preregistered_objects()
@@ -48,9 +55,25 @@ impl std::error::Error for Error {}
 pub struct KnownPrimitive {
     pub name: String,
     pub sdf_name: String,
+    pub dimension: ShapeDimension,
     pub domain: String,
     pub parameter_type: Option<String>,
     pub fields: Vec<KnownPrimitiveField>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShapeDimension {
+    D2,
+    D3,
+}
+
+impl ShapeDimension {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::D2 => "2D",
+            Self::D3 => "3D",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -614,6 +637,7 @@ impl Registry {
                 KnownPrimitive {
                     name: name.to_string(),
                     sdf_name: format!("sdf0_{name}"),
+                    dimension: shape_dimension(name),
                     domain: primitive.domain(name),
                     parameter_type: primitive.parameter_type(),
                     fields: primitive
@@ -654,6 +678,16 @@ impl Registry {
             .into_iter()
             .find(|object| object.name == name)
     }
+}
+
+fn shape_dimension(name: &str) -> ShapeDimension {
+    if name.ends_with("2D") {
+        return ShapeDimension::D2;
+    }
+    if name.ends_with("3D") {
+        return ShapeDimension::D3;
+    }
+    panic!("primitive '{name}' is missing a dimensional suffix")
 }
 
 impl PrimitiveDef {

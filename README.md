@@ -36,6 +36,13 @@ List the known primitives, including each generated SDF signature and parameter 
 cargo run -- --list-primitives
 ```
 
+List only 2D or only 3D primitives with:
+
+```sh
+cargo run -- --list2d
+cargo run -- --list3d
+```
+
 Inspect preregistered GLSL support objects with:
 
 ```sh
@@ -50,4 +57,4 @@ Show CLI usage with:
 cargo run -- --help
 ```
 
-CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage.
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings also show a `[2D]` or `[3D]` prefix inferred from the primitive name suffix.

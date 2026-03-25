@@ -1,6 +1,6 @@
 use lane::{
-    compile_program, known_preregistered_objects, known_primitives, preregistered_object,
-    PreregisteredObjectKind,
+    compile_program, known_preregistered_objects, known_primitives, known_primitives_by_dimension,
+    preregistered_object, PreregisteredObjectKind, ShapeDimension,
 };
 
 #[test]
@@ -16,6 +16,7 @@ fn lists_known_primitives_with_domains() {
         .unwrap();
 
     assert_eq!(ball.sdf_name, "sdf0_Ball3D");
+    assert_eq!(ball.dimension, ShapeDimension::D3);
     assert_eq!(
         ball.domain,
         "sdf0_Ball3D(vec3 p, ParamBall3D params) -> float"
@@ -28,9 +29,35 @@ fn lists_known_primitives_with_domains() {
         polygon.domain,
         "sdf0_Polygon2D(vec2 p, vec2 vertices[POLYGON2D_MAX_VERTICES], int count) -> float"
     );
+    assert_eq!(polygon.dimension, ShapeDimension::D2);
     assert_eq!(polygon.parameter_type, None);
     assert_eq!(polygon.fields[0].name, "points");
     assert_eq!(polygon.fields[0].domain, "vec2 list");
+}
+
+#[test]
+fn filters_known_primitives_by_dimension() {
+    let primitives_2d = known_primitives_by_dimension(ShapeDimension::D2);
+    let primitives_3d = known_primitives_by_dimension(ShapeDimension::D3);
+
+    assert!(primitives_2d
+        .iter()
+        .all(|primitive| primitive.dimension == ShapeDimension::D2));
+    assert!(primitives_3d
+        .iter()
+        .all(|primitive| primitive.dimension == ShapeDimension::D3));
+    assert!(primitives_2d
+        .iter()
+        .all(|primitive| primitive.name.ends_with("2D")));
+    assert!(primitives_3d
+        .iter()
+        .all(|primitive| primitive.name.ends_with("3D")));
+    assert!(primitives_2d
+        .iter()
+        .any(|primitive| primitive.name == "Polygon2D"));
+    assert!(primitives_3d
+        .iter()
+        .any(|primitive| primitive.name == "Ball3D"));
 }
 
 #[test]
