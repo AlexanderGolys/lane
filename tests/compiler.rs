@@ -11,6 +11,10 @@ fn lists_known_primitives_with_lane_types() {
         .iter()
         .find(|primitive| primitive.name == "Ball3D")
         .unwrap();
+    let box3 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Box3D")
+        .unwrap();
     let polygon = primitives
         .iter()
         .find(|primitive| primitive.name == "Polygon2D")
@@ -19,7 +23,7 @@ fn lists_known_primitives_with_lane_types() {
     assert_eq!(ball.dimension, ShapeDimension::D3);
     assert_eq!(ball.parameter_space, "ParamBall3D");
     assert_eq!(ball.fields[0].name, "r");
-    assert_eq!(ball.fields[0].domain, "float");
+    assert_eq!(ball.fields[0].domain, "R");
     assert!(ball
         .type_body
         .as_deref()
@@ -29,10 +33,23 @@ fn lists_known_primitives_with_lane_types() {
         .function_body
         .contains("float sdf0_Ball3D(vec3 p, ParamBall3D params)"));
 
+    assert_eq!(box3.dimension, ShapeDimension::D3);
+    assert_eq!(box3.parameter_space, "ParamBox3D");
+    assert_eq!(box3.fields[0].name, "b");
+    assert_eq!(box3.fields[0].domain, "R3");
+    assert!(box3
+        .type_body
+        .as_deref()
+        .unwrap()
+        .contains("struct ParamBox3D"));
+    assert!(box3
+        .function_body
+        .contains("float sdf0_Box3D(vec3 p, ParamBox3D params)"));
+
     assert_eq!(polygon.dimension, ShapeDimension::D2);
-    assert_eq!(polygon.parameter_space, "{ points: vec2 list }");
+    assert_eq!(polygon.parameter_space, "{ points: R2 list }");
     assert_eq!(polygon.fields[0].name, "points");
-    assert_eq!(polygon.fields[0].domain, "vec2 list");
+    assert_eq!(polygon.fields[0].domain, "R2 list");
     assert_eq!(polygon.type_body, None);
     assert!(polygon
         .function_body
@@ -124,18 +141,24 @@ fn lists_builtin_lane_objects() {
 
     assert!(objects
         .iter()
-        .any(|object| object.name == "sin" && object.ty == "func(float -> float)"));
+        .any(|object| object.name == "sin" && object.ty == "Func(R, R)"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "Union" && object.ty == "func(Obj3 -> func(Obj3 -> Obj3))"));
+        .any(|object| object.name == "Union" && object.ty == "Func(Obj3 × Obj3, Obj3)"));
     assert!(objects.iter().any(|object| {
-        object.name == "SmoothUnion"
-            && object.ty == "func(float -> func(Obj3 -> func(Obj3 -> Obj3)))"
+        object.name == "SmoothUnion" && object.ty == "Func(R × Obj3 × Obj3, Obj3)"
     }));
     assert!(objects.iter().any(|object| {
-        object.name == "gradient"
-            && object.ty == "func(float -> func(func(vec3 -> float) -> func(vec3 -> vec3)))"
+        object.name == "gradient" && object.ty == "Func(R × Func(R3, R) × R3, R3)"
     }));
+}
+
+#[test]
+fn supports_new_type_syntax_aliases() {
+    let source = "in: R time\nin: Hom(R3, R) density\nin: End(R) loop\nin: C(R3) potential\nout: Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
 }
 
 #[test]
@@ -242,6 +265,18 @@ fn emits_box_primitive() {
     assert!(glsl.contains("float sdf0_Box2D(vec2 p, ParamBox2D params)"));
     assert!(glsl.contains("vec2(params.a, params.b)"));
     assert!(glsl.contains("sdf0_Box2D((p).xy, ParamBox2D(2.0, 1.0))"));
+}
+
+#[test]
+fn emits_box3d_primitive() {
+    let source = "Obj3 shape = Box3D(b=(2, 1, 3))\nout: shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct ParamBox3D"));
+    assert!(glsl.contains("vec3 b;"));
+    assert!(glsl.contains("float sdf0_Box3D(vec3 p, ParamBox3D params)"));
+    assert!(glsl.contains("vec3 d = abs(p) - params.b;"));
+    assert!(glsl.contains("sdf0_Box3D(p, ParamBox3D(vec3(2.0, 1.0, 3.0)))"));
 }
 
 #[test]

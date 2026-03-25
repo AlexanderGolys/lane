@@ -10,9 +10,10 @@ fn lists_known_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Ball3D: {r: float}"));
-    assert!(stdout.contains("Box2D: {a: float, b: float}"));
-    assert!(stdout.contains("Polygon2D: { points: vec2 list }"));
+    assert!(stdout.contains("Ball3D: {r: R}"));
+    assert!(stdout.contains("Box3D: {b: R3}"));
+    assert!(stdout.contains("Box2D: {a: R, b: R}"));
+    assert!(stdout.contains("Polygon2D: { points: R2 list }"));
     assert!(!stdout.contains("ParamBall3D\n"));
     assert!(!stdout.contains("[3D]"));
     assert!(!stdout.contains("sdf0_Ball3D"));
@@ -28,7 +29,8 @@ fn lists_known_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Ball3D: {r: float}"));
+    assert!(stdout.contains("Ball3D: {r: R}"));
+    assert!(stdout.contains("Box3D: {b: R3}"));
 }
 
 #[test]
@@ -41,9 +43,9 @@ fn lists_only_2d_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Box2D: {a: float, b: float}"));
-    assert!(stdout.contains("Polygon2D: { points: vec2 list }"));
-    assert!(stdout.contains("Point2D: {at: vec2}"));
+    assert!(stdout.contains("Box2D: {a: R, b: R}"));
+    assert!(stdout.contains("Polygon2D: { points: R2 list }"));
+    assert!(stdout.contains("Point2D: {at: R2}"));
     assert!(!stdout.contains("[2D]"));
     assert!(!stdout.contains("Ball3D"));
 }
@@ -58,7 +60,7 @@ fn lists_only_2d_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Point2D: {at: vec2}"));
+    assert!(stdout.contains("Point2D: {at: R2}"));
     assert!(!stdout.contains("Ball3D"));
 }
 
@@ -72,9 +74,10 @@ fn lists_only_3d_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Ball3D: {r: float}"));
-    assert!(stdout.contains("Simplex3D: {p0: vec3, p1: vec3, p2: vec3, p3: vec3}"));
-    assert!(stdout.contains("Torus3D: {major: float, minor: float}"));
+    assert!(stdout.contains("Ball3D: {r: R}"));
+    assert!(stdout.contains("Box3D: {b: R3}"));
+    assert!(stdout.contains("Simplex3D: {p0: R3, p1: R3, p2: R3, p3: R3}"));
+    assert!(stdout.contains("Torus3D: {major: R, minor: R}"));
     assert!(!stdout.contains("[3D]"));
     assert!(!stdout.contains("Box2D"));
 }
@@ -89,7 +92,7 @@ fn lists_only_3d_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Torus3D: {major: float, minor: float}"));
+    assert!(stdout.contains("Torus3D: {major: R, minor: R}"));
     assert!(!stdout.contains("Box2D"));
 }
 
@@ -116,7 +119,7 @@ fn shows_known_primitive_detail_body_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Ball3D: {r: float}"));
+    assert!(stdout.contains("Ball3D: {r: R}"));
     assert!(stdout.contains("ParamBall3D"));
     assert!(stdout.contains("struct ParamBall3D"));
     assert!(stdout.contains("float r;"));
@@ -133,9 +136,9 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("func(float -> float) sin"));
-    assert!(stdout.contains("func(Obj3 -> func(Obj3 -> Obj3)) Union"));
-    assert!(stdout.contains("func(float -> func(Obj3 -> func(Obj3 -> Obj3))) SmoothUnion"));
+    assert!(stdout.contains("Func(R, R) sin"));
+    assert!(stdout.contains("Func(Obj3 × Obj3, Obj3) Union"));
+    assert!(stdout.contains("Func(R × Obj3 × Obj3, Obj3) SmoothUnion"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
 
@@ -149,7 +152,7 @@ fn lists_known_builtin_objects_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("func(float -> float) cos"));
+    assert!(stdout.contains("Func(R, R) cos"));
 }
 
 #[test]

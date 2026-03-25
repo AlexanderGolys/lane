@@ -114,10 +114,15 @@ pub struct PreregisteredObject {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
     Float,
+    Int,
     Vec2,
     Vec3,
+    Vec4,
+    Mat2,
     Mat3,
+    Mat4,
     Obj3,
+    Product(Vec<Type>),
     Func(Box<Type>, Box<Type>),
 }
 
@@ -129,21 +134,30 @@ impl Type {
     fn glsl_name(&self) -> &'static str {
         match self {
             Self::Float => "float",
+            Self::Int => "int",
             Self::Vec2 => "vec2",
             Self::Vec3 => "vec3",
+            Self::Vec4 => "vec4",
+            Self::Mat2 => "mat2",
             Self::Mat3 => "mat3",
-            Self::Obj3 | Self::Func(_, _) => "",
+            Self::Mat4 => "mat4",
+            Self::Obj3 | Self::Product(_) | Self::Func(_, _) => "",
         }
     }
 
     fn surface_name(&self) -> &'static str {
         match self {
-            Self::Float => "float",
-            Self::Vec2 => "vec2",
-            Self::Vec3 => "vec3",
-            Self::Mat3 => "mat3",
+            Self::Float => "R",
+            Self::Int => "Z",
+            Self::Vec2 => "R2",
+            Self::Vec3 => "R3",
+            Self::Vec4 => "R4",
+            Self::Mat2 => "Mat2",
+            Self::Mat3 => "Mat3",
+            Self::Mat4 => "Mat4",
             Self::Obj3 => "Obj3",
-            Self::Func(_, _) => "func",
+            Self::Product(_) => "Product",
+            Self::Func(_, _) => "Func",
         }
     }
 }
@@ -372,13 +386,19 @@ impl TypedProgram {
                     func.name
                 )));
             }
-            if output_ty != Type::Float
-                && output_ty != Type::Vec2
-                && output_ty != Type::Vec3
-                && output_ty != Type::Mat3
-            {
+            if !matches!(
+                output_ty,
+                Type::Float
+                    | Type::Int
+                    | Type::Vec2
+                    | Type::Vec3
+                    | Type::Vec4
+                    | Type::Mat2
+                    | Type::Mat3
+                    | Type::Mat4
+            ) {
                 return Err(Error::new(format!(
-                    "function '{}' currently only supports float, vec2, vec3, or mat3 outputs",
+                    "function '{}' currently only supports scalar, vector, or matrix outputs",
                     func.name
                 )));
             }
@@ -442,11 +462,18 @@ impl TypedProgram {
         let mut scene_input_names = Vec::new();
         for input in &self.inputs {
             match input.ty {
-                Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => {
+                Type::Float
+                | Type::Int
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat2
+                | Type::Mat3
+                | Type::Mat4 => {
                     signature.push(format!("{} {}", input.ty.glsl_name(), input.name));
                     scene_input_names.push(input.name.clone());
                 }
-                Type::Obj3 | Type::Func(_, _) => {}
+                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
 
@@ -585,6 +612,17 @@ impl Default for Registry {
                         kind: PrimitiveFieldKind::Value(Type::Float),
                     }],
                     support_glsl: "struct ParamBall3D {\n    float r;\n};\n\nfloat sdf0_Ball3D(vec3 p, ParamBall3D params) {\n    return length(p) - params.r;\n}",
+                },
+            ),
+            (
+                "Box3D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamBox3D"),
+                    fields: vec![PrimitiveFieldDef {
+                        name: "b",
+                        kind: PrimitiveFieldKind::Value(Type::Vec3),
+                    }],
+                    support_glsl: "struct ParamBox3D {\n    vec3 b;\n};\n\nfloat sdf0_Box3D(vec3 p, ParamBox3D params) {\n    vec3 d = abs(p) - params.b;\n    return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);\n}",
                 },
             ),
             (
@@ -1063,7 +1101,7 @@ impl KnownPrimitiveField {
             name: field.name.to_string(),
             domain: match &field.kind {
                 PrimitiveFieldKind::Value(ty) => ty.surface_name().to_string(),
-                PrimitiveFieldKind::Vec2List => "vec2 list".to_string(),
+                PrimitiveFieldKind::Vec2List => "R2 list".to_string(),
             },
         }
     }
@@ -1322,12 +1360,19 @@ fn infer_value_expr(
             }
 
             match current_ty {
-                Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => Ok(ValueExpr::Call {
+                Type::Float
+                | Type::Int
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat2
+                | Type::Mat3
+                | Type::Mat4 => Ok(ValueExpr::Call {
                     func: name.clone(),
                     args: typed_args,
                     ty: current_ty,
                 }),
-                Type::Obj3 | Type::Func(_, _) => Err(Error::new(format!(
+                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
                     "value expression '{}' does not return a value type",
                     name
                 ))),
@@ -1649,10 +1694,15 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                     output: (*output).clone(),
                     kind: FunctionExprKind::Named(name.clone()),
                 }),
-                Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => {
-                    Err(Error::new(format!("'{}' is a value, not a function", name)))
-                }
-                Type::Obj3 => Err(Error::new(format!(
+                Type::Float
+                | Type::Int
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat2
+                | Type::Mat3
+                | Type::Mat4 => Err(Error::new(format!("'{}' is a value, not a function", name))),
+                Type::Obj3 | Type::Product(_) => Err(Error::new(format!(
                     "object '{}' is not a function expression",
                     name
                 ))),
@@ -1726,9 +1776,14 @@ fn infer_identifier_value(
         .cloned()
         .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
     match ty {
-        Type::Float | Type::Vec2 | Type::Vec3 | Type::Mat3 => {
-            Ok(ValueExpr::Var(name.to_string(), ty))
-        }
+        Type::Float
+        | Type::Int
+        | Type::Vec2
+        | Type::Vec3
+        | Type::Vec4
+        | Type::Mat2
+        | Type::Mat3
+        | Type::Mat4 => Ok(ValueExpr::Var(name.to_string(), ty)),
         Type::Func(input, output) => {
             if lift_param.is_none() {
                 return Err(Error::new(format!(
@@ -1749,7 +1804,7 @@ fn infer_identifier_value(
                 ty: (*output).clone(),
             })
         }
-        Type::Obj3 => Err(Error::new(format!(
+        Type::Obj3 | Type::Product(_) => Err(Error::new(format!(
             "object '{}' is not a value expression",
             name
         ))),
@@ -2259,15 +2314,40 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
 
 fn format_type(ty: &Type) -> String {
     match ty {
-        Type::Float => "float".to_string(),
-        Type::Vec2 => "vec2".to_string(),
-        Type::Vec3 => "vec3".to_string(),
-        Type::Mat3 => "mat3".to_string(),
+        Type::Float => "R".to_string(),
+        Type::Int => "Z".to_string(),
+        Type::Vec2 => "R2".to_string(),
+        Type::Vec3 => "R3".to_string(),
+        Type::Vec4 => "R4".to_string(),
+        Type::Mat2 => "Mat2".to_string(),
+        Type::Mat3 => "Mat3".to_string(),
+        Type::Mat4 => "Mat4".to_string(),
         Type::Obj3 => "Obj3".to_string(),
-        Type::Func(input, output) => {
-            format!("func({} -> {})", format_type(input), format_type(output))
+        Type::Product(parts) => parts
+            .iter()
+            .map(format_type)
+            .collect::<Vec<_>>()
+            .join(" × "),
+        Type::Func(_, _) => {
+            let (inputs, output) = flatten_func_type(ty);
+            let domain = if inputs.len() == 1 {
+                format_type(inputs[0])
+            } else {
+                format_type(&Type::Product(inputs.into_iter().cloned().collect()))
+            };
+            format!("Func({}, {})", domain, format_type(output))
         }
     }
+}
+
+fn flatten_func_type<'a>(ty: &'a Type) -> (Vec<&'a Type>, &'a Type) {
+    let mut inputs = Vec::new();
+    let mut current = ty;
+    while let Type::Func(input, output) = current {
+        inputs.push(input.as_ref());
+        current = output.as_ref();
+    }
+    (inputs, current)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2643,24 +2723,109 @@ fn parse_type(source: &str) -> Result<Type, Error> {
     let source = source.trim();
     if source.starts_with("func(") && source.ends_with(')') {
         let inner = &source[5..source.len() - 1];
-        let (input, output) = split_arrow(inner)?;
+        let (input, output) = split_arrow_legacy(inner)?;
         return Ok(Type::func(parse_type(input)?, parse_type(output)?));
     }
+    if let Some(inner) = strip_type_head(source, "Func") {
+        let (input, output) = split_top_level_comma(inner)?;
+        return Ok(Type::func(parse_type(input)?, parse_type(output)?));
+    }
+    if let Some(inner) = strip_type_head(source, "Hom") {
+        let (input, output) = split_top_level_comma(inner)?;
+        return Ok(Type::func(parse_type(input)?, parse_type(output)?));
+    }
+    if let Some(inner) = strip_type_head(source, "End") {
+        let ty = parse_type(inner)?;
+        return Ok(Type::func(ty.clone(), ty));
+    }
+    if let Some(inner) = strip_type_head(source, "C") {
+        let ty = parse_type(inner)?;
+        return Ok(Type::func(ty, Type::Float));
+    }
+    if let Some(parts) = split_top_level_product(source) {
+        let mut parsed = Vec::new();
+        for part in parts {
+            parsed.push(parse_type(part)?);
+        }
+        return Ok(Type::Product(parsed));
+    }
     match source {
-        "float" => Ok(Type::Float),
-        "vec2" => Ok(Type::Vec2),
-        "vec3" => Ok(Type::Vec3),
-        "mat3" => Ok(Type::Mat3),
+        "Float" | "R" | "float" => Ok(Type::Float),
+        "Int" | "Z" | "int" => Ok(Type::Int),
+        "Vec2" | "R2" | "vec2" => Ok(Type::Vec2),
+        "Vec3" | "R3" | "vec3" => Ok(Type::Vec3),
+        "Vec4" | "R4" | "vec4" => Ok(Type::Vec4),
+        "Mat2" | "mat2" => Ok(Type::Mat2),
+        "Mat3" | "mat3" => Ok(Type::Mat3),
+        "Mat4" | "mat4" => Ok(Type::Mat4),
         "Obj3" => Ok(Type::Obj3),
         _ => Err(Error::new(format!("unsupported type '{}'", source))),
     }
 }
 
-fn split_arrow(source: &str) -> Result<(&str, &str), Error> {
+fn split_arrow_legacy(source: &str) -> Result<(&str, &str), Error> {
     source
         .split_once("->")
         .map(|(left, right)| (left.trim(), right.trim()))
         .ok_or_else(|| Error::new("expected '->' in function type"))
+}
+
+fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {
+    source
+        .strip_prefix(head)
+        .and_then(|rest| rest.strip_prefix('('))
+        .and_then(|rest| rest.strip_suffix(')'))
+}
+
+fn split_top_level_comma(source: &str) -> Result<(&str, &str), Error> {
+    let mut depth = 0;
+    for (index, ch) in source.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                return Ok((source[..index].trim(), source[index + 1..].trim()));
+            }
+            _ => {}
+        }
+    }
+    Err(Error::new("expected ',' in function type"))
+}
+
+fn split_top_level_product(source: &str) -> Option<Vec<&str>> {
+    let mut depth = 0;
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let bytes = source.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let ch = source[index..].chars().next().unwrap();
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            '×' if depth == 0 => {
+                parts.push(source[start..index].trim());
+                start = index + ch.len_utf8();
+            }
+            'x' if depth == 0 => {
+                let prev_space = index > 0 && bytes[index - 1].is_ascii_whitespace();
+                let next_index = index + 1;
+                let next_space =
+                    next_index < bytes.len() && bytes[next_index].is_ascii_whitespace();
+                if prev_space && next_space {
+                    parts.push(source[start..index - 1].trim());
+                    start = next_index + 1;
+                }
+            }
+            _ => {}
+        }
+        index += ch.len_utf8();
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    parts.push(source[start..].trim());
+    Some(parts)
 }
 
 fn split_type_name(source: &str) -> Result<(&str, &str), Error> {
