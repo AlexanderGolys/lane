@@ -1693,7 +1693,7 @@ impl<'a> Parser<'a> {
         let mut output = None;
 
         for raw_line in self.source.lines() {
-            let line = raw_line.trim();
+            let line = strip_line_comment(raw_line).trim();
             if line.is_empty() {
                 continue;
             }
@@ -1765,6 +1765,10 @@ impl<'a> Parser<'a> {
             expr,
         }))
     }
+}
+
+fn strip_line_comment(line: &str) -> &str {
+    line.split_once("//").map_or(line, |(before, _)| before)
 }
 
 struct ExprParser {

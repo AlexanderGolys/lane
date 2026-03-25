@@ -149,6 +149,24 @@ fn rejects_invalid_function_composition() {
 }
 
 #[test]
+fn supports_full_line_comments() {
+    let source = "// input animation\nin: float time\n// object body\nout: Ball3D(r=1 + time)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
+    assert!(glsl.contains("ParamBall3D((1.0 + time))"));
+}
+
+#[test]
+fn supports_trailing_line_comments() {
+    let source = "in: float time // animation clock\nObj3 A = Ball3D(r=1) + (1, 0, 0) // translated sphere\nout: A // final object\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
+    assert!(glsl.contains("sdf0_Ball3D((p - vec3(1.0, 0.0, 0.0)), ParamBall3D(1.0))"));
+}
+
+#[test]
 fn emits_only_used_support_code() {
     let source = "Obj3 A = Ball3D(r=3)\nout: A\n";
     let glsl = compile_program(source).unwrap();
