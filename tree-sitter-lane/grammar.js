@@ -29,15 +29,13 @@ module.exports = grammar({
         ),
 
         input_declaration: ($) => seq(
-            'in',
-            ':',
+            'provided',
             field('type', $._type),
             field('name', $.identifier),
         ),
 
         output_declaration: ($) => seq(
-            'out',
-            ':',
+            choice('generate', 'gen'),
             field('value', $._expression),
         ),
 
@@ -49,7 +47,7 @@ module.exports = grammar({
             field('value', $._expression),
         ),
 
-        gen_modifier: () => 'gen',
+        gen_modifier: () => choice('construct', 'const'),
 
         _type: ($) => choice(
             $.product_type,

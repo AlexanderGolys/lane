@@ -2,11 +2,11 @@
 Declarations
 ==================
 
-in: float time
-gen Obj3 shell = Ball3D(r=1 + time)
+provided float time
+construct Obj3 shell = Ball3D(r=1 + time)
 Obj3 moved = shell + (1, 2, 3)
 func(float -> mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
-out: spin(time) * moved
+generate spin(time) * moved
 
 ---
 
@@ -66,8 +66,8 @@ Comments
 ==================
 
 // animation clock
-in: R time // phase
-out: Ball3D(r=1)
+provided R time // phase
+gen Ball3D(r=1)
 
 ---
 

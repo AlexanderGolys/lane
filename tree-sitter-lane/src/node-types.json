@@ -457,6 +457,11 @@
     }
   },
   {
+    "type": "gen_modifier",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "hom_type",
     "named": true,
     "fields": {
@@ -1136,10 +1141,6 @@
     "named": false
   },
   {
-    "type": ":",
-    "named": false
-  },
-  {
     "type": "=",
     "named": false
   },
@@ -1169,27 +1170,35 @@
     "extra": true
   },
   {
+    "type": "const",
+    "named": false
+  },
+  {
+    "type": "construct",
+    "named": false
+  },
+  {
     "type": "func",
     "named": false
   },
   {
-    "type": "gen_modifier",
-    "named": true
+    "type": "gen",
+    "named": false
+  },
+  {
+    "type": "generate",
+    "named": false
   },
   {
     "type": "identifier",
     "named": true
   },
   {
-    "type": "in",
-    "named": false
-  },
-  {
     "type": "number",
     "named": true
   },
   {
-    "type": "out",
+    "type": "provided",
     "named": false
   },
   {

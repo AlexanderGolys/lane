@@ -48,11 +48,7 @@
       "members": [
         {
           "type": "STRING",
-          "value": "in"
-        },
-        {
-          "type": "STRING",
-          "value": ":"
+          "value": "provided"
         },
         {
           "type": "FIELD",
@@ -76,12 +72,17 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "out"
-        },
-        {
-          "type": "STRING",
-          "value": ":"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "generate"
+            },
+            {
+              "type": "STRING",
+              "value": "gen"
+            }
+          ]
         },
         {
           "type": "FIELD",
@@ -143,8 +144,17 @@
       ]
     },
     "gen_modifier": {
-      "type": "STRING",
-      "value": "gen"
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "construct"
+        },
+        {
+          "type": "STRING",
+          "value": "const"
+        }
+      ]
     },
     "_type": {
       "type": "CHOICE",

@@ -2,7 +2,7 @@
 Expressions
 ==================
 
-out: SmoothUnion(0.25)(a, b, c)
+generate SmoothUnion(0.25)(a, b, c)
 
 ---
 
@@ -22,7 +22,7 @@ out: SmoothUnion(0.25)(a, b, c)
 Named Arguments And Tuples
 ==================
 
-out: Box3D(a=2, b=1, c=3) + (-1, -2, -3)
+generate Box3D(a=2, b=1, c=3) + (-1, -2, -3)
 
 ---
 
