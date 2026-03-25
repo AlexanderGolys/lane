@@ -1,7 +1,7 @@
-in: R time
-in: Func(R, R) radiusB
-in: Func(R, R3) anchor3
-in: Mat3 frame
+provided R time
+provided Func(R, R) radiusB
+provided Func(R, R3) anchor3
+provided Mat3 frame
 
 Func(R, R) pulse = pow2 @ sin * .35 * sin / cos /2
 Func(R, R) ripple = pow2 @ cos + .15
@@ -33,4 +33,4 @@ Obj3 smooth_mix = SmoothIntersection(.25 + pulse(time))(smooth_cut, simplex)
 Obj3 smooth_x = SmoothXor(.2 + ripple(time))(smooth_mix, orbit)
 Obj3 final = SmoothUnion(.3)(smooth_x, spin(time) * planar_twist)
 
-out: final
+generate final

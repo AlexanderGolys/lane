@@ -4,9 +4,9 @@ use std::fs;
 #[test]
 fn compiles_sample_program_to_glsl() {
     let source = r#"
-in: float time
-in: func(float -> float) rB
-in: func(float -> vec3) centerA
+provided float time
+provided func(float -> float) rB
+provided func(float -> vec3) centerA
 
     func(float -> float) hardness = pow2 @ sin + .5
     func(float -> vec3) centerB = (1, sin, cos) + centerA / 2
@@ -15,7 +15,7 @@ in: func(float -> vec3) centerA
     Obj3 B = Ball3D(r=rB(time)) + centerB(time)
     Obj3 C = SmoothUnion(hardness(time))(A, B)
 
-out: C
+generate C
 "#;
 
     let glsl = compile_program(source).unwrap();

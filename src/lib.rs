@@ -2997,7 +2997,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let output = output.ok_or_else(|| Error::new("missing out declaration"))?;
+        let output = output.ok_or_else(|| Error::new("missing generate declaration"))?;
 
         Ok(Program {
             inputs,
@@ -3009,7 +3009,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_decl(&self, line: &str) -> Result<Decl, Error> {
-        if let Some(rest) = line.strip_prefix("in:") {
+        if let Some(rest) = line.strip_prefix("provided ") {
             let (ty, name) = split_type_name(rest.trim())?;
             return Ok(Decl::Input(InputDecl {
                 name: name.to_string(),
@@ -3017,12 +3017,12 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        if let Some(rest) = line.strip_prefix("out:") {
+        if let Some(rest) = line.strip_prefix("generate ") {
             let expr_source = rest.trim();
             if let Some((left, _)) = expr_source.split_once('=') {
                 if parse_type(left.trim()).is_ok() {
                     return Err(Error::new(
-                        "use 'out: value' instead of 'out: type = value'",
+                        "use 'generate value' instead of 'generate type = value'",
                     ));
                 }
             }
@@ -3030,8 +3030,8 @@ impl<'a> Parser<'a> {
             return Ok(Decl::Output(OutputDecl { expr }));
         }
 
-        let generated = line.starts_with("gen ");
-        let line = line.strip_prefix("gen ").unwrap_or(line);
+        let generated = line.starts_with("construct ");
+        let line = line.strip_prefix("construct ").unwrap_or(line);
         let (left, expr_source) = split_once_required(line, '=')?;
         if left.contains(':') {
             return Err(Error::new(
@@ -3043,7 +3043,9 @@ impl<'a> Parser<'a> {
         let expr = ExprParser::new(expr_source.trim()).parse()?;
         if matches!(ty, Type::Func(_, _)) {
             if generated {
-                return Err(Error::new("'gen' currently only supports Obj3 bindings"));
+                return Err(Error::new(
+                    "'construct' currently only supports Obj3 bindings",
+                ));
             }
             return Ok(Decl::Func(FuncDecl {
                 name: name.to_string(),
@@ -3053,7 +3055,9 @@ impl<'a> Parser<'a> {
         }
         if !matches!(ty, Type::Obj3) {
             if generated {
-                return Err(Error::new("'gen' currently only supports Obj3 bindings"));
+                return Err(Error::new(
+                    "'construct' currently only supports Obj3 bindings",
+                ));
             }
             return Ok(Decl::ValueBinding(ValueBindingDecl {
                 name: name.to_string(),
