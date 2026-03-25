@@ -79,6 +79,33 @@ fn shows_preregistered_object_body_from_cli() {
 }
 
 #[test]
+fn prints_bash_completion_from_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .args(["--print-completion", "bash"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("complete -F _lane lane"));
+    assert!(stdout.contains("--print-completion"));
+}
+
+#[test]
+fn rejects_unknown_completion_shell() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .args(["--print-completion", "tcsh"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unsupported shell 'tcsh'"));
+}
+
+#[test]
 fn prints_help_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .arg("--help")
@@ -93,6 +120,7 @@ fn prints_help_from_cli() {
     assert!(stdout.contains("lane --list2d"));
     assert!(stdout.contains("lane --list3d"));
     assert!(stdout.contains("lane --show-preregistered <NAME>"));
+    assert!(stdout.contains("lane --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h"));
 }
 

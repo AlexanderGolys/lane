@@ -51,6 +51,14 @@ cargo run -- --show-preregistered ParamBall3D
 cargo run -- --show-preregistered sdf0_Ball3D
 ```
 
+Print shell completion scripts with:
+
+```sh
+cargo run -- --print-completion bash
+cargo run -- --print-completion zsh
+cargo run -- --print-completion fish
+```
+
 Show CLI usage with:
 
 ```sh
