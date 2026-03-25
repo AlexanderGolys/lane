@@ -1,0 +1,86 @@
+==================
+Declarations
+==================
+
+in: float time
+gen Obj3 shell = Ball3D(r=1 + time)
+Obj3 moved = shell + (1, 2, 3)
+func(float -> mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+out: spin(time) * moved
+
+---
+
+(source_file
+  (input_declaration
+    (type_identifier)
+    (identifier))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (named_argument
+          (identifier)
+          (binary_expression
+            (number)
+            (identifier))))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (binary_expression
+      (identifier)
+      (tuple_expression
+        (number)
+        (number)
+        (number))))
+  (binding_declaration
+    (legacy_function_type
+      (type_identifier)
+      (type_identifier))
+    (identifier)
+    (tuple_expression
+      (tuple_expression
+        (number)
+        (number)
+        (number))
+      (tuple_expression
+        (number)
+        (number)
+        (number))
+      (tuple_expression
+        (number)
+        (number)
+        (number))))
+  (output_declaration
+    (binary_expression
+      (call_expression
+        (identifier)
+        (argument_list
+          (identifier)))
+      (identifier))))
+
+==================
+Comments
+==================
+
+// animation clock
+in: R time // phase
+out: Ball3D(r=1)
+
+---
+
+(source_file
+  (comment)
+  (input_declaration
+    (type_identifier)
+    (identifier))
+  (comment)
+  (output_declaration
+    (call_expression
+      (identifier)
+      (argument_list
+        (named_argument
+          (identifier)
+          (number))))))

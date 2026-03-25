@@ -1,0 +1,50 @@
+==================
+Expressions
+==================
+
+out: SmoothUnion(0.25)(a, b, c)
+
+---
+
+(source_file
+  (output_declaration
+    (call_expression
+      (call_expression
+        (identifier)
+        (argument_list
+          (number)))
+      (argument_list
+        (identifier)
+        (identifier)
+        (identifier)))))
+
+==================
+Named Arguments And Tuples
+==================
+
+out: Box3D(a=2, b=1, c=3) + (-1, -2, -3)
+
+---
+
+(source_file
+  (output_declaration
+    (binary_expression
+      (call_expression
+        (identifier)
+        (argument_list
+          (named_argument
+            (identifier)
+            (number))
+          (named_argument
+            (identifier)
+            (number))
+          (named_argument
+            (identifier)
+            (number))))
+      (tuple_expression
+        (unary_expression
+          (number))
+        (unary_expression
+          (number))
+        (unary_expression
+          (number))))))

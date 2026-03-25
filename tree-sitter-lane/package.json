@@ -1,0 +1,24 @@
+{
+  "name": "tree-sitter-lane",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Lane DSL",
+  "main": "bindings/node",
+  "keywords": [
+    "parser",
+    "tree-sitter",
+    "lane"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.lane",
+      "file-types": [
+        "lane"
+      ]
+    }
+  ]
+}
