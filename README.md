@@ -47,6 +47,20 @@ cargo run --bin lane-lsp
 
 The LSP currently provides full-document sync and basic compile diagnostics by re-running the Lane compiler on open, change, and save.
 
+To hook the server up to Neovim's built-in LSP client, add a config such as:
+
+```lua
+vim.filetype.add({ extension = { lane = "lane" } })
+
+vim.lsp.config("lane_lsp", {
+    cmd = { "cargo", "run", "--bin", "lane-lsp" },
+    filetypes = { "lane" },
+    root_markers = { "Cargo.toml", ".git" },
+})
+
+vim.lsp.enable("lane_lsp")
+```
+
 List the known primitives with their Lane-level field shapes with:
 
 ```sh
