@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane list\n  lane --list2d\n  lane --list3d\n  lane --list-preregistered\n  lane --show-preregistered <NAME>\n  lane --print-completion <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list\n  lane --list2d\n  lane --list3d\n  lane --list-preregistered\n  lane --show <NAME>\n  lane --print-completion <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin.";
 
 const BASH_COMPLETION: &str = r#"_lane() {
     local cur prev
@@ -17,11 +17,9 @@ const BASH_COMPLETION: &str = r#"_lane() {
     fi
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--list2d --list3d --list-preregistered --show-preregistered --print-completion --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--list --list2d --list3d --list-preregistered --show --print-completion --help -h" -- "$cur") )
         return
     fi
-
-    COMPREPLY=( $(compgen -W "list" -- "$cur") )
 }
 
 complete -F _lane lane
@@ -35,21 +33,20 @@ _lane() {
         '--list2d[list only 2D primitives]' \
         '--list3d[list only 3D primitives]' \
         '--list-preregistered[list preregistered objects]' \
-        '--show-preregistered[show one preregistered object]:name' \
+        '--show[show one preregistered object]:name' \
         '--print-completion[print a completion script]:shell:(bash zsh fish)' \
-        '(-h --help)'{-h,--help}'[show help]' \
-        '1:list known primitives:(list)'
+        '(-h --help)'{-h,--help}'[show help]'
 }
 
 _lane "$@"
 "#;
 
 const FISH_COMPLETION: &str = r#"complete -c lane -f
-complete -c lane -n '__fish_use_subcommand' -a list -d 'List known primitives'
+complete -c lane -l list -d 'List known primitives'
 complete -c lane -l list2d -d 'List only 2D primitives'
 complete -c lane -l list3d -d 'List only 3D primitives'
 complete -c lane -l list-preregistered -d 'List preregistered objects'
-complete -c lane -l show-preregistered -r -d 'Show one preregistered object'
+complete -c lane -l show -r -d 'Show one preregistered object'
 complete -c lane -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s h -l help -d 'Show help'
 "#;
@@ -69,7 +66,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_help();
             Ok(())
         }
-        [command] if command == "list" => {
+        [flag] if flag == "--list" => {
             print_known_primitives();
             Ok(())
         }
@@ -85,7 +82,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_preregistered_objects();
             Ok(())
         }
-        [flag, name] if flag == "--show-preregistered" => print_preregistered_object(name),
+        [flag, name] if flag == "--show" => print_preregistered_object(name),
         [flag, shell] if flag == "--print-completion" => print_completion(shell),
         [path] => compile_path(path),
         _ => Err("unexpected arguments; run `lane --help` for usage".into()),

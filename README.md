@@ -33,7 +33,7 @@ cargo test
 List the known primitives, including each generated SDF signature and parameter domain, with:
 
 ```sh
-cargo run -- list
+cargo run -- --list
 ```
 
 List only 2D or only 3D primitives with:
@@ -47,8 +47,8 @@ Inspect preregistered GLSL support objects with:
 
 ```sh
 cargo run -- --list-preregistered
-cargo run -- --show-preregistered ParamBall3D
-cargo run -- --show-preregistered sdf0_Ball3D
+cargo run -- --show ParamBall3D
+cargo run -- --show sdf0_Ball3D
 ```
 
 Print shell completion scripts with:
