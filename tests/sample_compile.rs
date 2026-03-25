@@ -7,7 +7,7 @@ in: float time
 in: func(float -> float) rB
 in: func(float -> vec3) centerA
 
-    func(float -> float) hardness = pow2 * sin + .5
+    func(float -> float) hardness = pow2 @ sin + .5
     func(float -> vec3) centerB = (1, sin, cos) + centerA / 2
 
     Obj3 A = Ball3D(r=3) + centerA(time)
@@ -33,7 +33,7 @@ float op_smooth_union(float a, float b, float k) {
 }
 
 float dsl_hardness(float t) {
-    return ((pow2(t) * sin(t)) + 0.5);
+    return (pow2(sin(t)) + 0.5);
 }
 
 vec3 dsl_centerB(float t) {

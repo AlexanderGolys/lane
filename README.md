@@ -7,6 +7,7 @@ Current slice:
 - pre-registered `Ball3D(r=...)` primitive
 - pre-registered `SmoothUnion(k)` operator
 - value functions `sin`, `cos`, `pow2`
+- unary function composition with `f @ g`, meaning `x |-> f(g(x))`
 - `Obj3 + vec3` placement sugar
 - top-level `in`, `func`, typed object bindings, and `out`
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`

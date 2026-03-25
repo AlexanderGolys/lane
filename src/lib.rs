@@ -119,6 +119,7 @@ enum BinOp {
     Sub,
     Mul,
     Div,
+    Compose,
 }
 
 #[derive(Clone, Debug)]
@@ -625,6 +626,11 @@ fn infer_value_expr(
                 ))),
             }
         }
+        Expr::Binary {
+            op: BinOp::Compose,
+            left,
+            right,
+        } => infer_composed_value_expr(left, right, env, lift_param),
         Expr::Binary { op, left, right } => {
             let left = infer_value_expr(left, env, lift_param)?;
             let right = infer_value_expr(right, env, lift_param)?;
@@ -639,6 +645,127 @@ fn infer_value_expr(
         Expr::Constructor { .. } => {
             Err(Error::new("primitive constructors are object expressions"))
         }
+    }
+}
+
+fn infer_composed_value_expr(
+    left: &Expr,
+    right: &Expr,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    let param_name = lift_param.ok_or_else(|| {
+        Error::new("function composition is only supported inside function bodies")
+    })?;
+    let composed = infer_function_expr(
+        &Expr::Binary {
+            op: BinOp::Compose,
+            left: Box::new(left.clone()),
+            right: Box::new(right.clone()),
+        },
+        env,
+    )?;
+    if composed.input != Type::Float {
+        return Err(Error::new(
+            "composed functions must accept float inputs in this compiler slice",
+        ));
+    }
+    Ok(apply_function_expr(
+        &composed,
+        ValueExpr::Var(param_name.to_string(), Type::Float),
+    ))
+}
+
+#[derive(Clone, Debug)]
+struct FunctionExpr {
+    input: Type,
+    output: Type,
+    kind: FunctionExprKind,
+}
+
+#[derive(Clone, Debug)]
+enum FunctionExprKind {
+    Named(String),
+    Compose(Box<FunctionExpr>, Box<FunctionExpr>),
+}
+
+fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error> {
+    match expr {
+        Expr::Ident(name) => {
+            let ty = env
+                .get(name)
+                .cloned()
+                .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
+            match ty {
+                Type::Func(input, output) => Ok(FunctionExpr {
+                    input: (*input).clone(),
+                    output: (*output).clone(),
+                    kind: FunctionExprKind::Named(name.clone()),
+                }),
+                Type::Float | Type::Vec3 => {
+                    Err(Error::new(format!("'{}' is a value, not a function", name)))
+                }
+                Type::Obj3 => Err(Error::new(format!(
+                    "object '{}' is not a function expression",
+                    name
+                ))),
+            }
+        }
+        Expr::Binary {
+            op: BinOp::Compose,
+            left,
+            right,
+        } => {
+            let outer = infer_function_expr(left, env)?;
+            let inner = infer_function_expr(right, env)?;
+            if inner.output != outer.input {
+                return Err(Error::new(format!(
+                    "cannot compose {} @ {} because {} does not match {}",
+                    format_function_expr(left),
+                    format_function_expr(right),
+                    format_type(&inner.output),
+                    format_type(&outer.input)
+                )));
+            }
+            Ok(FunctionExpr {
+                input: inner.input.clone(),
+                output: outer.output.clone(),
+                kind: FunctionExprKind::Compose(Box::new(outer), Box::new(inner)),
+            })
+        }
+        _ => Err(Error::new(
+            "function composition currently only supports named unary functions",
+        )),
+    }
+}
+
+fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
+    match &func.kind {
+        FunctionExprKind::Named(name) => ValueExpr::Call {
+            func: name.clone(),
+            args: vec![arg],
+            ty: func.output.clone(),
+        },
+        FunctionExprKind::Compose(outer, inner) => {
+            let inner_value = apply_function_expr(inner, arg);
+            apply_function_expr(outer, inner_value)
+        }
+    }
+}
+
+fn format_function_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Ident(name) => name.clone(),
+        Expr::Binary {
+            op: BinOp::Compose,
+            left,
+            right,
+        } => format!(
+            "({} @ {})",
+            format_function_expr(left),
+            format_function_expr(right)
+        ),
+        _ => "<function expression>".to_string(),
     }
 }
 
@@ -836,6 +963,7 @@ enum Token {
     Minus,
     Star,
     Slash,
+    At,
     Arrow,
 }
 
@@ -964,7 +1092,7 @@ impl ExprParser {
     }
 
     fn parse_mul_div(&mut self) -> Result<Expr, Error> {
-        let mut expr = self.parse_postfix()?;
+        let mut expr = self.parse_compose()?;
         loop {
             let op = match self.peek() {
                 Some(Token::Star) => BinOp::Mul,
@@ -972,9 +1100,23 @@ impl ExprParser {
                 _ => break,
             };
             self.index += 1;
-            let rhs = self.parse_postfix()?;
+            let rhs = self.parse_compose()?;
             expr = Expr::Binary {
                 op,
+                left: Box::new(expr),
+                right: Box::new(rhs),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_compose(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.parse_postfix()?;
+        while matches!(self.peek(), Some(Token::At)) {
+            self.index += 1;
+            let rhs = self.parse_postfix()?;
+            expr = Expr::Binary {
+                op: BinOp::Compose,
                 left: Box::new(expr),
                 right: Box::new(rhs),
             };
@@ -1169,6 +1311,7 @@ fn tokenize(source: &str) -> Vec<Token> {
             '-' => Token::Minus,
             '*' => Token::Star,
             '/' => Token::Slash,
+            '@' => Token::At,
             _ => panic!("unsupported token: {ch}"),
         };
         tokens.push(token);
@@ -1244,6 +1387,7 @@ impl BinOp {
             Self::Sub => "-",
             Self::Mul => "*",
             Self::Div => "/",
+            Self::Compose => "@",
         }
     }
 }
@@ -1251,6 +1395,23 @@ impl BinOp {
 #[cfg(test)]
 mod tests {
     use super::compile_program;
+
+    #[test]
+    fn composes_unary_functions_in_function_bodies() {
+        let source = "func(float -> float) wobble = sin @ sin\nout: Obj3 = Ball3D(r=wobble(0))\n";
+        let glsl = compile_program(source).unwrap();
+
+        assert!(glsl.contains("float dsl_wobble(float t) {"));
+        assert!(glsl.contains("return sin(sin(t));"));
+    }
+
+    #[test]
+    fn rejects_invalid_function_composition() {
+        let source = "in: func(float -> vec3) center\nfunc(float -> float) wobble = sin @ center\nout: Obj3 = Ball3D(r=1)\n";
+        let error = compile_program(source).unwrap_err().to_string();
+
+        assert!(error.contains("cannot compose sin @ center"));
+    }
 
     #[test]
     fn emits_only_used_support_code() {
