@@ -183,6 +183,13 @@ struct BindingDecl {
 }
 
 #[derive(Clone, Debug)]
+struct ValueBindingDecl {
+    name: String,
+    ty: Type,
+    expr: Expr,
+}
+
+#[derive(Clone, Debug)]
 struct OutputDecl {
     expr: Expr,
 }
@@ -191,6 +198,7 @@ struct OutputDecl {
 struct Program {
     inputs: Vec<InputDecl>,
     funcs: Vec<FuncDecl>,
+    value_bindings: Vec<ValueBindingDecl>,
     bindings: Vec<BindingDecl>,
     output: OutputDecl,
 }
@@ -199,6 +207,7 @@ struct Program {
 enum Decl {
     Input(InputDecl),
     Func(FuncDecl),
+    ValueBinding(ValueBindingDecl),
     Binding(BindingDecl),
     Output(OutputDecl),
 }
@@ -345,9 +354,17 @@ struct TypedBinding {
 }
 
 #[derive(Clone, Debug)]
+struct TypedValueBinding {
+    name: String,
+    ty: Type,
+    expr: ValueExpr,
+}
+
+#[derive(Clone, Debug)]
 struct TypedProgram {
     inputs: Vec<InputDecl>,
     funcs: Vec<TypedFunc>,
+    value_bindings: Vec<TypedValueBinding>,
     bindings: Vec<TypedBinding>,
     output: ObjectExpr,
 }
@@ -362,6 +379,10 @@ impl TypedProgram {
 
         for func in &program.funcs {
             env.insert(func.name.clone(), func.ty.clone())?;
+        }
+
+        for binding in &program.value_bindings {
+            env.insert(binding.name.clone(), binding.ty.clone())?;
         }
 
         for binding in &program.bindings {
@@ -412,6 +433,21 @@ impl TypedProgram {
             });
         }
 
+        let mut typed_value_bindings = Vec::new();
+        for binding in &program.value_bindings {
+            let expr = infer_value_expr(&binding.expr, &env, None)?;
+            ensure_type(
+                &expr.ty(),
+                &binding.ty,
+                &format!("binding '{}'", binding.name),
+            )?;
+            typed_value_bindings.push(TypedValueBinding {
+                name: binding.name.clone(),
+                ty: binding.ty.clone(),
+                expr,
+            });
+        }
+
         let mut typed_bindings = Vec::new();
         for binding in &program.bindings {
             ensure_type(
@@ -431,6 +467,7 @@ impl TypedProgram {
         Ok(Self {
             inputs: program.inputs.clone(),
             funcs: typed_funcs,
+            value_bindings: typed_value_bindings,
             bindings: typed_bindings,
             output,
         })
@@ -478,15 +515,20 @@ impl TypedProgram {
         }
 
         lines.push(format!("float scene_sdf({}) {{", signature.join(", ")));
-        let mut object_names = BTreeMap::new();
+        let mut object_bindings = BTreeMap::new();
         let helper_names = self.func_names();
-        for binding in &self.bindings {
-            let temp_name = format!("obj_{}", binding.name);
-            let expr = emit_object_expr(&binding.expr, "p", &object_names, &helper_names);
-            lines.push(format!("    float {} = {};", temp_name, expr));
-            object_names.insert(binding.name.clone(), temp_name);
+        for binding in &self.value_bindings {
+            lines.push(format!(
+                "    {} {} = {};",
+                binding.ty.glsl_name(),
+                binding.name,
+                emit_value_expr(&binding.expr, &helper_names)
+            ));
         }
-        let output = emit_object_expr(&self.output, "p", &object_names, &helper_names);
+        for binding in &self.bindings {
+            object_bindings.insert(binding.name.clone(), binding.expr.clone());
+        }
+        let output = emit_object_expr(&self.output, "p", &object_bindings, &helper_names);
         lines.push(format!("    return {};", output));
         lines.push("}".to_string());
 
@@ -1169,19 +1211,23 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             let fields = match args {
                 ConstructorArgs::Named(fields) => fields.clone(),
                 ConstructorArgs::Positional(values) => {
-                    if values.len() != primitive.fields.len() {
-                        return Err(Error::new(format!(
-                            "primitive '{}' expects {} field(s)",
-                            name,
-                            primitive.fields.len()
-                        )));
+                    if let Some(packed) = pack_single_vector_field_args(primitive, values, env)? {
+                        packed
+                    } else {
+                        if values.len() != primitive.fields.len() {
+                            return Err(Error::new(format!(
+                                "primitive '{}' expects {} field(s)",
+                                name,
+                                primitive.fields.len()
+                            )));
+                        }
+                        primitive
+                            .fields
+                            .iter()
+                            .zip(values.iter())
+                            .map(|(field, value)| (field.name.to_string(), value.clone()))
+                            .collect()
                     }
-                    primitive
-                        .fields
-                        .iter()
-                        .zip(values.iter())
-                        .map(|(field, value)| (field.name.to_string(), value.clone()))
-                        .collect()
                 }
             };
             if fields.len() != primitive.fields.len() {
@@ -1640,6 +1686,40 @@ fn infer_vec2_list_expr(
     Ok(points)
 }
 
+fn pack_single_vector_field_args(
+    primitive: &PrimitiveDef,
+    values: &[Expr],
+    env: &Env<'_>,
+) -> Result<Option<Vec<(String, Expr)>>, Error> {
+    if primitive.fields.len() != 1 {
+        return Ok(None);
+    }
+    let field = &primitive.fields[0];
+    let expected = match field.kind {
+        PrimitiveFieldKind::Value(Type::Vec2) => 2,
+        PrimitiveFieldKind::Value(Type::Vec3) => 3,
+        PrimitiveFieldKind::Value(Type::Vec4) => 4,
+        _ => return Ok(None),
+    };
+    if values.len() != expected {
+        return Ok(None);
+    }
+
+    for (index, value) in values.iter().enumerate() {
+        let typed = infer_value_expr(value, env, None)?;
+        ensure_type(
+            &typed.ty(),
+            &Type::Float,
+            &format!("{} element {}", field.name, index + 1),
+        )?;
+    }
+
+    Ok(Some(vec![(
+        field.name.to_string(),
+        Expr::Tuple(values.to_vec()),
+    )]))
+}
+
 fn infer_composed_value_expr(
     left: &Expr,
     right: &Expr,
@@ -2091,13 +2171,13 @@ fn emit_vec3_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: B
 fn emit_object_expr(
     expr: &ObjectExpr,
     point_expr: &str,
-    object_names: &BTreeMap<String, String>,
+    object_bindings: &BTreeMap<String, ObjectExpr>,
     helper_names: &HashMap<String, String>,
 ) -> String {
     match expr {
-        ObjectExpr::Var(name) => object_names
+        ObjectExpr::Var(name) => object_bindings
             .get(name)
-            .cloned()
+            .map(|expr| emit_object_expr(expr, point_expr, object_bindings, helper_names))
             .unwrap_or_else(|| format!("obj_{}", name)),
         ObjectExpr::Primitive { name, kind, fields } => match kind {
             PrimitiveKind::ParamStruct(param_type) => {
@@ -2142,7 +2222,7 @@ fn emit_object_expr(
         } => {
             let transformed_point =
                 emit_transformed_point(point_expr, translation, linear, helper_names);
-            emit_object_expr(object, &transformed_point, object_names, helper_names)
+            emit_object_expr(object, &transformed_point, object_bindings, helper_names)
         }
         ObjectExpr::RegisteredOp {
             name: _,
@@ -2152,7 +2232,7 @@ fn emit_object_expr(
         } => {
             let mut args = object_args
                 .iter()
-                .map(|arg| emit_object_expr(arg, point_expr, object_names, helper_names))
+                .map(|arg| emit_object_expr(arg, point_expr, object_bindings, helper_names))
                 .collect::<Vec<_>>();
             args.extend(
                 value_args
@@ -2379,6 +2459,7 @@ impl<'a> Parser<'a> {
     fn parse_program(&self) -> Result<Program, Error> {
         let mut inputs = Vec::new();
         let mut funcs = Vec::new();
+        let mut value_bindings = Vec::new();
         let mut bindings = Vec::new();
         let mut output = None;
 
@@ -2391,6 +2472,7 @@ impl<'a> Parser<'a> {
             match self.parse_decl(line)? {
                 Decl::Input(input) => inputs.push(input),
                 Decl::Func(func) => funcs.push(func),
+                Decl::ValueBinding(binding) => value_bindings.push(binding),
                 Decl::Binding(binding) => bindings.push(binding),
                 Decl::Output(out) => {
                     if output.is_some() {
@@ -2406,6 +2488,7 @@ impl<'a> Parser<'a> {
         Ok(Program {
             inputs,
             funcs,
+            value_bindings,
             bindings,
             output,
         })
@@ -2444,6 +2527,13 @@ impl<'a> Parser<'a> {
         let expr = ExprParser::new(expr_source.trim()).parse()?;
         if matches!(ty, Type::Func(_, _)) {
             return Ok(Decl::Func(FuncDecl {
+                name: name.to_string(),
+                ty,
+                expr,
+            }));
+        }
+        if !matches!(ty, Type::Obj3) {
+            return Ok(Decl::ValueBinding(ValueBindingDecl {
                 name: name.to_string(),
                 ty,
                 expr,
@@ -2535,7 +2625,7 @@ impl ExprParser {
     }
 
     fn parse_postfix(&mut self) -> Result<Expr, Error> {
-        let mut expr = self.parse_primary()?;
+        let mut expr = self.parse_unary()?;
         while matches!(self.peek(), Some(Token::LParen)) {
             let args = self.parse_positional_args()?;
             expr = Expr::Call {
@@ -2544,6 +2634,19 @@ impl ExprParser {
             };
         }
         Ok(expr)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, Error> {
+        if matches!(self.peek(), Some(Token::Minus)) {
+            self.index += 1;
+            let expr = self.parse_unary()?;
+            return Ok(Expr::Binary {
+                op: BinOp::Sub,
+                left: Box::new(Expr::Number(0.0)),
+                right: Box::new(expr),
+            });
+        }
+        self.parse_primary()
     }
 
     fn parse_primary(&mut self) -> Result<Expr, Error> {

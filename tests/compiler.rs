@@ -280,6 +280,22 @@ fn emits_box3d_primitive() {
 }
 
 #[test]
+fn emits_box3d_from_flat_positional_arguments() {
+    let source = "Obj3 shape = Box3D(2, 1, 3)\nout: shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("sdf0_Box3D(p, ParamBox3D(vec3(2.0, 1.0, 3.0)))"));
+}
+
+#[test]
+fn supports_negative_tuple_components() {
+    let source = "Obj3 shape = Box3D(2, 1, 3) + (-1, -2, -3)\nout: shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("(p - vec3((0.0 - 1.0), (0.0 - 2.0), (0.0 - 3.0)))"));
+}
+
+#[test]
 fn emits_primitive_with_positional_arguments() {
     let source = "Obj3 shape = Box2D(2, 1)\nout: shape\n";
     let glsl = compile_program(source).unwrap();
@@ -417,7 +433,7 @@ fn emits_difference_operator() {
 
     assert!(glsl.contains("float op_difference(float a, float b) {"));
     assert!(glsl.contains("return max(a, -b);"));
-    assert!(glsl.contains("return op_difference(obj_a, obj_b);"));
+    assert!(glsl.contains("return op_difference("));
 }
 
 #[test]
@@ -427,7 +443,7 @@ fn emits_union_operator() {
 
     assert!(glsl.contains("float op_union(float a, float b) {"));
     assert!(glsl.contains("return min(a, b);"));
-    assert!(glsl.contains("return op_union(obj_a, obj_b);"));
+    assert!(glsl.contains("return op_union("));
 }
 
 #[test]
@@ -438,7 +454,7 @@ fn emits_intersection_operator() {
 
     assert!(glsl.contains("float op_intersection(float a, float b) {"));
     assert!(glsl.contains("return max(a, b);"));
-    assert!(glsl.contains("return op_intersection(obj_a, obj_b);"));
+    assert!(glsl.contains("return op_intersection("));
 }
 
 #[test]
@@ -448,7 +464,7 @@ fn emits_xor_operator() {
 
     assert!(glsl.contains("float op_xor(float a, float b) {"));
     assert!(glsl.contains("return max(min(a, b), -max(a, b));"));
-    assert!(glsl.contains("return op_xor(obj_a, obj_b);"));
+    assert!(glsl.contains("return op_xor("));
 }
 
 #[test]
@@ -459,7 +475,7 @@ fn emits_smooth_union_operator() {
 
     assert!(glsl.contains("float op_smooth_union_min(float a, float b, float k) {"));
     assert!(glsl.contains("k *= 1.0 / (1.0 - sqrt(0.5));"));
-    assert!(glsl.contains("return op_smooth_union(obj_a, obj_b, 0.25);"));
+    assert!(glsl.contains("return op_smooth_union("));
 }
 
 #[test]
@@ -469,7 +485,7 @@ fn emits_smooth_intersection_operator() {
 
     assert!(glsl.contains("float op_smooth_intersection(float a, float b, float k) {"));
     assert!(glsl.contains("return op_smooth_intersection_max(a, b, k);"));
-    assert!(glsl.contains("return op_smooth_intersection(obj_a, obj_b, 0.25);"));
+    assert!(glsl.contains("return op_smooth_intersection("));
 }
 
 #[test]
@@ -479,7 +495,7 @@ fn emits_smooth_difference_operator() {
 
     assert!(glsl.contains("float op_smooth_difference(float a, float b, float k) {"));
     assert!(glsl.contains("return op_smooth_difference_max(a, -b, k);"));
-    assert!(glsl.contains("return op_smooth_difference(obj_a, obj_b, 0.25);"));
+    assert!(glsl.contains("return op_smooth_difference("));
 }
 
 #[test]
@@ -492,7 +508,7 @@ fn emits_smooth_xor_operator() {
     assert!(glsl.contains(
         "return op_smooth_xor_max(op_smooth_xor_min(a, b, k), -op_smooth_xor_max(a, b, k), k);"
     ));
-    assert!(glsl.contains("return op_smooth_xor(obj_a, obj_b, 0.25);"));
+    assert!(glsl.contains("return op_smooth_xor("));
 }
 
 #[test]

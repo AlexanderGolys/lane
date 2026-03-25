@@ -47,10 +47,7 @@ vec3 dsl_centerB(float t) {
 }
 
 float scene_sdf(vec3 p, float time) {
-    float obj_A = sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0));
-    float obj_B = sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time)));
-    float obj_C = op_smooth_union(obj_A, obj_B, dsl_hardness(time));
-    return obj_C;
+    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time))), dsl_hardness(time));
 }
 
 vec3 scene_grad(vec3 p, float time) {
