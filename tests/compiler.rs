@@ -39,8 +39,12 @@ fn lists_known_primitives_with_lane_types() {
 
     assert_eq!(box3.dimension, ShapeDimension::D3);
     assert_eq!(box3.parameter_space, "ParamBox3D");
-    assert_eq!(box3.fields[0].name, "b");
-    assert_eq!(box3.fields[0].domain, "R3");
+    assert_eq!(box3.fields[0].name, "a");
+    assert_eq!(box3.fields[0].domain, "R");
+    assert_eq!(box3.fields[1].name, "b");
+    assert_eq!(box3.fields[1].domain, "R");
+    assert_eq!(box3.fields[2].name, "c");
+    assert_eq!(box3.fields[2].domain, "R");
     assert!(box3
         .type_body
         .as_deref()
@@ -296,14 +300,16 @@ fn emits_box_primitive() {
 
 #[test]
 fn emits_box3d_primitive() {
-    let source = "Obj3 shape = Box3D(b=(2, 1, 3))\nout: shape\n";
+    let source = "Obj3 shape = Box3D(a=2, b=1, c=3)\nout: shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamBox3D"));
-    assert!(glsl.contains("vec3 b;"));
+    assert!(glsl.contains("float a;"));
+    assert!(glsl.contains("float b;"));
+    assert!(glsl.contains("float c;"));
     assert!(glsl.contains("float sdf0_Box3D(vec3 p, ParamBox3D params)"));
-    assert!(glsl.contains("vec3 d = abs(p) - params.b;"));
-    assert!(glsl.contains("sdf0_Box3D(p, ParamBox3D(vec3(2.0, 1.0, 3.0)))"));
+    assert!(glsl.contains("vec3 d = abs(p) - vec3(params.a, params.b, params.c);"));
+    assert!(glsl.contains("sdf0_Box3D(p, ParamBox3D(2.0, 1.0, 3.0))"));
 }
 
 #[test]
@@ -311,7 +317,7 @@ fn emits_box3d_from_flat_positional_arguments() {
     let source = "Obj3 shape = Box3D(2, 1, 3)\nout: shape\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("sdf0_Box3D(p, ParamBox3D(vec3(2.0, 1.0, 3.0)))"));
+    assert!(glsl.contains("sdf0_Box3D(p, ParamBox3D(2.0, 1.0, 3.0))"));
 }
 
 #[test]

@@ -10,7 +10,7 @@ Func(R, R2) anchor2 = (cos, sin)
 Func(R, Mat3) spin = ((cos, 0 - sin, 0), (sin, cos, 0), (0, 0, 1))
 
 Obj3 ball = Ball3D(r=2 + pulse(time)) + drift(time)
-Obj3 crate = Box3D(b=(1.4, .8, .6)) + (0, 0, .9)
+Obj3 crate = Box3D(a=1.4, b=.8, c=.6) + (0, 0, .9)
 Obj3 orbit = Ball3D(r=radiusB(time)) + (1.5, 0, 0)
 Obj3 torus = frame * (Torus3D(major=2.5, minor=.35) + (0, 0, 1))
 Obj3 simplex = spin(time) * Simplex3D(p0=(0, 0, .8), p1=(.8, 0, 0), p2=(0, .8, 0), p3=(0 - .4, 0 - .4, 0 - .6)) + (0, 0, 0 - .25)

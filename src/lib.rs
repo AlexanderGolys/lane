@@ -661,11 +661,21 @@ impl Default for Registry {
                 "Box3D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamBox3D"),
-                    fields: vec![PrimitiveFieldDef {
-                        name: "b",
-                        kind: PrimitiveFieldKind::Value(Type::Vec3),
-                    }],
-                    support_glsl: "struct ParamBox3D {\n    vec3 b;\n};\n\nfloat sdf0_Box3D(vec3 p, ParamBox3D params) {\n    vec3 d = abs(p) - params.b;\n    return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);\n}",
+                    fields: vec![
+                        PrimitiveFieldDef {
+                            name: "a",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                        PrimitiveFieldDef {
+                            name: "b",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                        PrimitiveFieldDef {
+                            name: "c",
+                            kind: PrimitiveFieldKind::Value(Type::Float),
+                        },
+                    ],
+                    support_glsl: "struct ParamBox3D {\n    float a;\n    float b;\n    float c;\n};\n\nfloat sdf0_Box3D(vec3 p, ParamBox3D params) {\n    vec3 d = abs(p) - vec3(params.a, params.b, params.c);\n    return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);\n}",
                 },
             ),
             (
