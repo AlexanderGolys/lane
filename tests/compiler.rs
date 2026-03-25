@@ -154,6 +154,12 @@ fn lists_preregistered_functions_and_types() {
         object.kind == PreregisteredObjectKind::Function && object.name == "op_smooth_xor"
     }));
     assert!(objects.iter().any(|object| {
+        object.kind == PreregisteredObjectKind::Function && object.name == "pow2"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.kind == PreregisteredObjectKind::Function && object.name == "cexp"
+    }));
+    assert!(objects.iter().any(|object| {
         object.kind == PreregisteredObjectKind::Type && object.name == "ParamBall3D"
     }));
 }
@@ -164,16 +170,18 @@ fn lists_builtin_lane_objects() {
 
     assert!(objects
         .iter()
-        .any(|object| object.name == "sin" && object.ty == "Func(R, R)"));
+        .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "Union" && object.ty == "Func(Obj3 × Obj3, Obj3)"));
+        .any(|object| object.name == "cexp" && object.ty == "Hom(R2, R2)"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "Union" && object.ty == "Hom(Obj3 × Obj3, Obj3)"));
     assert!(objects.iter().any(|object| {
-        object.name == "SmoothUnion" && object.ty == "Func(R × Obj3 × Obj3, Obj3)"
+        object.name == "SmoothUnion" && object.ty == "Hom(R, Hom(Obj3 × Obj3, Obj3))"
     }));
-    assert!(objects.iter().any(|object| {
-        object.name == "gradient" && object.ty == "Func(R × Func(R3, R) × R3, R3)"
-    }));
+    assert!(!objects.iter().any(|object| object.name == "sin"));
+    assert!(!objects.iter().any(|object| object.name == "gradient"));
 }
 
 #[test]
@@ -214,6 +222,16 @@ fn supports_derivative_operator_in_function_bodies() {
 
     assert!(glsl.contains("float dsl_slope(float t) {"));
     assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
+}
+
+#[test]
+fn emits_support_for_custom_complex_functions() {
+    let source = "Vec2 seed = (1, 0)\nfunc(float -> vec2) orbit = cexp(seed)\nout: Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 cexp(vec2 z) {"));
+    assert!(glsl.contains("vec2 seed = vec2(1.0, 0.0);"));
+    assert!(glsl.contains("return cexp(seed);"));
 }
 
 #[test]

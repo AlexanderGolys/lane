@@ -8,7 +8,7 @@ Current slice:
 - pre-registered 2D `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
 - pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
 - associative binary operators such as `Union`, `Intersection`, and `Xor` accept any arity `>= 2` and are lowered to balanced binary calls
-- value functions `sin`, `cos`, `pow2`
+- custom value functions such as `pow2` and holomorphic `Vec2 -> Vec2` helpers including `cexp`, `clog`, `csqrt`, `csin`, `ccos`, `ctan`, `csinh`, `ccosh`, `ctanh`, and `cinv`
 - unary minus in value expressions emits direct negative GLSL terms instead of `(0.0 - x)` wrappers
 - differential builtin objects such as `derivative`, `partialX`, `partialY`, `partialZ`, `directionalDerivative`, `gradient`, and `divergence`
 - unary function composition with `f @ g`, meaning `x |-> f(g(x))`
@@ -83,4 +83,4 @@ Show CLI usage with:
 cargo run -- --help
 ```
 
-CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive, `lane --list-objects` prints builtin Lane objects as `Type name`, and 2D primitives expose local `Vec2` evaluators while 3D primitives expose local `Vec3` evaluators.
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive, `lane --list-objects` prints interpreter-known custom Lane objects as `Type name` using curried `Hom(...)` notation, excludes raw GLSL builtins such as `sin`, and omits trivial derived combinators such as `gradient`, and 2D primitives expose local `Vec2` evaluators while 3D primitives expose local `Vec3` evaluators.

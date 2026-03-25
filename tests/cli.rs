@@ -139,9 +139,11 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Func(R, R) sin"));
-    assert!(stdout.contains("Func(Obj3 × Obj3, Obj3) Union"));
-    assert!(stdout.contains("Func(R × Obj3 × Obj3, Obj3) SmoothUnion"));
+    assert!(stdout.contains("Hom(R, R) pow2"));
+    assert!(stdout.contains("Hom(R2, R2) cexp"));
+    assert!(stdout.contains("Hom(Obj3 × Obj3, Obj3) Union"));
+    assert!(stdout.contains("Hom(R, Hom(Obj3 × Obj3, Obj3)) SmoothUnion"));
+    assert!(!stdout.contains(" sin"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
 
@@ -155,7 +157,7 @@ fn lists_known_builtin_objects_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Func(R, R) cos"));
+    assert!(stdout.contains("Hom(R2, R2) ctanh"));
 }
 
 #[test]

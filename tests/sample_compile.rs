@@ -38,6 +38,10 @@ float op_smooth_union(float a, float b, float k) {
     return op_smooth_union_min(a, b, k);
 }
 
+float pow2(float x) {
+    return x * x;
+}
+
 float dsl_hardness(float t) {
     return (pow2(sin(t)) + 0.5);
 }

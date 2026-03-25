@@ -575,6 +575,12 @@ impl TypedProgram {
 
     fn support_blocks(&self, registry: &Registry) -> Vec<&'static str> {
         let mut names = BTreeSet::new();
+        for func in &self.funcs {
+            collect_value_support(&func.expr, &mut names);
+        }
+        for binding in &self.value_bindings {
+            collect_value_support(&binding.expr, &mut names);
+        }
         for binding in &self.bindings {
             collect_object_support(&binding.expr, &mut names);
         }
@@ -582,12 +588,18 @@ impl TypedProgram {
 
         let mut blocks = Vec::new();
         for name in names {
-            if let Some(primitive) = registry.primitives.get(name) {
+            if let Some(primitive) = registry.primitives.get(name.as_str()) {
                 blocks.push(primitive.support_glsl);
                 continue;
             }
-            if let Some(op) = registry.object_ops.get(name) {
+            if let Some(op) = registry.object_ops.get(name.as_str()) {
                 blocks.push(op.support_glsl);
+                continue;
+            }
+            if let Some(func) = registry.value_funcs.get(name.as_str()) {
+                if let Some(support_glsl) = func.support_glsl {
+                    blocks.push(support_glsl);
+                }
             }
         }
         blocks
@@ -637,10 +649,17 @@ struct ObjectOpDef {
 }
 
 #[derive(Clone, Debug)]
+struct ValueFuncDef {
+    ty: Type,
+    support_glsl: Option<&'static str>,
+    listed: bool,
+}
+
+#[derive(Clone, Debug)]
 struct Registry {
     primitives: HashMap<&'static str, PrimitiveDef>,
     object_ops: HashMap<&'static str, ObjectOpDef>,
-    builtins: HashMap<&'static str, Type>,
+    value_funcs: HashMap<&'static str, ValueFuncDef>,
 }
 
 impl Default for Registry {
@@ -924,89 +943,240 @@ impl Default for Registry {
             ),
         ]);
 
-        let builtins = HashMap::from([
-            ("sin", Type::func(Type::Float, Type::Float)),
-            ("cos", Type::func(Type::Float, Type::Float)),
-            ("pow2", Type::func(Type::Float, Type::Float)),
+        let value_funcs = HashMap::from([
+            (
+                "sin",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "cos",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "pow2",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: Some(
+                        "float pow2(float x) {\n    return x * x;\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "cinv",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 cinv(vec2 z) {\n    return vec2(z.x, -z.y) / dot(z, z);\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "cexp",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 cexp(vec2 z) {\n    float scale = exp(z.x);\n    return scale * vec2(cos(z.y), sin(z.y));\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "clog",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 clog(vec2 z) {\n    return vec2(log(length(z)), atan(z.y, z.x));\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "csqrt",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 csqrt(vec2 z) {\n    float r = length(z);\n    float a = sqrt(max((r + z.x) * 0.5, 0.0));\n    float b = sqrt(max((r - z.x) * 0.5, 0.0));\n    return vec2(a, sign(z.y) * b);\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "csin",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 csin(vec2 z) {\n    return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y));\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "ccos",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 ccos(vec2 z) {\n    return vec2(cos(z.x) * cosh(z.y), -sin(z.x) * sinh(z.y));\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "ctan",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 ctan(vec2 z) {\n    float d = cos(2.0 * z.x) + cosh(2.0 * z.y);\n    return vec2(sin(2.0 * z.x), sinh(2.0 * z.y)) / d;\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "csinh",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 csinh(vec2 z) {\n    return vec2(sinh(z.x) * cos(z.y), cosh(z.x) * sin(z.y));\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "ccosh",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 ccosh(vec2 z) {\n    return vec2(cosh(z.x) * cos(z.y), sinh(z.x) * sin(z.y));\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
+                "ctanh",
+                ValueFuncDef {
+                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    support_glsl: Some(
+                        "vec2 ctanh(vec2 z) {\n    float d = cosh(2.0 * z.x) + cos(2.0 * z.y);\n    return vec2(sinh(2.0 * z.x), sin(2.0 * z.y)) / d;\n}",
+                    ),
+                    listed: true,
+                },
+            ),
             (
                 "derivative",
-                Type::func(
-                    Type::Float,
-                    Type::func(
-                        Type::func(Type::Float, Type::Float),
-                        Type::func(Type::Float, Type::Float),
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Float,
+                        Type::func(
+                            Type::func(Type::Float, Type::Float),
+                            Type::func(Type::Float, Type::Float),
+                        ),
                     ),
-                ),
+                    support_glsl: None,
+                    listed: false,
+                },
             ),
             (
                 "partialX",
-                Type::func(
-                    Type::Float,
-                    Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Float),
-                    ),
-                ),
-            ),
-            (
-                "partialY",
-                Type::func(
-                    Type::Float,
-                    Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Float),
-                    ),
-                ),
-            ),
-            (
-                "partialZ",
-                Type::func(
-                    Type::Float,
-                    Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Float),
-                    ),
-                ),
-            ),
-            (
-                "directionalDerivative",
-                Type::func(
-                    Type::Float,
-                    Type::func(
-                        Type::Vec3,
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Float,
                         Type::func(
                             Type::func(Type::Vec3, Type::Float),
                             Type::func(Type::Vec3, Type::Float),
                         ),
                     ),
-                ),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "partialY",
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Float,
+                        Type::func(
+                            Type::func(Type::Vec3, Type::Float),
+                            Type::func(Type::Vec3, Type::Float),
+                        ),
+                    ),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "partialZ",
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Float,
+                        Type::func(
+                            Type::func(Type::Vec3, Type::Float),
+                            Type::func(Type::Vec3, Type::Float),
+                        ),
+                    ),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "directionalDerivative",
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Float,
+                        Type::func(
+                            Type::Vec3,
+                            Type::func(
+                                Type::func(Type::Vec3, Type::Float),
+                                Type::func(Type::Vec3, Type::Float),
+                            ),
+                        ),
+                    ),
+                    support_glsl: None,
+                    listed: false,
+                },
             ),
             (
                 "gradient",
-                Type::func(
-                    Type::Float,
-                    Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Vec3),
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Float,
+                        Type::func(
+                            Type::func(Type::Vec3, Type::Float),
+                            Type::func(Type::Vec3, Type::Vec3),
+                        ),
                     ),
-                ),
+                    support_glsl: None,
+                    listed: false,
+                },
             ),
             (
                 "divergence",
-                Type::func(
-                    Type::Float,
-                    Type::func(
-                        Type::func(Type::Vec3, Type::Vec3),
-                        Type::func(Type::Vec3, Type::Float),
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Float,
+                        Type::func(
+                            Type::func(Type::Vec3, Type::Vec3),
+                            Type::func(Type::Vec3, Type::Float),
+                        ),
                     ),
-                ),
+                    support_glsl: None,
+                    listed: false,
+                },
             ),
         ]);
 
         Self {
             primitives,
             object_ops,
-            builtins,
+            value_funcs,
         }
     }
 }
@@ -1044,12 +1214,16 @@ impl Registry {
     fn known_builtin_objects(&self) -> Vec<KnownBuiltinObject> {
         let mut objects = Vec::new();
 
-        let mut builtin_names: Vec<_> = self.builtins.keys().copied().collect();
-        builtin_names.sort_unstable();
-        for name in builtin_names {
+        let mut value_func_names: Vec<_> = self
+            .value_funcs
+            .iter()
+            .filter_map(|(name, func)| func.listed.then_some(*name))
+            .collect();
+        value_func_names.sort_unstable();
+        for name in value_func_names {
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
-                ty: format_type(&self.builtins[name]),
+                ty: format_object_type(&self.value_funcs[name].ty),
             });
         }
 
@@ -1059,7 +1233,7 @@ impl Registry {
             let op = &self.object_ops[name];
             objects.push(KnownBuiltinObject {
                 name: op.name.to_string(),
-                ty: format_type(&object_op_type(op)),
+                ty: format_object_type(&object_op_type(op)),
             });
         }
 
@@ -1082,6 +1256,20 @@ impl Registry {
                 name: op.glsl_name.to_string(),
                 kind: PreregisteredObjectKind::Function,
                 body: op.support_glsl.to_string(),
+            });
+        }
+
+        let mut value_func_names: Vec<_> = self
+            .value_funcs
+            .iter()
+            .filter_map(|(name, func)| func.support_glsl.map(|_| *name))
+            .collect();
+        value_func_names.sort_unstable();
+        for name in value_func_names {
+            objects.push(PreregisteredObject {
+                name: name.to_string(),
+                kind: PreregisteredObjectKind::Function,
+                body: self.value_funcs[name].support_glsl.unwrap().to_string(),
             });
         }
 
@@ -1194,8 +1382,8 @@ struct Env<'a> {
 impl<'a> Env<'a> {
     fn new(registry: &'a Registry) -> Self {
         let mut types = HashMap::new();
-        for (name, ty) in &registry.builtins {
-            types.insert((*name).to_string(), ty.clone());
+        for (name, func) in &registry.value_funcs {
+            types.insert((*name).to_string(), func.ty.clone());
         }
         for op in registry.object_ops.values() {
             types.insert(op.name.to_string(), object_op_type(op));
@@ -1439,20 +1627,111 @@ fn fold_associative_registered_op(
     }
 }
 
-fn collect_object_support<'a>(expr: &'a ObjectExpr, names: &mut BTreeSet<&'a str>) {
+fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
     match expr {
         ObjectExpr::Var(_) => {}
-        ObjectExpr::Primitive { name, .. } => {
-            names.insert(name.as_str());
+        ObjectExpr::Primitive { name, fields, .. } => {
+            names.insert(name.clone());
+            for (_, value) in fields {
+                match value {
+                    PrimitiveArgExpr::Value(value) => collect_value_support(value, names),
+                    PrimitiveArgExpr::Vec2List(vertices) => {
+                        for vertex in vertices {
+                            collect_value_support(vertex, names);
+                        }
+                    }
+                }
+            }
         }
-        ObjectExpr::AmbientTransform { object, .. } => collect_object_support(object, names),
-        ObjectExpr::RegisteredOp {
-            name, object_args, ..
+        ObjectExpr::AmbientTransform {
+            object,
+            translation,
+            linear,
         } => {
-            names.insert(name.as_str());
+            collect_value_support(translation, names);
+            collect_value_support(linear, names);
+            collect_object_support(object, names);
+        }
+        ObjectExpr::RegisteredOp {
+            name,
+            value_args,
+            object_args,
+            ..
+        } => {
+            names.insert(name.clone());
+            for arg in value_args {
+                collect_value_support(arg, names);
+            }
             for arg in object_args {
                 collect_object_support(arg, names);
             }
+        }
+    }
+}
+
+fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
+    match expr {
+        ValueExpr::Float(_) | ValueExpr::Var(_, _) => {}
+        ValueExpr::Call { func, args, .. } => {
+            names.insert(func.clone());
+            for arg in args {
+                collect_value_support(arg, names);
+            }
+        }
+        ValueExpr::Binary { left, right, .. } => {
+            collect_value_support(left, names);
+            collect_value_support(right, names);
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_value_support(x, names);
+            collect_value_support(y, names);
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_value_support(x, names);
+            collect_value_support(y, names);
+            collect_value_support(z, names);
+        }
+        ValueExpr::Mat3(r0, r1, r2) => {
+            collect_value_support(r0, names);
+            collect_value_support(r1, names);
+            collect_value_support(r2, names);
+        }
+        ValueExpr::Derivative { epsilon, func, at }
+        | ValueExpr::Gradient { epsilon, func, at }
+        | ValueExpr::Divergence { epsilon, func, at } => {
+            collect_value_support(epsilon, names);
+            collect_function_support(func, names);
+            collect_value_support(at, names);
+        }
+        ValueExpr::Partial {
+            epsilon, func, at, ..
+        } => {
+            collect_value_support(epsilon, names);
+            collect_function_support(func, names);
+            collect_value_support(at, names);
+        }
+        ValueExpr::DirectionalDerivative {
+            epsilon,
+            direction,
+            func,
+            at,
+        } => {
+            collect_value_support(epsilon, names);
+            collect_value_support(direction, names);
+            collect_function_support(func, names);
+            collect_value_support(at, names);
+        }
+    }
+}
+
+fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
+    match &func.kind {
+        FunctionExprKind::Named(name) => {
+            names.insert(name.clone());
+        }
+        FunctionExprKind::Compose(outer, inner) => {
+            collect_function_support(outer, names);
+            collect_function_support(inner, names);
         }
     }
 }
@@ -2418,10 +2697,12 @@ fn is_float_literal(expr: &ValueExpr, expected: f64) -> bool {
 }
 
 fn object_op_type(op: &ObjectOpDef) -> Type {
-    let mut ty = Type::Obj3;
-    for _ in 0..op.object_arg_count {
-        ty = Type::func(Type::Obj3, ty);
-    }
+    let object_domain = if op.object_arg_count == 1 {
+        Type::Obj3
+    } else {
+        Type::Product(vec![Type::Obj3; op.object_arg_count])
+    };
+    let mut ty = Type::func(object_domain, Type::Obj3);
     for value_arg in op.value_arg_types.iter().rev() {
         ty = Type::func(value_arg.clone(), ty);
     }
@@ -2511,6 +2792,28 @@ fn format_type(ty: &Type) -> String {
                 format_type(&Type::Product(inputs.into_iter().cloned().collect()))
             };
             format!("Func({}, {})", domain, format_type(output))
+        }
+    }
+}
+
+fn format_object_type(ty: &Type) -> String {
+    match ty {
+        Type::Float => "R".to_string(),
+        Type::Int => "Z".to_string(),
+        Type::Vec2 => "R2".to_string(),
+        Type::Vec3 => "R3".to_string(),
+        Type::Vec4 => "R4".to_string(),
+        Type::Mat2 => "Mat2".to_string(),
+        Type::Mat3 => "Mat3".to_string(),
+        Type::Mat4 => "Mat4".to_string(),
+        Type::Obj3 => "Obj3".to_string(),
+        Type::Product(parts) => parts
+            .iter()
+            .map(format_object_type)
+            .collect::<Vec<_>>()
+            .join(" × "),
+        Type::Func(input, output) => {
+            format!("Hom({}, {})", format_object_type(input), format_object_type(output))
         }
     }
 }
