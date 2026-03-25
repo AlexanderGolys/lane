@@ -171,10 +171,6 @@
         "required": true,
         "types": [
           {
-            "type": "constraint_type",
-            "named": true
-          },
-          {
             "type": "end_type",
             "named": true
           },
@@ -287,50 +283,6 @@
     }
   },
   {
-    "type": "constraint_type",
-    "named": true,
-    "fields": {
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "constraint_type",
-            "named": true
-          },
-          {
-            "type": "end_type",
-            "named": true
-          },
-          {
-            "type": "function_type",
-            "named": true
-          },
-          {
-            "type": "hom_type",
-            "named": true
-          },
-          {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
-            "type": "parenthesized_type",
-            "named": true
-          },
-          {
-            "type": "product_type",
-            "named": true
-          },
-          {
-            "type": "type_identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "end_type",
     "named": true,
     "fields": {
@@ -338,10 +290,6 @@
         "multiple": false,
         "required": true,
         "types": [
-          {
-            "type": "constraint_type",
-            "named": true
-          },
           {
             "type": "end_type",
             "named": true
@@ -383,10 +331,6 @@
         "required": true,
         "types": [
           {
-            "type": "constraint_type",
-            "named": true
-          },
-          {
             "type": "end_type",
             "named": true
           },
@@ -420,10 +364,6 @@
         "multiple": false,
         "required": true,
         "types": [
-          {
-            "type": "constraint_type",
-            "named": true
-          },
           {
             "type": "end_type",
             "named": true
@@ -470,10 +410,6 @@
         "required": true,
         "types": [
           {
-            "type": "constraint_type",
-            "named": true
-          },
-          {
             "type": "end_type",
             "named": true
           },
@@ -507,10 +443,6 @@
         "multiple": false,
         "required": true,
         "types": [
-          {
-            "type": "constraint_type",
-            "named": true
-          },
           {
             "type": "end_type",
             "named": true
@@ -562,10 +494,6 @@
         "required": true,
         "types": [
           {
-            "type": "constraint_type",
-            "named": true
-          },
-          {
             "type": "end_type",
             "named": true
           },
@@ -606,10 +534,6 @@
         "required": true,
         "types": [
           {
-            "type": "constraint_type",
-            "named": true
-          },
-          {
             "type": "end_type",
             "named": true
           },
@@ -643,10 +567,6 @@
         "multiple": false,
         "required": true,
         "types": [
-          {
-            "type": "constraint_type",
-            "named": true
-          },
           {
             "type": "end_type",
             "named": true
@@ -818,10 +738,6 @@
       "required": true,
       "types": [
         {
-          "type": "constraint_type",
-          "named": true
-        },
-        {
           "type": "end_type",
           "named": true
         },
@@ -861,10 +777,6 @@
         "required": true,
         "types": [
           {
-            "type": "constraint_type",
-            "named": true
-          },
-          {
             "type": "end_type",
             "named": true
           },
@@ -894,10 +806,6 @@
         "multiple": true,
         "required": true,
         "types": [
-          {
-            "type": "constraint_type",
-            "named": true
-          },
           {
             "type": "end_type",
             "named": true
@@ -1146,10 +1054,6 @@
   },
   {
     "type": "@",
-    "named": false
-  },
-  {
-    "type": "C",
     "named": false
   },
   {

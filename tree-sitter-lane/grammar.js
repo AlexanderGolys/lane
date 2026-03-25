@@ -59,7 +59,6 @@ module.exports = grammar({
             $.legacy_function_type,
             $.hom_type,
             $.end_type,
-            $.constraint_type,
             $.parenthesized_type,
             $.type_identifier,
         ),
@@ -100,13 +99,6 @@ module.exports = grammar({
 
         end_type: ($) => seq(
             'End',
-            '(',
-            field('value', $._type),
-            ')',
-        ),
-
-        constraint_type: ($) => seq(
-            'C',
             '(',
             field('value', $._type),
             ')',

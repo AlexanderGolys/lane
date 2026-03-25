@@ -186,10 +186,18 @@ fn lists_builtin_lane_objects() {
 
 #[test]
 fn supports_new_type_syntax_aliases() {
-    let source = "provided R time\nprovided Hom(R3, R) density\nprovided End(R) loop\nprovided C(R3) potential\ngenerate Ball3D(r=1)\n";
+    let source = "provided R time\nprovided Hom(R3, R) density\nprovided End(R) loop\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
+}
+
+#[test]
+fn rejects_removed_constraint_type_alias() {
+    let source = "provided C(R3) potential\ngenerate Ball3D(r=1)\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("unsupported type 'C(R3)'"));
 }
 
 #[test]

@@ -1,4 +1,4 @@
-["provided" "generate" "gen" "construct" "const" "Func" "func" "Hom" "End" "C"] @keyword
+["provided" "generate" "gen" "construct" "const" "Func" "func" "Hom" "End"] @keyword
 
 (gen_modifier) @keyword.modifier
 
@@ -20,7 +20,6 @@
 
 (binding_declaration
   type: [
-    (constraint_type)
     (end_type)
     (function_type)
     (hom_type)

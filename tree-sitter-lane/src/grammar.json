@@ -190,10 +190,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "constraint_type"
-        },
-        {
-          "type": "SYMBOL",
           "name": "parenthesized_type"
         },
         {
@@ -373,31 +369,6 @@
         {
           "type": "STRING",
           "value": "End"
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_type"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        }
-      ]
-    },
-    "constraint_type": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "C"
         },
         {
           "type": "STRING",

@@ -3570,10 +3570,6 @@ fn parse_type(source: &str) -> Result<Type, Error> {
         let ty = parse_type(inner)?;
         return Ok(Type::func(ty.clone(), ty));
     }
-    if let Some(inner) = strip_type_head(source, "C") {
-        let ty = parse_type(inner)?;
-        return Ok(Type::func(ty, Type::Float));
-    }
     if let Some(parts) = split_top_level_product(source) {
         let mut parsed = Vec::new();
         for part in parts {
