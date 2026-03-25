@@ -374,7 +374,7 @@ enum PrimitiveFieldKind {
 #[derive(Clone, Debug)]
 enum PrimitiveKind {
     ParamStruct(&'static str),
-    Polygon,
+    Polygon2D,
 }
 
 #[derive(Clone, Debug)]
@@ -408,20 +408,20 @@ impl Default for Registry {
                 },
             ),
             (
-                "Box",
+                "Box2D",
                 PrimitiveDef {
-                    kind: PrimitiveKind::ParamStruct("ParamBox"),
+                    kind: PrimitiveKind::ParamStruct("ParamBox2D"),
                     fields: vec![PrimitiveFieldDef {
                         name: "b",
                         kind: PrimitiveFieldKind::Value(Type::Vec2),
                     }],
-                    support_glsl: "struct ParamBox {\n    vec2 b;\n};\n\nfloat sdf0_Box(vec3 p, ParamBox params) {\n    vec2 d = abs(p.xy) - params.b;\n    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);\n}",
+                    support_glsl: "struct ParamBox2D {\n    vec2 b;\n};\n\nfloat sdf0_Box2D(vec3 p, ParamBox2D params) {\n    vec2 d = abs(p.xy) - params.b;\n    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);\n}",
                 },
             ),
             (
-                "Segment",
+                "Segment2D",
                 PrimitiveDef {
-                    kind: PrimitiveKind::ParamStruct("ParamSegment"),
+                    kind: PrimitiveKind::ParamStruct("ParamSegment2D"),
                     fields: vec![
                         PrimitiveFieldDef {
                             name: "a",
@@ -432,13 +432,13 @@ impl Default for Registry {
                             kind: PrimitiveFieldKind::Value(Type::Vec2),
                         },
                     ],
-                    support_glsl: "struct ParamSegment {\n    vec2 a;\n    vec2 b;\n};\n\nfloat sdf0_Segment(vec3 p, ParamSegment params) {\n    vec2 pa = p.xy - params.a;\n    vec2 ba = params.b - params.a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - (ba * h));\n}",
+                    support_glsl: "struct ParamSegment2D {\n    vec2 a;\n    vec2 b;\n};\n\nfloat sdf0_Segment2D(vec3 p, ParamSegment2D params) {\n    vec2 pa = p.xy - params.a;\n    vec2 ba = params.b - params.a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - (ba * h));\n}",
                 },
             ),
             (
-                "Triangle",
+                "Triangle2D",
                 PrimitiveDef {
-                    kind: PrimitiveKind::ParamStruct("ParamTriangle"),
+                    kind: PrimitiveKind::ParamStruct("ParamTriangle2D"),
                     fields: vec![
                         PrimitiveFieldDef {
                             name: "p0",
@@ -453,29 +453,29 @@ impl Default for Registry {
                             kind: PrimitiveFieldKind::Value(Type::Vec2),
                         },
                     ],
-                    support_glsl: "struct ParamTriangle {\n    vec2 p0;\n    vec2 p1;\n    vec2 p2;\n};\n\nfloat sdf0_Triangle(vec3 p, ParamTriangle params) {\n    vec2 e0 = params.p1 - params.p0;\n    vec2 e1 = params.p2 - params.p1;\n    vec2 e2 = params.p0 - params.p2;\n    vec2 v0 = p.xy - params.p0;\n    vec2 v1 = p.xy - params.p1;\n    vec2 v2 = p.xy - params.p2;\n    vec2 pq0 = v0 - (e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0));\n    vec2 pq1 = v1 - (e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0));\n    vec2 pq2 = v2 - (e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0));\n    float s = sign((e0.x * e2.y) - (e0.y * e2.x));\n    vec2 d = min(min(vec2(dot(pq0, pq0), s * ((v0.x * e0.y) - (v0.y * e0.x))), vec2(dot(pq1, pq1), s * ((v1.x * e1.y) - (v1.y * e1.x)))), vec2(dot(pq2, pq2), s * ((v2.x * e2.y) - (v2.y * e2.x))));\n    return -sqrt(d.x) * sign(d.y);\n}",
+                    support_glsl: "struct ParamTriangle2D {\n    vec2 p0;\n    vec2 p1;\n    vec2 p2;\n};\n\nfloat sdf0_Triangle2D(vec3 p, ParamTriangle2D params) {\n    vec2 e0 = params.p1 - params.p0;\n    vec2 e1 = params.p2 - params.p1;\n    vec2 e2 = params.p0 - params.p2;\n    vec2 v0 = p.xy - params.p0;\n    vec2 v1 = p.xy - params.p1;\n    vec2 v2 = p.xy - params.p2;\n    vec2 pq0 = v0 - (e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0));\n    vec2 pq1 = v1 - (e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0));\n    vec2 pq2 = v2 - (e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0));\n    float s = sign((e0.x * e2.y) - (e0.y * e2.x));\n    vec2 d = min(min(vec2(dot(pq0, pq0), s * ((v0.x * e0.y) - (v0.y * e0.x))), vec2(dot(pq1, pq1), s * ((v1.x * e1.y) - (v1.y * e1.x)))), vec2(dot(pq2, pq2), s * ((v2.x * e2.y) - (v2.y * e2.x))));\n    return -sqrt(d.x) * sign(d.y);\n}",
                 },
             ),
             (
-                "Polygon",
+                "Polygon2D",
                 PrimitiveDef {
-                    kind: PrimitiveKind::Polygon,
+                    kind: PrimitiveKind::Polygon2D,
                     fields: vec![PrimitiveFieldDef {
                         name: "points",
                         kind: PrimitiveFieldKind::Vec2List,
                     }],
-                    support_glsl: "const int POLYGON_MAX_VERTICES = 16;\n\nfloat sdf0_Polygon(vec2 p, vec2 vertices[POLYGON_MAX_VERTICES], int count) {\n    float d = dot(p - vertices[0], p - vertices[0]);\n    float s = 1.0;\n    for (int i = 0, j = count - 1; i < count; j = i, i++) {\n        vec2 e = vertices[j] - vertices[i];\n        vec2 w = p - vertices[i];\n        vec2 b = w - (e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0));\n        d = min(d, dot(b, b));\n        bvec3 c = bvec3(p.y >= vertices[i].y, p.y < vertices[j].y, (e.x * w.y) > (e.y * w.x));\n        if (all(c) || all(not(c))) {\n            s *= -1.0;\n        }\n    }\n    return s * sqrt(d);\n}",
+                    support_glsl: "const int POLYGON2D_MAX_VERTICES = 16;\n\nfloat sdf0_Polygon2D(vec2 p, vec2 vertices[POLYGON2D_MAX_VERTICES], int count) {\n    float d = dot(p - vertices[0], p - vertices[0]);\n    float s = 1.0;\n    for (int i = 0, j = count - 1; i < count; j = i, i++) {\n        vec2 e = vertices[j] - vertices[i];\n        vec2 w = p - vertices[i];\n        vec2 b = w - (e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0));\n        d = min(d, dot(b, b));\n        bvec3 c = bvec3(p.y >= vertices[i].y, p.y < vertices[j].y, (e.x * w.y) > (e.y * w.x));\n        if (all(c) || all(not(c))) {\n            s *= -1.0;\n        }\n    }\n    return s * sqrt(d);\n}",
                 },
             ),
             (
-                "Point",
+                "Point2D",
                 PrimitiveDef {
-                    kind: PrimitiveKind::ParamStruct("ParamPoint"),
+                    kind: PrimitiveKind::ParamStruct("ParamPoint2D"),
                     fields: vec![PrimitiveFieldDef {
                         name: "at",
                         kind: PrimitiveFieldKind::Value(Type::Vec2),
                     }],
-                    support_glsl: "struct ParamPoint {\n    vec2 at;\n};\n\nfloat sdf0_Point(vec3 p, ParamPoint params) {\n    return length(p.xy - params.at);\n}",
+                    support_glsl: "struct ParamPoint2D {\n    vec2 at;\n};\n\nfloat sdf0_Point2D(vec3 p, ParamPoint2D params) {\n    return length(p.xy - params.at);\n}",
                 },
             ),
         ]);
@@ -1057,7 +1057,7 @@ fn emit_object_expr(
                     name, point_expr, param_type, rendered_fields
                 )
             }
-            PrimitiveKind::Polygon => {
+            PrimitiveKind::Polygon2D => {
                 let vertices = fields
                     .iter()
                     .find_map(|(field_name, expr)| match (field_name.as_str(), expr) {
@@ -1066,7 +1066,7 @@ fn emit_object_expr(
                     })
                     .unwrap();
                 format!(
-                    "sdf0_Polygon({}.xy, {}, {})",
+                    "sdf0_Polygon2D({}.xy, {}, {})",
                     point_expr,
                     emit_polygon_vertices(vertices, helper_names),
                     vertices.len()
@@ -1659,57 +1659,58 @@ mod tests {
 
     #[test]
     fn emits_box_primitive() {
-        let source = "Obj3 shape = Box(b=(2, 1))\nout: shape\n";
+        let source = "Obj3 shape = Box2D(b=(2, 1))\nout: shape\n";
         let glsl = compile_program(source).unwrap();
 
-        assert!(glsl.contains("struct ParamBox"));
-        assert!(glsl.contains("float sdf0_Box(vec3 p, ParamBox params)"));
-        assert!(glsl.contains("sdf0_Box(p, ParamBox(vec2(2.0, 1.0)))"));
+        assert!(glsl.contains("struct ParamBox2D"));
+        assert!(glsl.contains("float sdf0_Box2D(vec3 p, ParamBox2D params)"));
+        assert!(glsl.contains("sdf0_Box2D(p, ParamBox2D(vec2(2.0, 1.0)))"));
     }
 
     #[test]
     fn emits_segment_primitive() {
-        let source = "Obj3 shape = Segment(a=(0, 0), b=(2, 1))\nout: shape\n";
+        let source = "Obj3 shape = Segment2D(a=(0, 0), b=(2, 1))\nout: shape\n";
         let glsl = compile_program(source).unwrap();
 
-        assert!(glsl.contains("struct ParamSegment"));
-        assert!(glsl.contains("float sdf0_Segment(vec3 p, ParamSegment params)"));
-        assert!(glsl.contains("sdf0_Segment(p, ParamSegment(vec2(0.0, 0.0), vec2(2.0, 1.0)))"));
+        assert!(glsl.contains("struct ParamSegment2D"));
+        assert!(glsl.contains("float sdf0_Segment2D(vec3 p, ParamSegment2D params)"));
+        assert!(glsl.contains("sdf0_Segment2D(p, ParamSegment2D(vec2(0.0, 0.0), vec2(2.0, 1.0)))"));
     }
 
     #[test]
     fn emits_triangle_primitive() {
-        let source = "Obj3 shape = Triangle(p0=(0, 0), p1=(2, 0), p2=(0, 2))\nout: shape\n";
+        let source = "Obj3 shape = Triangle2D(p0=(0, 0), p1=(2, 0), p2=(0, 2))\nout: shape\n";
         let glsl = compile_program(source).unwrap();
 
-        assert!(glsl.contains("struct ParamTriangle"));
-        assert!(glsl.contains("float sdf0_Triangle(vec3 p, ParamTriangle params)"));
+        assert!(glsl.contains("struct ParamTriangle2D"));
+        assert!(glsl.contains("float sdf0_Triangle2D(vec3 p, ParamTriangle2D params)"));
         assert!(glsl.contains(
-            "sdf0_Triangle(p, ParamTriangle(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)))"
+            "sdf0_Triangle2D(p, ParamTriangle2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)))"
         ));
     }
 
     #[test]
     fn emits_polygon_primitive() {
-        let source = "Obj3 shape = Polygon(points=((0, 0), (2, 0), (2, 1), (0, 1)))\nout: shape\n";
+        let source =
+            "Obj3 shape = Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))\nout: shape\n";
         let glsl = compile_program(source).unwrap();
 
-        assert!(glsl.contains("const int POLYGON_MAX_VERTICES = 16;"));
+        assert!(glsl.contains("const int POLYGON2D_MAX_VERTICES = 16;"));
         assert!(glsl.contains(
-            "float sdf0_Polygon(vec2 p, vec2 vertices[POLYGON_MAX_VERTICES], int count)"
+            "float sdf0_Polygon2D(vec2 p, vec2 vertices[POLYGON2D_MAX_VERTICES], int count)"
         ));
         assert!(glsl.contains(
-            "sdf0_Polygon(p.xy, vec2[16](vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(0.0, 1.0)"
+            "sdf0_Polygon2D(p.xy, vec2[16](vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(0.0, 1.0)"
         ));
     }
 
     #[test]
     fn emits_point_primitive() {
-        let source = "Obj3 shape = Point(at=(3, 4))\nout: shape\n";
+        let source = "Obj3 shape = Point2D(at=(3, 4))\nout: shape\n";
         let glsl = compile_program(source).unwrap();
 
-        assert!(glsl.contains("struct ParamPoint"));
-        assert!(glsl.contains("float sdf0_Point(vec3 p, ParamPoint params)"));
-        assert!(glsl.contains("sdf0_Point(p, ParamPoint(vec2(3.0, 4.0)))"));
+        assert!(glsl.contains("struct ParamPoint2D"));
+        assert!(glsl.contains("float sdf0_Point2D(vec3 p, ParamPoint2D params)"));
+        assert!(glsl.contains("sdf0_Point2D(p, ParamPoint2D(vec2(3.0, 4.0)))"));
     }
 }

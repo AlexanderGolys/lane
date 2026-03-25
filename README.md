@@ -5,7 +5,7 @@ A small Rust prototype for a functional SDF DSL that compiles object expressions
 Current slice:
 
 - pre-registered `Ball3D(r=...)` primitive
-- pre-registered 2D `Box`, `Segment`, `Triangle`, `Polygon`, and `Point` primitives in the XY plane
+- pre-registered 2D `Box2D`, `Segment2D`, `Triangle2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
 - pre-registered `SmoothUnion(k)` operator
 - value functions `sin`, `cos`, `pow2`
 - unary function composition with `f @ g`, meaning `x |-> f(g(x))`
@@ -14,7 +14,7 @@ Current slice:
 - top-level `in`, `func`, typed object bindings, and `out`
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
 - output uses `out: value`, for example `out: C`
-- polygons use `Polygon(points=((0, 0), (2, 0), (2, 1), (0, 1)))` and currently support up to 16 vertices
+- polygons use `Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))` and currently support up to 16 vertices
 
 Example input lives in `test.sdfdsl`.
 
