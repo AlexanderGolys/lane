@@ -9,6 +9,7 @@ Current slice:
 - pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
 - associative binary operators such as `Union`, `Intersection`, and `Xor` accept any arity `>= 2` and are lowered to balanced binary calls
 - value functions `sin`, `cos`, `pow2`
+- unary minus in value expressions emits direct negative GLSL terms instead of `(0.0 - x)` wrappers
 - differential builtin objects such as `derivative`, `partialX`, `partialY`, `partialZ`, `directionalDerivative`, `gradient`, and `divergence`
 - unary function composition with `f @ g`, meaning `x |-> f(g(x))`
 - `Vec2`, `Vec3`, and nested-row `Mat3` tuple literals in value expressions, with aliases such as `R`, `R2`, and `R3`

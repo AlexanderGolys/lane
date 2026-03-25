@@ -1992,12 +1992,17 @@ fn emit_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> 
         }
         ValueExpr::Binary {
             op, left, right, ..
-        } => format!(
-            "({} {} {})",
-            emit_value_expr(left, helper_names),
-            op.symbol(),
-            emit_value_expr(right, helper_names)
-        ),
+        } => {
+            if *op == BinOp::Sub && is_float_literal(left, 0.0) {
+                return format!("(-{})", emit_value_expr(right, helper_names));
+            }
+            format!(
+                "({} {} {})",
+                emit_value_expr(left, helper_names),
+                op.symbol(),
+                emit_value_expr(right, helper_names)
+            )
+        }
         ValueExpr::Vec2(x, y) => format!(
             "vec2({}, {})",
             emit_value_expr(x, helper_names),
