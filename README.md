@@ -35,3 +35,11 @@ List the known primitives, including each generated SDF signature and parameter 
 ```sh
 cargo run -- --list-primitives
 ```
+
+Inspect preregistered GLSL support objects with:
+
+```sh
+cargo run -- --list-preregistered
+cargo run -- --show-preregistered ParamBall3D
+cargo run -- --show-preregistered sdf0_Ball3D
+```

@@ -13,6 +13,16 @@ pub fn known_primitives() -> Vec<KnownPrimitive> {
     registry.known_primitives()
 }
 
+pub fn known_preregistered_objects() -> Vec<PreregisteredObject> {
+    let registry = Registry::default();
+    registry.preregistered_objects()
+}
+
+pub fn preregistered_object(name: &str) -> Option<PreregisteredObject> {
+    let registry = Registry::default();
+    registry.preregistered_object(name)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     message: String,
@@ -47,6 +57,19 @@ pub struct KnownPrimitive {
 pub struct KnownPrimitiveField {
     pub name: String,
     pub domain: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PreregisteredObjectKind {
+    Function,
+    Type,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreregisteredObject {
+    pub name: String,
+    pub kind: PreregisteredObjectKind,
+    pub body: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -602,6 +625,35 @@ impl Registry {
             })
             .collect()
     }
+
+    fn preregistered_objects(&self) -> Vec<PreregisteredObject> {
+        let mut objects = Vec::new();
+        let mut primitive_names: Vec<_> = self.primitives.keys().copied().collect();
+        primitive_names.sort_unstable();
+        for name in primitive_names {
+            objects.extend(self.primitives[name].preregistered_objects(name));
+        }
+
+        let mut op_names: Vec<_> = self.object_ops.keys().copied().collect();
+        op_names.sort_unstable();
+        for name in op_names {
+            let op = &self.object_ops[name];
+            objects.push(PreregisteredObject {
+                name: op.glsl_name.to_string(),
+                kind: PreregisteredObjectKind::Function,
+                body: op.support_glsl.to_string(),
+            });
+        }
+
+        objects.sort_by(|left, right| left.kind.cmp(&right.kind).then(left.name.cmp(&right.name)));
+        objects
+    }
+
+    fn preregistered_object(&self, name: &str) -> Option<PreregisteredObject> {
+        self.preregistered_objects()
+            .into_iter()
+            .find(|object| object.name == name)
+    }
 }
 
 impl PrimitiveDef {
@@ -622,6 +674,34 @@ impl PrimitiveDef {
             PrimitiveKind::ParamStruct(param_type) => Some((*param_type).to_string()),
             PrimitiveKind::Polygon2D => None,
         }
+    }
+
+    fn preregistered_objects(&self, name: &str) -> Vec<PreregisteredObject> {
+        let mut objects = Vec::new();
+        match &self.kind {
+            PrimitiveKind::ParamStruct(param_type) => {
+                if let Some((struct_body, function_body)) = self.support_glsl.split_once("\n\n") {
+                    objects.push(PreregisteredObject {
+                        name: (*param_type).to_string(),
+                        kind: PreregisteredObjectKind::Type,
+                        body: struct_body.to_string(),
+                    });
+                    objects.push(PreregisteredObject {
+                        name: format!("sdf0_{name}"),
+                        kind: PreregisteredObjectKind::Function,
+                        body: function_body.to_string(),
+                    });
+                }
+            }
+            PrimitiveKind::Polygon2D => {
+                objects.push(PreregisteredObject {
+                    name: "sdf0_Polygon2D".to_string(),
+                    kind: PreregisteredObjectKind::Function,
+                    body: self.support_glsl.to_string(),
+                });
+            }
+        }
+        objects
     }
 }
 

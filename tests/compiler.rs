@@ -1,4 +1,7 @@
-use sdf_dsl::{compile_program, known_primitives};
+use sdf_dsl::{
+    compile_program, known_preregistered_objects, known_primitives, preregistered_object,
+    PreregisteredObjectKind,
+};
 
 #[test]
 fn lists_known_primitives_with_domains() {
@@ -28,6 +31,35 @@ fn lists_known_primitives_with_domains() {
     assert_eq!(polygon.parameter_type, None);
     assert_eq!(polygon.fields[0].name, "points");
     assert_eq!(polygon.fields[0].domain, "vec2 list");
+}
+
+#[test]
+fn lists_preregistered_functions_and_types() {
+    let objects = known_preregistered_objects();
+
+    assert!(objects.iter().any(|object| {
+        object.kind == PreregisteredObjectKind::Function && object.name == "sdf0_Ball3D"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.kind == PreregisteredObjectKind::Function && object.name == "op_smooth_union"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.kind == PreregisteredObjectKind::Type && object.name == "ParamBall3D"
+    }));
+}
+
+#[test]
+fn looks_up_preregistered_body_by_name() {
+    let param_body = preregistered_object("ParamBall3D").unwrap();
+    let sdf_body = preregistered_object("sdf0_Ball3D").unwrap();
+
+    assert_eq!(param_body.kind, PreregisteredObjectKind::Type);
+    assert!(param_body.body.contains("struct ParamBall3D"));
+
+    assert_eq!(sdf_body.kind, PreregisteredObjectKind::Function);
+    assert!(sdf_body
+        .body
+        .contains("float sdf0_Ball3D(vec3 p, ParamBall3D params)"));
 }
 
 #[test]
