@@ -14,7 +14,7 @@ in: func(float -> vec3) centerA
     Obj3 B = Ball3D(r=rB(time)) + centerB(time)
     Obj3 C = SmoothUnion(hardness(time))(A, B)
 
-out: Obj3 = C
+out: C
 "#;
 
     let glsl = compile_program(source).unwrap();

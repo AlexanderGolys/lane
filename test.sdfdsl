@@ -6,4 +6,4 @@ func(float -> vec3) centerB = (1, sin, cos) + centerA / 2
 Obj3 A = Ball3D(r=3) + centerA(time)
 Obj3 B = Ball3D(r=rB(time)) + centerB(time)
 Obj3 C = SmoothUnion(hardness(time))(A, B)
-out: Obj3 = C
+out: C

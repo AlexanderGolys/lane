@@ -11,6 +11,7 @@ Current slice:
 - `Obj3 + vec3` placement sugar
 - top-level `in`, `func`, typed object bindings, and `out`
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
+- output uses `out: value`, for example `out: C`
 
 Example input lives in `test.sdfdsl`.
 

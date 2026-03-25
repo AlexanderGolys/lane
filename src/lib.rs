@@ -73,7 +73,6 @@ struct BindingDecl {
 
 #[derive(Clone, Debug)]
 struct OutputDecl {
-    ty: Type,
     expr: Expr,
 }
 
@@ -257,7 +256,6 @@ impl TypedProgram {
             });
         }
 
-        ensure_type(&program.output.ty, &Type::Obj3, "output")?;
         let output = infer_object_expr(&program.output.expr, &env)?;
 
         Ok(Self {
@@ -1021,10 +1019,16 @@ impl<'a> Parser<'a> {
         }
 
         if let Some(rest) = line.strip_prefix("out:") {
-            let (left, expr_source) = split_once_required(rest.trim(), '=')?;
-            let ty = parse_type(left.trim())?;
-            let expr = ExprParser::new(expr_source.trim()).parse()?;
-            return Ok(Decl::Output(OutputDecl { ty, expr }));
+            let expr_source = rest.trim();
+            if let Some((left, _)) = expr_source.split_once('=') {
+                if parse_type(left.trim()).is_ok() {
+                    return Err(Error::new(
+                        "use 'out: value' instead of 'out: type = value'",
+                    ));
+                }
+            }
+            let expr = ExprParser::new(expr_source).parse()?;
+            return Ok(Decl::Output(OutputDecl { expr }));
         }
 
         let (left, expr_source) = split_once_required(line, '=')?;
@@ -1398,7 +1402,7 @@ mod tests {
 
     #[test]
     fn composes_unary_functions_in_function_bodies() {
-        let source = "func(float -> float) wobble = sin @ sin\nout: Obj3 = Ball3D(r=wobble(0))\n";
+        let source = "func(float -> float) wobble = sin @ sin\nout: Ball3D(r=wobble(0))\n";
         let glsl = compile_program(source).unwrap();
 
         assert!(glsl.contains("float dsl_wobble(float t) {"));
@@ -1407,7 +1411,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_function_composition() {
-        let source = "in: func(float -> vec3) center\nfunc(float -> float) wobble = sin @ center\nout: Obj3 = Ball3D(r=1)\n";
+        let source = "in: func(float -> vec3) center\nfunc(float -> float) wobble = sin @ center\nout: Ball3D(r=1)\n";
         let error = compile_program(source).unwrap_err().to_string();
 
         assert!(error.contains("cannot compose sin @ center"));
@@ -1415,7 +1419,7 @@ mod tests {
 
     #[test]
     fn emits_only_used_support_code() {
-        let source = "Obj3 A = Ball3D(r=3)\nout: Obj3 = A\n";
+        let source = "Obj3 A = Ball3D(r=3)\nout: A\n";
         let glsl = compile_program(source).unwrap();
 
         assert!(glsl.contains("struct ParamBall3D"));
@@ -1425,15 +1429,22 @@ mod tests {
 
     #[test]
     fn rejects_unknown_primitive_field() {
-        let source = "Obj3 A = Ball3D(radius=3)\nout: Obj3 = A\n";
+        let source = "Obj3 A = Ball3D(radius=3)\nout: A\n";
         let error = compile_program(source).unwrap_err().to_string();
         assert!(error.contains("missing field 'r'"));
     }
 
     #[test]
     fn rejects_old_binding_syntax() {
-        let source = "A : Obj3 = Ball3D(r=3)\nout: Obj3 = A\n";
+        let source = "A : Obj3 = Ball3D(r=3)\nout: A\n";
         let error = compile_program(source).unwrap_err().to_string();
         assert!(error.contains("use 'type name = value'"));
+    }
+
+    #[test]
+    fn rejects_old_out_syntax() {
+        let source = "Obj3 A = Ball3D(r=3)\nout: Obj3 = A\n";
+        let error = compile_program(source).unwrap_err().to_string();
+        assert!(error.contains("use 'out: value'"));
     }
 }
