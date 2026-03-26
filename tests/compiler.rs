@@ -642,6 +642,14 @@ fn emits_segment_primitive() {
 }
 
 #[test]
+fn emits_segment2d_length_constructor() {
+    let source = "Obj3 shape = Segment2D(length=2)\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("sdf0_Segment2D((p).xy, ParamSegment2D(vec2((-1.0 * (0.5 * 2.0)), 0.0), vec2((0.5 * 2.0), 0.0)))"));
+}
+
+#[test]
 fn emits_segment3d_primitive() {
     let source = "Obj3 shape = Segment3D(a=(0, 0, 0), b=(2, 1, 3))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
@@ -650,6 +658,14 @@ fn emits_segment3d_primitive() {
     assert!(glsl.contains("float sdf0_Segment3D(vec3 p, ParamSegment3D params)"));
     assert!(glsl
         .contains("sdf0_Segment3D(p, ParamSegment3D(vec3(0.0, 0.0, 0.0), vec3(2.0, 1.0, 3.0)))"));
+}
+
+#[test]
+fn emits_segment3d_length_constructor() {
+    let source = "Obj3 shape = Segment3D(2)\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("sdf0_Segment3D(p, ParamSegment3D(vec3((-1.0 * (0.5 * 2.0)), 0.0, 0.0), vec3((0.5 * 2.0), 0.0, 0.0)))"));
 }
 
 #[test]

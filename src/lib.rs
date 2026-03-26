@@ -1766,6 +1766,13 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
                     }
                 }
             };
+            if let Some(fields) = infer_segment_length_constructor(name, args, env)? {
+                return Ok(ObjectExpr::Primitive {
+                    name: name.clone(),
+                    kind: primitive.kind.clone(),
+                    fields,
+                });
+            }
             let fields = match args {
                 ConstructorArgs::Named(fields) => fields.clone(),
                 ConstructorArgs::Positional(values) => {
@@ -1864,6 +1871,69 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         Expr::Number(_) | Expr::Tuple(_) => Err(Error::new("expected an Obj3 expression")),
         Expr::Binary { .. } => Err(Error::new("unsupported object expression")),
     }
+}
+
+fn infer_segment_length_constructor(
+    name: &str,
+    args: &ConstructorArgs,
+    env: &Env<'_>,
+) -> Result<Option<Vec<(String, PrimitiveArgExpr)>>, Error> {
+    if !matches!(name, "Segment2D" | "Segment3D") {
+        return Ok(None);
+    }
+
+    let length_expr = match args {
+        ConstructorArgs::Named(fields) if fields.len() == 1 && fields[0].0 == "length" => {
+            infer_value_expr(&fields[0].1, env, None)?
+        }
+        ConstructorArgs::Positional(values) if values.len() == 1 => {
+            infer_value_expr(&values[0], env, None)?
+        }
+        _ => return Ok(None),
+    };
+    ensure_type(
+        &length_expr.ty(),
+        &Type::Float,
+        &format!("primitive '{name}' length constructor"),
+    )?;
+
+    let half_length = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Float(0.5)),
+        right: Box::new(length_expr),
+        ty: Type::Float,
+    };
+    let neg_half_length = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Float(-1.0)),
+        right: Box::new(half_length.clone()),
+        ty: Type::Float,
+    };
+
+    let (a, b) = if name == "Segment2D" {
+        (
+            ValueExpr::Vec2(Box::new(neg_half_length), Box::new(ValueExpr::Float(0.0))),
+            ValueExpr::Vec2(Box::new(half_length), Box::new(ValueExpr::Float(0.0))),
+        )
+    } else {
+        (
+            ValueExpr::Vec3(
+                Box::new(neg_half_length),
+                Box::new(ValueExpr::Float(0.0)),
+                Box::new(ValueExpr::Float(0.0)),
+            ),
+            ValueExpr::Vec3(
+                Box::new(half_length),
+                Box::new(ValueExpr::Float(0.0)),
+                Box::new(ValueExpr::Float(0.0)),
+            ),
+        )
+    };
+
+    Ok(Some(vec![
+        ("a".to_string(), PrimitiveArgExpr::Value(a)),
+        ("b".to_string(), PrimitiveArgExpr::Value(b)),
+    ]))
 }
 
 fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {

@@ -20,6 +20,7 @@ Current slice:
 - top-level `provided`, `func`, typed object bindings, `construct`, and `generate`
 - C-style line comments starting with `//`
 - primitive constructor arguments can be passed positionally in field order, e.g. `Box2D(2, 1)`
+- `Segment2D` and `Segment3D` also accept centered length constructors as `Segment2D(length=2)`, `Segment2D(2)`, and `Segment3D(2)`
 - named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
 - output uses `generate value`, for example `generate C`, and `gen value` is accepted as a shorthand alias
 - emitted GLSL always includes both `scene_sdf` and a numerically approximated `scene_grad`
