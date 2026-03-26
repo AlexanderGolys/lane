@@ -1025,6 +1025,17 @@ impl Default for Registry {
                 },
             ),
             (
+                "Ball2D",
+                PrimitiveDef {
+                    kind: PrimitiveKind::ParamStruct("ParamBall2D"),
+                    fields: vec![PrimitiveFieldDef {
+                        name: "r",
+                        kind: PrimitiveFieldKind::Value(Type::Float),
+                    }],
+                    support_glsl: "struct ParamBall2D {\n    float r;\n};\n\nfloat sdf0_Ball2D(vec2 p, ParamBall2D params) {\n    return length(p) - params.r;\n}",
+                },
+            ),
+            (
                 "Quad2D",
                 PrimitiveDef {
                     kind: PrimitiveKind::ParamStruct("ParamQuad2D"),

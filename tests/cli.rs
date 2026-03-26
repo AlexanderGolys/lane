@@ -10,6 +10,7 @@ fn lists_known_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball2D\nstruct ParamBall2D {\n    float r;\n};"));
     assert!(stdout.contains("Ball3D\nstruct ParamBall3D {\n    float r;\n};"));
     assert!(stdout
         .contains("\n\nBox3D\nstruct ParamBox3D {\n    float a;\n    float b;\n    float c;\n};"));
@@ -37,6 +38,7 @@ fn lists_known_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball2D\nstruct ParamBall2D"));
     assert!(stdout.contains("Ball3D\nstruct ParamBall3D"));
     assert!(stdout.contains("Box3D\nstruct ParamBox3D"));
     assert!(stdout.contains("Plane3D\nstruct ParamPlane3D"));
@@ -53,6 +55,7 @@ fn lists_only_2d_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball2D\nstruct ParamBall2D"));
     assert!(stdout.contains("Box2D\nstruct ParamBox2D"));
     assert!(stdout.contains("Polygon2D\n{ points: R2 list }"));
     assert!(stdout.contains("Point2D\nstruct ParamPoint2D"));
@@ -71,6 +74,7 @@ fn lists_only_2d_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball2D\nstruct ParamBall2D"));
     assert!(stdout.contains("Point2D\nstruct ParamPoint2D"));
     assert!(stdout.contains("Quad2D\nstruct ParamQuad2D"));
     assert!(!stdout.contains("Ball3D"));
@@ -124,6 +128,21 @@ fn shows_known_primitive_detail_from_cli() {
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("unknown primitive 'ParamBall3D'"));
+}
+
+#[test]
+fn shows_ball2d_primitive_detail_from_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .args(["--list", "Ball2D"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball2D: {r: R}"));
+    assert!(stdout.contains("struct ParamBall2D"));
+    assert!(stdout.contains("float sdf0_Ball2D(vec2 p, ParamBall2D params)"));
 }
 
 #[test]

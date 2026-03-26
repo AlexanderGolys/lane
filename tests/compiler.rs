@@ -11,6 +11,10 @@ fn lists_known_primitives_with_lane_types() {
         .iter()
         .find(|primitive| primitive.name == "Ball3D")
         .unwrap();
+    let ball2 = primitives
+        .iter()
+        .find(|primitive| primitive.name == "Ball2D")
+        .unwrap();
     let box3 = primitives
         .iter()
         .find(|primitive| primitive.name == "Box3D")
@@ -56,6 +60,19 @@ fn lists_known_primitives_with_lane_types() {
     assert!(ball
         .function_body
         .contains("float sdf0_Ball3D(vec3 p, ParamBall3D params)"));
+
+    assert_eq!(ball2.dimension, ShapeDimension::D2);
+    assert_eq!(ball2.parameter_space, "ParamBall2D");
+    assert_eq!(ball2.fields[0].name, "r");
+    assert_eq!(ball2.fields[0].domain, "R");
+    assert!(ball2
+        .type_body
+        .as_deref()
+        .unwrap()
+        .contains("struct ParamBall2D"));
+    assert!(ball2
+        .function_body
+        .contains("float sdf0_Ball2D(vec2 p, ParamBall2D params)"));
 
     assert_eq!(box3.dimension, ShapeDimension::D3);
     assert_eq!(box3.parameter_space, "ParamBox3D");
@@ -156,6 +173,23 @@ fn looks_up_known_primitive_by_name() {
 }
 
 #[test]
+fn looks_up_ball2d_by_name() {
+    let primitive = known_primitive("Ball2D").unwrap();
+
+    assert_eq!(primitive.dimension, ShapeDimension::D2);
+    assert_eq!(primitive.parameter_space, "ParamBall2D");
+    assert!(primitive
+        .type_body
+        .as_deref()
+        .unwrap()
+        .contains("struct ParamBall2D"));
+    assert!(primitive.type_body.as_deref().unwrap().contains("float r;"));
+    assert!(primitive
+        .function_body
+        .contains("float sdf0_Ball2D(vec2 p, ParamBall2D params)"));
+}
+
+#[test]
 fn filters_known_primitives_by_dimension() {
     let primitives_2d = known_primitives_by_dimension(ShapeDimension::D2);
     let primitives_3d = known_primitives_by_dimension(ShapeDimension::D3);
@@ -175,6 +209,9 @@ fn filters_known_primitives_by_dimension() {
     assert!(primitives_2d
         .iter()
         .any(|primitive| primitive.name == "Polygon2D"));
+    assert!(primitives_2d
+        .iter()
+        .any(|primitive| primitive.name == "Ball2D"));
     assert!(primitives_3d
         .iter()
         .any(|primitive| primitive.name == "Ball3D"));

@@ -5,7 +5,7 @@ A small Rust prototype for the lane DSL that compiles object expressions into GL
 Current slice:
 
 - pre-registered 3D `Ball3D(r=...)`, `Box3D(a=..., b=..., c=...)`, `Triangle3D(p1=..., p2=..., p3=...)`, `Quad3D(p1=..., p2=..., p3=..., p4=...)`, `Plane3D(n=..., origin=...)`, `Line3D(x0=..., dir=...)`, `Simplex3D(p0=..., p1=..., p2=..., p3=...)`, `Halfspace3D(n=..., h=...)`, `Segment3D(a=..., b=...)`, and `Torus3D(major=..., minor=...)` primitives
-- pre-registered 2D `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Quad2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
+- pre-registered 2D `Ball2D(r=...)`, `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Quad2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
 - pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
 - pre-registered `Revolution(offset)` and `Extrusion(height)` object lifts from 2D XY-plane fields into `Obj3`
 - associative binary operators such as `Union`, `Intersection`, and `Xor` accept any arity `>= 2` and are lowered to balanced binary calls
