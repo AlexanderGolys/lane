@@ -67,7 +67,7 @@ vim.lsp.config("lane_lsp", {
 vim.lsp.enable("lane_lsp")
 ```
 
-List the known primitives with their Lane-level field shapes with:
+List the known primitives with their generated GLSL parameter structs with:
 
 ```sh
 cargo run -- --list
@@ -112,4 +112,4 @@ Show CLI usage with:
 cargo run -- --help
 ```
 
-CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings show the Lane-level field shape, `lane --list NAME` prints the generated GLSL for that primitive with ANSI syntax highlighting on interactive terminals, `lane --list-objects` prints interpreter-known custom Lane objects as `name: type` using curried `Hom(...)` notation, excludes raw GLSL builtins such as `sin`, and omits trivial derived combinators such as `gradient`, and 2D primitives expose local `Vec2` evaluators while 3D primitives expose local `Vec3` evaluators.
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings print one primitive name per block followed by the generated GLSL parameter struct when one exists, with the `Polygon2D` fallback still showing its Lane-level field shape because it has no generated struct. `lane --list NAME` prints the generated GLSL for that primitive with ANSI syntax highlighting on interactive terminals, `lane --list-objects` prints interpreter-known custom Lane objects as `name: type` using curried `Hom(...)` notation, excludes raw GLSL builtins such as `sin`, and omits trivial derived combinators such as `gradient`, and 2D primitives expose local `Vec2` evaluators while 3D primitives expose local `Vec3` evaluators.

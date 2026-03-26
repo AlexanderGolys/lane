@@ -206,14 +206,16 @@ fn print_completion(shell: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_known_primitives() {
-    for primitive in lane::known_primitives() {
-        print_known_primitive(&primitive);
+    let primitives = lane::known_primitives();
+    for (index, primitive) in primitives.iter().enumerate() {
+        print_known_primitive(primitive, index > 0);
     }
 }
 
 fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
-    for primitive in lane::known_primitives_by_dimension(dimension) {
-        print_known_primitive(&primitive);
+    let primitives = lane::known_primitives_by_dimension(dimension);
+    for (index, primitive) in primitives.iter().enumerate() {
+        print_known_primitive(primitive, index > 0);
     }
 }
 
@@ -223,8 +225,16 @@ fn print_known_builtin_objects() {
     }
 }
 
-fn print_known_primitive(primitive: &lane::KnownPrimitive) {
-    println!("{}: {}", primitive.name, visible_parameter_space(primitive));
+fn print_known_primitive(primitive: &lane::KnownPrimitive, separate_from_previous: bool) {
+    if separate_from_previous {
+        println!();
+    }
+    println!("{}", primitive.name);
+    if let Some(type_body) = primitive.type_body.as_deref() {
+        print_glsl(type_body);
+        return;
+    }
+    println!("{}", visible_parameter_space(primitive));
 }
 
 fn print_glsl(source: &str) {

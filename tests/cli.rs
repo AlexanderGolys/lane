@@ -10,16 +10,18 @@ fn lists_known_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Ball3D: {r: R}"));
-    assert!(stdout.contains("Box3D: {a: R, b: R, c: R}"));
-    assert!(stdout.contains("Plane3D: {n: R3, origin: R3}"));
-    assert!(stdout.contains("Line3D: {x0: R3, dir: R3}"));
-    assert!(stdout.contains("Triangle3D: {p1: R3, p2: R3, p3: R3}"));
-    assert!(stdout.contains("Segment3D: {a: R3, b: R3}"));
-    assert!(stdout.contains("Box2D: {a: R, b: R}"));
-    assert!(stdout.contains("Quad2D: {p1: R2, p2: R2, p3: R2, p4: R2}"));
-    assert!(stdout.contains("Quad3D: {p1: R3, p2: R3, p3: R3, p4: R3}"));
-    assert!(stdout.contains("Polygon2D: { points: R2 list }"));
+    assert!(stdout.contains("Ball3D\nstruct ParamBall3D {\n    float r;\n};"));
+    assert!(stdout
+        .contains("\n\nBox3D\nstruct ParamBox3D {\n    float a;\n    float b;\n    float c;\n};"));
+    assert!(stdout.contains("Plane3D\nstruct ParamPlane3D"));
+    assert!(stdout.contains("Line3D\nstruct ParamLine3D"));
+    assert!(stdout.contains("Triangle3D\nstruct ParamTriangle3D"));
+    assert!(stdout.contains("Segment3D\nstruct ParamSegment3D"));
+    assert!(stdout.contains("Box2D\nstruct ParamBox2D {\n    float a;\n    float b;\n};"));
+    assert!(stdout.contains("Quad2D\nstruct ParamQuad2D"));
+    assert!(stdout.contains("Quad3D\nstruct ParamQuad3D"));
+    assert!(stdout.contains("Polygon2D\n{ points: R2 list }"));
+    assert!(!stdout.contains("Ball3D: {r: R}"));
     assert!(!stdout.contains("ParamBall3D\n"));
     assert!(!stdout.contains("[3D]"));
     assert!(!stdout.contains("sdf0_Ball3D"));
@@ -35,10 +37,10 @@ fn lists_known_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Ball3D: {r: R}"));
-    assert!(stdout.contains("Box3D: {a: R, b: R, c: R}"));
-    assert!(stdout.contains("Plane3D: {n: R3, origin: R3}"));
-    assert!(stdout.contains("Segment3D: {a: R3, b: R3}"));
+    assert!(stdout.contains("Ball3D\nstruct ParamBall3D"));
+    assert!(stdout.contains("Box3D\nstruct ParamBox3D"));
+    assert!(stdout.contains("Plane3D\nstruct ParamPlane3D"));
+    assert!(stdout.contains("Segment3D\nstruct ParamSegment3D"));
 }
 
 #[test]
@@ -51,10 +53,10 @@ fn lists_only_2d_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Box2D: {a: R, b: R}"));
-    assert!(stdout.contains("Polygon2D: { points: R2 list }"));
-    assert!(stdout.contains("Point2D: {at: R2}"));
-    assert!(stdout.contains("Quad2D: {p1: R2, p2: R2, p3: R2, p4: R2}"));
+    assert!(stdout.contains("Box2D\nstruct ParamBox2D"));
+    assert!(stdout.contains("Polygon2D\n{ points: R2 list }"));
+    assert!(stdout.contains("Point2D\nstruct ParamPoint2D"));
+    assert!(stdout.contains("Quad2D\nstruct ParamQuad2D"));
     assert!(!stdout.contains("[2D]"));
     assert!(!stdout.contains("Ball3D"));
 }
@@ -69,8 +71,8 @@ fn lists_only_2d_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Point2D: {at: R2}"));
-    assert!(stdout.contains("Quad2D: {p1: R2, p2: R2, p3: R2, p4: R2}"));
+    assert!(stdout.contains("Point2D\nstruct ParamPoint2D"));
+    assert!(stdout.contains("Quad2D\nstruct ParamQuad2D"));
     assert!(!stdout.contains("Ball3D"));
 }
 
@@ -84,15 +86,15 @@ fn lists_only_3d_primitives_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Ball3D: {r: R}"));
-    assert!(stdout.contains("Box3D: {a: R, b: R, c: R}"));
-    assert!(stdout.contains("Plane3D: {n: R3, origin: R3}"));
-    assert!(stdout.contains("Line3D: {x0: R3, dir: R3}"));
-    assert!(stdout.contains("Segment3D: {a: R3, b: R3}"));
-    assert!(stdout.contains("Simplex3D: {p0: R3, p1: R3, p2: R3, p3: R3}"));
-    assert!(stdout.contains("Triangle3D: {p1: R3, p2: R3, p3: R3}"));
-    assert!(stdout.contains("Torus3D: {major: R, minor: R}"));
-    assert!(stdout.contains("Quad3D: {p1: R3, p2: R3, p3: R3, p4: R3}"));
+    assert!(stdout.contains("Ball3D\nstruct ParamBall3D"));
+    assert!(stdout.contains("Box3D\nstruct ParamBox3D"));
+    assert!(stdout.contains("Plane3D\nstruct ParamPlane3D"));
+    assert!(stdout.contains("Line3D\nstruct ParamLine3D"));
+    assert!(stdout.contains("Segment3D\nstruct ParamSegment3D"));
+    assert!(stdout.contains("Simplex3D\nstruct ParamSimplex3D"));
+    assert!(stdout.contains("Triangle3D\nstruct ParamTriangle3D"));
+    assert!(stdout.contains("Torus3D\nstruct ParamTorus3D"));
+    assert!(stdout.contains("Quad3D\nstruct ParamQuad3D"));
     assert!(!stdout.contains("[3D]"));
     assert!(!stdout.contains("Box2D"));
 }
@@ -107,7 +109,7 @@ fn lists_only_3d_primitives_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Torus3D: {major: R, minor: R}"));
+    assert!(stdout.contains("Torus3D\nstruct ParamTorus3D"));
     assert!(!stdout.contains("Box2D"));
 }
 
