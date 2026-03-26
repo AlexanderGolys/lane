@@ -115,6 +115,7 @@ pub struct PreregisteredObject {
 enum Type {
     Float,
     Int,
+    Complex,
     Vec2,
     Vec3,
     Vec4,
@@ -135,6 +136,7 @@ impl Type {
         match self {
             Self::Float => "float",
             Self::Int => "int",
+            Self::Complex => "vec2",
             Self::Vec2 => "vec2",
             Self::Vec3 => "vec3",
             Self::Vec4 => "vec4",
@@ -149,6 +151,7 @@ impl Type {
         match self {
             Self::Float => "R",
             Self::Int => "Z",
+            Self::Complex => "C",
             Self::Vec2 => "R2",
             Self::Vec3 => "R3",
             Self::Vec4 => "R4",
@@ -423,6 +426,7 @@ impl TypedProgram {
                 output_ty,
                 Type::Float
                     | Type::Int
+                    | Type::Complex
                     | Type::Vec2
                     | Type::Vec3
                     | Type::Vec4
@@ -587,6 +591,7 @@ impl TypedProgram {
             match input.ty {
                 Type::Float
                 | Type::Int
+                | Type::Complex
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -605,6 +610,7 @@ impl TypedProgram {
             .filter_map(|input| match input.ty {
                 Type::Float
                 | Type::Int
+                | Type::Complex
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -725,6 +731,7 @@ impl TypedProgram {
             match input.ty {
                 Type::Float
                 | Type::Int
+                | Type::Complex
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -1289,7 +1296,7 @@ impl Default for Registry {
             (
                 "cinv",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 cinv(vec2 z) {\n    return vec2(z.x, -z.y) / dot(z, z);\n}",
                     ),
@@ -1299,7 +1306,7 @@ impl Default for Registry {
             (
                 "cexp",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 cexp(vec2 z) {\n    float scale = exp(z.x);\n    return scale * vec2(cos(z.y), sin(z.y));\n}",
                     ),
@@ -1309,7 +1316,7 @@ impl Default for Registry {
             (
                 "clog",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 clog(vec2 z) {\n    return vec2(log(length(z)), atan(z.y, z.x));\n}",
                     ),
@@ -1319,7 +1326,7 @@ impl Default for Registry {
             (
                 "csqrt",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 csqrt(vec2 z) {\n    float r = length(z);\n    float a = sqrt(max((r + z.x) * 0.5, 0.0));\n    float b = sqrt(max((r - z.x) * 0.5, 0.0));\n    return vec2(a, sign(z.y) * b);\n}",
                     ),
@@ -1329,7 +1336,7 @@ impl Default for Registry {
             (
                 "csin",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 csin(vec2 z) {\n    return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y));\n}",
                     ),
@@ -1339,7 +1346,7 @@ impl Default for Registry {
             (
                 "ccos",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 ccos(vec2 z) {\n    return vec2(cos(z.x) * cosh(z.y), -sin(z.x) * sinh(z.y));\n}",
                     ),
@@ -1349,7 +1356,7 @@ impl Default for Registry {
             (
                 "ctan",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 ctan(vec2 z) {\n    float d = cos(2.0 * z.x) + cosh(2.0 * z.y);\n    return vec2(sin(2.0 * z.x), sinh(2.0 * z.y)) / d;\n}",
                     ),
@@ -1359,7 +1366,7 @@ impl Default for Registry {
             (
                 "csinh",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 csinh(vec2 z) {\n    return vec2(sinh(z.x) * cos(z.y), cosh(z.x) * sin(z.y));\n}",
                     ),
@@ -1369,7 +1376,7 @@ impl Default for Registry {
             (
                 "ccosh",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 ccosh(vec2 z) {\n    return vec2(cosh(z.x) * cos(z.y), sinh(z.x) * sin(z.y));\n}",
                     ),
@@ -1379,7 +1386,7 @@ impl Default for Registry {
             (
                 "ctanh",
                 ValueFuncDef {
-                    ty: Type::func(Type::Vec2, Type::Vec2),
+                    ty: Type::func(Type::Complex, Type::Complex),
                     support_glsl: Some(
                         "vec2 ctanh(vec2 z) {\n    float d = cosh(2.0 * z.x) + cos(2.0 * z.y);\n    return vec2(sinh(2.0 * z.x), sin(2.0 * z.y)) / d;\n}",
                     ),
@@ -2093,6 +2100,7 @@ fn infer_value_expr(
             match current_ty {
                 Type::Float
                 | Type::Int
+                | Type::Complex
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -2461,6 +2469,7 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 }),
                 Type::Float
                 | Type::Int
+                | Type::Complex
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -2543,6 +2552,7 @@ fn infer_identifier_value(
     match ty {
         Type::Float
         | Type::Int
+        | Type::Complex
         | Type::Vec2
         | Type::Vec3
         | Type::Vec4
@@ -2581,7 +2591,10 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         (BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div, Type::Float, Type::Float) => {
             Ok(Type::Float)
         }
+        (BinOp::Add | BinOp::Sub, Type::Complex, Type::Complex) => Ok(Type::Complex),
         (BinOp::Add | BinOp::Sub, Type::Vec2, Type::Vec2) => Ok(Type::Vec2),
+        (BinOp::Mul | BinOp::Div, Type::Complex, Type::Float) => Ok(Type::Complex),
+        (BinOp::Mul, Type::Float, Type::Complex) => Ok(Type::Complex),
         (BinOp::Add | BinOp::Sub, Type::Vec3, Type::Vec3) => Ok(Type::Vec3),
         (BinOp::Mul | BinOp::Div, Type::Vec2, Type::Float) => Ok(Type::Vec2),
         (BinOp::Mul, Type::Float, Type::Vec2) => Ok(Type::Vec2),
@@ -3185,6 +3198,12 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
     if actual == expected {
         return Ok(());
     }
+    if matches!(
+        (actual, expected),
+        (Type::Vec2, Type::Complex) | (Type::Complex, Type::Vec2)
+    ) {
+        return Ok(());
+    }
     Err(Error::new(format!(
         "{} expected {}, got {}",
         context,
@@ -3197,6 +3216,7 @@ fn format_type(ty: &Type) -> String {
     match ty {
         Type::Float => "R".to_string(),
         Type::Int => "Z".to_string(),
+        Type::Complex => "C".to_string(),
         Type::Vec2 => "R2".to_string(),
         Type::Vec3 => "R3".to_string(),
         Type::Vec4 => "R4".to_string(),
@@ -3225,6 +3245,7 @@ fn format_object_type(ty: &Type) -> String {
     match ty {
         Type::Float => "R".to_string(),
         Type::Int => "Z".to_string(),
+        Type::Complex => "C".to_string(),
         Type::Vec2 => "R2".to_string(),
         Type::Vec3 => "R3".to_string(),
         Type::Vec4 => "R4".to_string(),
@@ -3753,6 +3774,7 @@ fn parse_type(source: &str) -> Result<Type, Error> {
     match source {
         "Float" | "R" => Ok(Type::Float),
         "Int" | "Z" => Ok(Type::Int),
+        "Complex" | "C" => Ok(Type::Complex),
         "Vec2" | "R2" => Ok(Type::Vec2),
         "Vec3" | "R3" => Ok(Type::Vec3),
         "Vec4" | "R4" => Ok(Type::Vec4),

@@ -231,7 +231,7 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "cexp" && object.ty == "Hom(R2, R2)"));
+        .any(|object| object.name == "cexp" && object.ty == "Hom(C, C)"));
     assert!(objects
         .iter()
         .any(|object| { object.name == "Union" && object.ty == "Hom(Obj3 × Obj3, Obj3)" }));
@@ -250,10 +250,10 @@ fn lists_builtin_lane_objects() {
 
 #[test]
 fn supports_new_type_syntax_aliases() {
-    let source = "provided R time\nprovided Hom(R3, R) density\nprovided End(R) loop\ngenerate Ball3D(r=1)\n";
+    let source = "provided R time\nprovided C z\nprovided Hom(R3, R) density\nprovided End(R) loop\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p, float time, vec2 z) {"));
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn supports_derivative_operator_in_function_bodies() {
 #[test]
 fn emits_support_for_custom_complex_functions() {
     let source =
-        "Vec2 seed = (1, 0)\nfunc(Float -> Vec2) orbit = cexp(seed)\ngenerate Ball3D(r=1)\n";
+        "Complex seed = (1, 0)\nfunc(Float -> C) orbit = cexp(seed)\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 cexp(vec2 z) {"));

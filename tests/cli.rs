@@ -152,7 +152,7 @@ fn lists_known_builtin_objects_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("pow2: Hom(R, R)"));
-    assert!(stdout.contains("cexp: Hom(R2, R2)"));
+    assert!(stdout.contains("cexp: Hom(C, C)"));
     assert!(stdout.contains("Union: Hom(Obj3 × Obj3, Obj3)"));
     assert!(stdout.contains("SmoothUnion: Hom(R, Hom(Obj3 × Obj3, Obj3))"));
     assert!(stdout.contains("Revolution: Hom(R, Hom(Obj3, Obj3))"));
@@ -171,7 +171,7 @@ fn lists_known_builtin_objects_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("ctanh: Hom(R2, R2)"));
+    assert!(stdout.contains("ctanh: Hom(C, C)"));
 }
 
 #[test]

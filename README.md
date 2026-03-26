@@ -9,12 +9,12 @@ Current slice:
 - pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
 - pre-registered `Revolution(offset)` and `Extrusion(height)` object lifts from 2D XY-plane fields into `Obj3`
 - associative binary operators such as `Union`, `Intersection`, and `Xor` accept any arity `>= 2` and are lowered to balanced binary calls
-- custom value functions such as `pow2` and holomorphic `Vec2 -> Vec2` helpers including `cexp`, `clog`, `csqrt`, `csin`, `ccos`, `ctan`, `csinh`, `ccosh`, `ctanh`, and `cinv`
+- custom value functions such as `pow2` and holomorphic `Complex -> Complex` helpers including `cexp`, `clog`, `csqrt`, `csin`, `ccos`, `ctan`, `csinh`, `ccosh`, `ctanh`, and `cinv`
 - unary minus in value expressions emits direct negative GLSL terms instead of `(0.0 - x)` wrappers
 - differential builtin objects such as `derivative`, `partialX`, `partialY`, `partialZ`, `directionalDerivative`, `gradient`, and `divergence`
 - unary function composition with `f @ g`, meaning `x |-> f(g(x))`
 - `construct Obj3 name = expr` exports stable helper names `sdf_name` and `grad_sdf_name` without changing the scene semantics, and `const` is accepted as an alias
-- `Vec2`, `Vec3`, and nested-row `Mat3` tuple literals in value expressions, with aliases such as `R`, `R2`, and `R3`
+- `Complex`, `Vec2`, `Vec3`, and nested-row `Mat3` surface types in value expressions, with aliases such as `C`, `R`, `R2`, and `R3`; complex values still lower to GLSL `vec2`
 - ambient object actions with `Obj3 + R3` translation sugar and `Mat3 * Obj3` orthogonal action
 - 2D and 3D primitives stay distinct semantic families even though the current object surface type is `Obj3`
 - top-level `provided`, `func`, typed object bindings, `construct`, and `generate`
