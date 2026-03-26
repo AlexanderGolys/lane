@@ -1,7 +1,7 @@
 use lane::{
-    compile_program, known_builtin_objects, known_preregistered_objects, known_primitive,
-    known_primitives, known_primitives_by_dimension, preregistered_object, PreregisteredObjectKind,
-    ShapeDimension,
+    compile_program, known_builtin_object, known_builtin_objects, known_preregistered_objects,
+    known_primitive, known_primitives, known_primitives_by_dimension, preregistered_object,
+    PreregisteredObjectKind, ShapeDimension,
 };
 
 #[test]
@@ -283,6 +283,20 @@ fn lists_builtin_lane_objects() {
         .any(|object| { object.name == "Extrusion" && object.ty == "Hom(R, Hom(Obj3, Obj3))" }));
     assert!(!objects.iter().any(|object| object.name == "sin"));
     assert!(!objects.iter().any(|object| object.name == "gradient"));
+}
+
+#[test]
+fn looks_up_builtin_object_detail() {
+    let revolution = known_builtin_object("Revolution").unwrap();
+    let pow2 = known_builtin_object("pow2").unwrap();
+
+    assert_eq!(revolution.ty, "Hom(R, Hom(Obj3, Obj3))");
+    assert!(revolution
+        .body
+        .contains("vec3 op_revolution_point(vec3 p, float offset)"));
+    assert_eq!(pow2.ty, "Hom(R, R)");
+    assert!(pow2.body.contains("float pow2(float x)"));
+    assert!(known_builtin_object("gradient").is_none());
 }
 
 #[test]
@@ -744,7 +758,8 @@ fn emits_revolution_operator() {
     let source = "generate Revolution(1.5)(Segment2D(a=(0, -1), b=(0, 1)))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("sdf0_Segment2D((vec3((length((p).xz) - 1.5), (p).y, 0.0)).xy, ParamSegment2D(vec2(0.0, (-1.0)), vec2(0.0, 1.0)))"));
+    assert!(glsl.contains("vec3 op_revolution_point(vec3 p, float offset)"));
+    assert!(glsl.contains("sdf0_Segment2D((op_revolution_point(p, 1.5)).xy, ParamSegment2D(vec2(0.0, (-1.0)), vec2(0.0, 1.0)))"));
 }
 
 #[test]
@@ -752,7 +767,10 @@ fn emits_extrusion_operator() {
     let source = "generate Extrusion(.25)(Box2D(a=1, b=.5))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("min(max(sdf0_Box2D((vec3((p).xy, 0.0)).xy, ParamBox2D(1.0, 0.5)), abs((p).z) - 0.25), 0.0) + length(max(vec2(sdf0_Box2D((vec3((p).xy, 0.0)).xy, ParamBox2D(1.0, 0.5)), abs((p).z) - 0.25), 0.0))"));
+    assert!(glsl.contains("float op_extrusion(float base_distance, float z, float height)"));
+    assert!(glsl.contains(
+        "op_extrusion(sdf0_Box2D((vec3((p).xy, 0.0)).xy, ParamBox2D(1.0, 0.5)), (p).z, 0.25)"
+    ));
 }
 
 #[test]

@@ -35,6 +35,11 @@ pub fn known_builtin_objects() -> Vec<KnownBuiltinObject> {
     registry.known_builtin_objects()
 }
 
+pub fn known_builtin_object(name: &str) -> Option<KnownBuiltinObjectDetail> {
+    let registry = Registry::default();
+    registry.known_builtin_object(name)
+}
+
 pub fn preregistered_object(name: &str) -> Option<PreregisteredObject> {
     let registry = Registry::default();
     registry.preregistered_object(name)
@@ -96,6 +101,13 @@ pub struct KnownPrimitiveField {
 pub struct KnownBuiltinObject {
     pub name: String,
     pub ty: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnownBuiltinObjectDetail {
+    pub name: String,
+    pub ty: String,
+    pub body: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -1261,7 +1273,7 @@ impl Default for Registry {
                     object_arg_count: 1,
                     associative_binary: false,
                     glsl_name: "op_revolution",
-                    support_glsl: "",
+                    support_glsl: "vec3 op_revolution_point(vec3 p, float offset) {\n    return vec3(length(p.xz) - offset, p.y, 0.0);\n}",
                 },
             ),
             (
@@ -1272,7 +1284,7 @@ impl Default for Registry {
                     object_arg_count: 1,
                     associative_binary: false,
                     glsl_name: "op_extrusion",
-                    support_glsl: "",
+                    support_glsl: "float op_extrusion(float base_distance, float z, float height) {\n    vec2 w = vec2(base_distance, abs(z) - height);\n    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));\n}",
                 },
             ),
         ]);
@@ -1572,6 +1584,24 @@ impl Registry {
         }
 
         objects
+    }
+
+    fn known_builtin_object(&self, name: &str) -> Option<KnownBuiltinObjectDetail> {
+        if let Some(func) = self.value_funcs.get(name) {
+            let body = func.support_glsl?;
+            return Some(KnownBuiltinObjectDetail {
+                name: name.to_string(),
+                ty: format_object_type(&func.ty),
+                body: body.to_string(),
+            });
+        }
+
+        let op = self.object_ops.get(name)?;
+        Some(KnownBuiltinObjectDetail {
+            name: op.name.to_string(),
+            ty: format_object_type(&object_op_type(op)),
+            body: op.support_glsl.to_string(),
+        })
     }
 
     fn preregistered_objects(&self) -> Vec<PreregisteredObject> {
@@ -3051,10 +3081,7 @@ fn emit_object_expr(
         } => {
             if glsl_name == "op_revolution" {
                 let offset = emit_plain_value_expr(&value_args[0], helper_names);
-                let revolved_point = format!(
-                    "vec3((length(({}).xz) - {}), ({}).y, 0.0)",
-                    point_expr, offset, point_expr
-                );
+                let revolved_point = format!("op_revolution_point({}, {})", point_expr, offset);
                 return emit_object_expr(
                     &object_args[0],
                     &revolved_point,
@@ -3068,8 +3095,8 @@ fn emit_object_expr(
                 let base_distance =
                     emit_object_expr(&object_args[0], &base_point, object_bindings, helper_names);
                 return format!(
-                    "(min(max({}, abs(({}).z) - {}), 0.0) + length(max(vec2({}, abs(({}).z) - {}), 0.0)))",
-                    base_distance, point_expr, height, base_distance, point_expr, height
+                    "op_extrusion({}, ({}).z, {})",
+                    base_distance, point_expr, height
                 );
             }
             let mut args = object_args

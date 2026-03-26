@@ -196,6 +196,33 @@ fn lists_known_builtin_objects_from_short_flag() {
 }
 
 #[test]
+fn shows_known_builtin_object_detail_from_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .args(["--list-objects", "Revolution"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Revolution: Hom(R, Hom(Obj3, Obj3))"));
+    assert!(stdout.contains("vec3 op_revolution_point(vec3 p, float offset)"));
+}
+
+#[test]
+fn rejects_unknown_builtin_object_detail_from_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .args(["--list-objects", "gradient"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unknown builtin object 'gradient'"));
+}
+
+#[test]
 fn prints_bash_completion_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .args(["--print-completion", "bash"])
@@ -243,8 +270,8 @@ fn prints_help_from_cli() {
     assert!(stdout.contains("lane -l2"));
     assert!(stdout.contains("lane --list3d"));
     assert!(stdout.contains("lane -l3"));
-    assert!(stdout.contains("lane --list-objects"));
-    assert!(stdout.contains("lane -lo"));
+    assert!(stdout.contains("lane --list-objects [NAME]"));
+    assert!(stdout.contains("lane -lo [NAME]"));
     assert!(stdout.contains("lane --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -pc <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h"));

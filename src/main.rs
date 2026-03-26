@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list [NAME]\n  lane -l [NAME]\n  lane --list2d\n  lane -l2\n  lane --list3d\n  lane -l3\n  lane --list-objects\n  lane -lo\n  lane --print-completion <bash|zsh|fish>\n  lane -pc <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list [NAME]\n  lane -l [NAME]\n  lane --list2d\n  lane -l2\n  lane --list3d\n  lane -l3\n  lane --list-objects [NAME]\n  lane -lo [NAME]\n  lane --print-completion <bash|zsh|fish>\n  lane -pc <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
 
 const BASH_COMPLETION: &str = r#"_lane() {
     local cur prev
@@ -18,6 +18,11 @@ const BASH_COMPLETION: &str = r#"_lane() {
 
     if [[ "$prev" == "--list" || "$prev" == "-l" ]]; then
         COMPREPLY=( $(compgen -W "Ball2D Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D" -- "$cur") )
+        return
+    fi
+
+    if [[ "$prev" == "--list-objects" || "$prev" == "-lo" ]]; then
+        COMPREPLY=( $(compgen -W "Difference Extrusion Intersection Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2" -- "$cur") )
         return
     fi
 
@@ -38,7 +43,7 @@ _lane() {
         '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(Ball2D Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D)' \
         '(-l2 --list2d)'{-l2,--list2d}'[list only 2D primitives]' \
         '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
-        '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects]' \
+        '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(Difference Extrusion Intersection Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2)' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-h --help)'{-h,--help}'[show help]'
 }
@@ -52,6 +57,7 @@ complete -c lane -s l -l list -r -a 'Ball2D Ball3D Box2D Halfspace3D Point2D Pol
 complete -c lane -o l2 -l list2d -d 'List only 2D primitives'
 complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
 complete -c lane -o lo -l list-objects -d 'List builtin Lane objects'
+complete -c lane -o lo -l list-objects -r -a 'Difference Extrusion Intersection Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2' -d 'Show one builtin object'
 complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s h -l help -d 'Show help'
 "#;
@@ -89,6 +95,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         [flag] if matches!(flag.as_str(), "--list-objects" | "-lo") => {
             print_known_builtin_objects();
             Ok(())
+        }
+        [flag, name] if matches!(flag.as_str(), "--list-objects" | "-lo") => {
+            print_known_builtin_object_detail(name)
         }
         [flag, shell] if matches!(flag.as_str(), "--print-completion" | "-pc") => {
             print_completion(shell)
@@ -223,6 +232,16 @@ fn print_known_builtin_objects() {
     for object in lane::known_builtin_objects() {
         println!("{}: {}", object.name, object.ty);
     }
+}
+
+fn print_known_builtin_object_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(object) = lane::known_builtin_object(name) {
+        println!("{}: {}", object.name, object.ty);
+        println!();
+        print_glsl(&object.body);
+        return Ok(());
+    }
+    Err(format!("unknown builtin object '{name}'").into())
 }
 
 fn print_known_primitive(primitive: &lane::KnownPrimitive, separate_from_previous: bool) {

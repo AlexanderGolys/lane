@@ -91,11 +91,13 @@ cargo run -- --list3d
 cargo run -- -l3
 ```
 
-List known builtin Lane objects with their Lane types with:
+List known builtin Lane objects with their Lane types, or show one builtin's hardcoded GLSL implementation, with:
 
 ```sh
 cargo run -- --list-objects
 cargo run -- -lo
+cargo run -- --list-objects Revolution
+cargo run -- -lo Revolution
 ```
 
 Print shell completion scripts with:
@@ -113,4 +115,4 @@ Show CLI usage with:
 cargo run -- --help
 ```
 
-CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings print one primitive name per block followed by the generated GLSL parameter struct when one exists, with the `Polygon2D` fallback still showing its Lane-level field shape because it has no generated struct. `lane --list NAME` prints the generated GLSL for that primitive with ANSI syntax highlighting on interactive terminals, `lane --list-objects` prints interpreter-known custom Lane objects as `name: type` using curried `Hom(...)` notation, excludes raw GLSL builtins such as `sin`, and omits trivial derived combinators such as `gradient`, and 2D primitives expose local `Vec2` evaluators while 3D primitives expose local `Vec3` evaluators.
+CLI commands are flag-based: `lane help` is treated as an input path named `help`, while `lane -h` and `lane --help` show usage. Primitive listings print one primitive name per block followed by the generated GLSL parameter struct when one exists, with the `Polygon2D` fallback still showing its Lane-level field shape because it has no generated struct. `lane --list NAME` prints the generated GLSL for that primitive with ANSI syntax highlighting on interactive terminals, `lane --list-objects` prints interpreter-known custom Lane objects as `name: type` using curried `Hom(...)` notation, and `lane --list-objects NAME` prints the hardcoded GLSL helper body for that builtin object. Builtin object listings exclude raw GLSL builtins such as `sin` and omit trivial derived combinators such as `gradient`, and 2D primitives expose local `Vec2` evaluators while 3D primitives expose local `Vec3` evaluators.
