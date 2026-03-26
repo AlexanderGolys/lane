@@ -134,7 +134,7 @@ enum Type {
     Mat2,
     Mat3,
     Mat4,
-    Obj3,
+    Solid,
     Product(Vec<Type>),
     Func(Box<Type>, Box<Type>),
 }
@@ -155,7 +155,7 @@ impl Type {
             Self::Mat2 => "mat2",
             Self::Mat3 => "mat3",
             Self::Mat4 => "mat4",
-            Self::Obj3 | Self::Product(_) | Self::Func(_, _) => "",
+            Self::Solid | Self::Product(_) | Self::Func(_, _) => "",
         }
     }
 
@@ -170,7 +170,7 @@ impl Type {
             Self::Mat2 => "Mat2",
             Self::Mat3 => "Mat3",
             Self::Mat4 => "Mat4",
-            Self::Obj3 => "Obj3",
+            Self::Solid => "Solid",
             Self::Product(_) => "Product",
             Self::Func(_, _) => "Func",
         }
@@ -480,7 +480,7 @@ impl TypedProgram {
         for binding in &program.bindings {
             ensure_type(
                 &binding.ty,
-                &Type::Obj3,
+                &Type::Solid,
                 &format!("binding '{}'", binding.name),
             )?;
             let expr = infer_object_expr(&binding.expr, &env)?;
@@ -610,7 +610,7 @@ impl TypedProgram {
                 | Type::Mat2
                 | Type::Mat3
                 | Type::Mat4 => signature.push(format!("{} {}", input.ty.glsl_name(), input.name)),
-                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => {}
+                Type::Solid | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
         signature
@@ -629,7 +629,7 @@ impl TypedProgram {
                 | Type::Mat2
                 | Type::Mat3
                 | Type::Mat4 => Some(input.name.clone()),
-                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => None,
+                Type::Solid | Type::Product(_) | Type::Func(_, _) => None,
             })
             .collect()
     }
@@ -752,7 +752,7 @@ impl TypedProgram {
                 | Type::Mat4 => {
                     forbidden.insert(input.name.clone());
                 }
-                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => {}
+                Type::Solid | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
         for binding in &self.value_bindings {
@@ -1774,7 +1774,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             let ty = env
                 .get(name)
                 .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
-            ensure_type(ty, &Type::Obj3, &format!("identifier '{}'", name))?;
+            ensure_type(ty, &Type::Solid, &format!("identifier '{}'", name))?;
             Ok(ObjectExpr::Var(name.clone()))
         }
         Expr::Constructor { name, args } => {
@@ -1898,7 +1898,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             })
         }
         Expr::Call { .. } => infer_object_call(expr, env),
-        Expr::Number(_) | Expr::Tuple(_) => Err(Error::new("expected an Obj3 expression")),
+        Expr::Number(_) | Expr::Tuple(_) => Err(Error::new("expected an Solid expression")),
         Expr::Binary { .. } => Err(Error::new("unsupported object expression")),
     }
 }
@@ -2222,7 +2222,7 @@ fn infer_value_expr(
                     args: typed_args,
                     ty: current_ty,
                 }),
-                Type::Obj3 | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
+                Type::Solid | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
                     "value expression '{}' does not return a value type",
                     name
                 ))),
@@ -2587,7 +2587,7 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 | Type::Mat2
                 | Type::Mat3
                 | Type::Mat4 => Err(Error::new(format!("'{}' is a value, not a function", name))),
-                Type::Obj3 | Type::Product(_) => Err(Error::new(format!(
+                Type::Solid | Type::Product(_) => Err(Error::new(format!(
                     "object '{}' is not a function expression",
                     name
                 ))),
@@ -2690,7 +2690,7 @@ fn infer_identifier_value(
                 ty: (*output).clone(),
             })
         }
-        Type::Obj3 | Type::Product(_) => Err(Error::new(format!(
+        Type::Solid | Type::Product(_) => Err(Error::new(format!(
             "object '{}' is not a value expression",
             name
         ))),
@@ -3206,11 +3206,11 @@ fn is_float_literal(expr: &ValueExpr, expected: f64) -> bool {
 
 fn object_op_type(op: &ObjectOpDef) -> Type {
     let object_domain = if op.object_arg_count == 1 {
-        Type::Obj3
+        Type::Solid
     } else {
-        Type::Product(vec![Type::Obj3; op.object_arg_count])
+        Type::Product(vec![Type::Solid; op.object_arg_count])
     };
-    let mut ty = Type::func(object_domain, Type::Obj3);
+    let mut ty = Type::func(object_domain, Type::Solid);
     for value_arg in op.value_arg_types.iter().rev() {
         ty = Type::func(value_arg.clone(), ty);
     }
@@ -3331,7 +3331,7 @@ fn format_type(ty: &Type) -> String {
         Type::Mat2 => "Mat2".to_string(),
         Type::Mat3 => "Mat3".to_string(),
         Type::Mat4 => "Mat4".to_string(),
-        Type::Obj3 => "Obj3".to_string(),
+        Type::Solid => "Solid".to_string(),
         Type::Product(parts) => parts
             .iter()
             .map(format_type)
@@ -3360,7 +3360,7 @@ fn format_object_type(ty: &Type) -> String {
         Type::Mat2 => "Mat2".to_string(),
         Type::Mat3 => "Mat3".to_string(),
         Type::Mat4 => "Mat4".to_string(),
-        Type::Obj3 => "Obj3".to_string(),
+        Type::Solid => "Solid".to_string(),
         Type::Product(parts) => parts
             .iter()
             .map(format_object_type)
@@ -3492,7 +3492,7 @@ impl<'a> Parser<'a> {
         if matches!(ty, Type::Func(_, _)) {
             if generated {
                 return Err(Error::new(
-                    "'construct' currently only supports Obj3 bindings",
+                    "'construct' currently only supports Solid bindings",
                 ));
             }
             return Ok(Decl::Func(FuncDecl {
@@ -3501,10 +3501,10 @@ impl<'a> Parser<'a> {
                 expr,
             }));
         }
-        if !matches!(ty, Type::Obj3) {
+        if !matches!(ty, Type::Solid) {
             if generated {
                 return Err(Error::new(
-                    "'construct' currently only supports Obj3 bindings",
+                    "'construct' currently only supports Solid bindings",
                 ));
             }
             return Ok(Decl::ValueBinding(ValueBindingDecl {
@@ -3889,7 +3889,7 @@ fn parse_type(source: &str) -> Result<Type, Error> {
         "Mat2" => Ok(Type::Mat2),
         "Mat3" => Ok(Type::Mat3),
         "Mat4" => Ok(Type::Mat4),
-        "Obj3" => Ok(Type::Obj3),
+        "Solid" => Ok(Type::Solid),
         _ => Err(Error::new(format!("unsupported type '{}'", source))),
     }
 }

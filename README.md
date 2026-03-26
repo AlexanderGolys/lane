@@ -7,21 +7,21 @@ Current slice:
 - pre-registered 3D `Ball3D(r=...)`, `Box3D(a=..., b=..., c=...)`, `Triangle3D(p1=..., p2=..., p3=...)`, `Quad3D(p1=..., p2=..., p3=..., p4=...)`, `Plane3D(n=..., origin=...)`, `Line3D(x0=..., dir=...)`, `Simplex3D(p0=..., p1=..., p2=..., p3=...)`, `Halfspace3D(n=..., h=...)`, `Segment3D(a=..., b=...)`, and `Torus3D(major=..., minor=...)` primitives
 - pre-registered 2D `Ball2D(r=...)`, `Box2D(a=..., b=...)`, `Segment2D`, `Triangle2D`, `Quad2D`, `Polygon2D`, and `Point2D` primitives in the XY plane
 - pre-registered `Union`, `Intersection`, `Difference`, `Xor`, and smooth parametric variants such as `SmoothUnion(k)` and `SmoothDifference(k)`
-- pre-registered `Revolution(offset)` and `Extrusion(height)` object lifts from 2D XY-plane fields into `Obj3`
+- pre-registered `Revolution(offset)` and `Extrusion(height)` object lifts from 2D XY-plane fields into `Solid`
 - associative binary operators such as `Union`, `Intersection`, and `Xor` accept any arity `>= 2` and are lowered to balanced binary calls
 - custom value functions such as `pow2` and holomorphic `Complex -> Complex` helpers including `cexp`, `clog`, `csqrt`, `csin`, `ccos`, `ctan`, `csinh`, `ccosh`, `ctanh`, and `cinv`
 - unary minus in value expressions emits direct negative GLSL terms instead of `(0.0 - x)` wrappers
 - differential builtin objects such as `derivative`, `partialX`, `partialY`, `partialZ`, `directionalDerivative`, `gradient`, and `divergence`
 - unary function composition with `f @ g`, meaning `x |-> f(g(x))`
-- `construct Obj3 name = expr` exports stable helper names `sdf_name` and `grad_sdf_name` without changing the scene semantics, and `const` is accepted as an alias
+- `construct Solid name = expr` exports stable helper names `sdf_name` and `grad_sdf_name` without changing the scene semantics, and `const` is accepted as an alias
 - `Complex`, `Vec2`, `Vec3`, and nested-row `Mat3` surface types in value expressions, with aliases such as `C`, `R`, `R2`, and `R3`; complex values still lower to GLSL `vec2`
-- ambient object actions with `Obj3 + R3` translation sugar and `Mat3 * Obj3` orthogonal action
-- 2D and 3D primitives stay distinct semantic families even though the current object surface type is `Obj3`
+- ambient object actions with `Solid + R3` translation sugar and `Mat3 * Solid` orthogonal action
+- 2D and 3D primitives stay distinct semantic families even though the current object surface type is `Solid`
 - top-level `provided`, `func`, typed object bindings, `construct`, and `generate`
 - C-style line comments starting with `//`
 - primitive constructor arguments can be passed positionally in field order, e.g. `Box2D(2, 1)`
 - `Segment2D` and `Segment3D` also accept centered length constructors as `Segment2D(length=2)`, `Segment2D(2)`, and `Segment3D(2)`
-- named declarations use `type name = value` syntax, for example `Obj3 A = Ball3D(r=3)`
+- named declarations use `type name = value` syntax, for example `Solid A = Ball3D(r=3)`
 - output uses `generate value`, for example `generate C`, and `gen value` is accepted as a shorthand alias
 - emitted GLSL always includes both `scene_sdf` and a numerically approximated `scene_grad`
 - emitted GLSL renames generated local identifiers when they would collide with user-defined value names such as `p` or `eps`
