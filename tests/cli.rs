@@ -172,6 +172,8 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Complex: Type"));
+    assert!(stdout.contains("Quat: Type"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(stdout.contains("cexp: Hom(C, C)"));
     assert!(stdout.contains("Union: Hom(Solid × Solid, Solid)"));
@@ -193,6 +195,7 @@ fn lists_known_builtin_objects_from_short_flag() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("ctanh: Hom(C, C)"));
+    assert!(stdout.contains("E3: Type"));
 }
 
 #[test]
@@ -207,6 +210,20 @@ fn shows_known_builtin_object_detail_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Revolution: Hom(R, Hom(Solid, Solid))"));
     assert!(stdout.contains("vec3 op_revolution_point(vec3 p, float offset)"));
+}
+
+#[test]
+fn shows_builtin_type_detail_from_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .args(["--list-objects", "Quat"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Quat: Type"));
+    assert!(stdout.contains("#define Quat vec4"));
 }
 
 #[test]

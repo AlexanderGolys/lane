@@ -110,6 +110,13 @@ pub struct KnownBuiltinObjectDetail {
     pub body: String,
 }
 
+const BUILTIN_TYPE_DETAILS: [(&str, &str, &str); 4] = [
+    ("Complex", "Type", "#define Complex vec2"),
+    ("E2", "Type", "#define E2 vec2"),
+    ("E3", "Type", "#define E3 vec3"),
+    ("Quat", "Type", "#define Quat vec4"),
+];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PreregisteredObjectKind {
     Function,
@@ -1560,6 +1567,13 @@ impl Registry {
     fn known_builtin_objects(&self) -> Vec<KnownBuiltinObject> {
         let mut objects = Vec::new();
 
+        for (name, ty, _) in BUILTIN_TYPE_DETAILS {
+            objects.push(KnownBuiltinObject {
+                name: name.to_string(),
+                ty: ty.to_string(),
+            });
+        }
+
         let mut value_func_names: Vec<_> = self
             .value_funcs
             .iter()
@@ -1587,6 +1601,17 @@ impl Registry {
     }
 
     fn known_builtin_object(&self, name: &str) -> Option<KnownBuiltinObjectDetail> {
+        if let Some((name, ty, body)) = BUILTIN_TYPE_DETAILS
+            .iter()
+            .find(|(candidate, _, _)| *candidate == name)
+        {
+            return Some(KnownBuiltinObjectDetail {
+                name: (*name).to_string(),
+                ty: (*ty).to_string(),
+                body: (*body).to_string(),
+            });
+        }
+
         if let Some(func) = self.value_funcs.get(name) {
             let body = func.support_glsl?;
             return Some(KnownBuiltinObjectDetail {

@@ -265,6 +265,12 @@ fn lists_builtin_lane_objects() {
 
     assert!(objects
         .iter()
+        .any(|object| object.name == "Complex" && object.ty == "Type"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "Quat" && object.ty == "Type"));
+    assert!(objects
+        .iter()
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
     assert!(objects
         .iter()
@@ -289,6 +295,7 @@ fn lists_builtin_lane_objects() {
 fn looks_up_builtin_object_detail() {
     let revolution = known_builtin_object("Revolution").unwrap();
     let pow2 = known_builtin_object("pow2").unwrap();
+    let quat = known_builtin_object("Quat").unwrap();
 
     assert_eq!(revolution.ty, "Hom(R, Hom(Solid, Solid))");
     assert!(revolution
@@ -296,6 +303,8 @@ fn looks_up_builtin_object_detail() {
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
+    assert_eq!(quat.ty, "Type");
+    assert!(quat.body.contains("#define Quat vec4"));
     assert!(known_builtin_object("gradient").is_none());
 }
 
@@ -422,7 +431,8 @@ fn emits_generated_object_helpers() {
 
 #[test]
 fn generated_helpers_capture_scene_inputs_in_their_signatures() {
-    let source = "provided Float time\nconstruct Solid shell = Ball3D(r=1 + time)\ngenerate shell\n";
+    let source =
+        "provided Float time\nconstruct Solid shell = Ball3D(r=1 + time)\ngenerate shell\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
@@ -807,7 +817,8 @@ fn emits_difference_operator() {
 
 #[test]
 fn emits_union_operator() {
-    let source = "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Union(a, b)\n";
+    let source =
+        "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Union(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_union(float a, float b) {"));
