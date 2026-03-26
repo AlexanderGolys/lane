@@ -3,8 +3,8 @@ Declarations
 ==================
 
 provided Float time
-construct Obj3 shell = Ball3D(r=1 + time)
-Obj3 moved = shell + (1, 2, 3)
+construct Solid shell = Ball3D(r=1 + time)
+Solid moved = shell + (1, 2, 3)
 func(Float -> Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 generate spin(time) * moved
 

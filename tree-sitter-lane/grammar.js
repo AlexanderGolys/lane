@@ -118,7 +118,7 @@ module.exports = grammar({
             'Mat2',
             'Mat3',
             'Mat4',
-            'Obj3',
+            'Solid',
         )),
 
         _expression: ($) => choice(
