@@ -794,8 +794,8 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
         'H', 3,
         'I', 4,
         'M', 5,
-        'O', 6,
-        'R', 7,
+        'R', 6,
+        'S', 7,
         'V', 8,
         'Z', 9,
         'c', 10,
@@ -823,11 +823,11 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       if (lookahead == 'a') ADVANCE(19);
       END_STATE();
     case 6:
-      if (lookahead == 'b') ADVANCE(20);
-      END_STATE();
-    case 7:
       ACCEPT_TOKEN(sym_type_identifier);
       if (('2' <= lookahead && lookahead <= '4')) ADVANCE(9);
+      END_STATE();
+    case 7:
+      if (lookahead == 'o') ADVANCE(20);
       END_STATE();
     case 8:
       if (lookahead == 'e') ADVANCE(21);
@@ -866,7 +866,7 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       if (lookahead == 't') ADVANCE(30);
       END_STATE();
     case 20:
-      if (lookahead == 'j') ADVANCE(31);
+      if (lookahead == 'l') ADVANCE(31);
       END_STATE();
     case 21:
       if (lookahead == 'c') ADVANCE(32);
@@ -899,23 +899,23 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       if (('2' <= lookahead && lookahead <= '4')) ADVANCE(9);
       END_STATE();
     case 31:
-      if (lookahead == '3') ADVANCE(9);
+      if (lookahead == 'i') ADVANCE(39);
       END_STATE();
     case 32:
       if (('2' <= lookahead && lookahead <= '4')) ADVANCE(9);
       END_STATE();
     case 33:
-      if (lookahead == 's') ADVANCE(39);
+      if (lookahead == 's') ADVANCE(40);
       END_STATE();
     case 34:
-      if (lookahead == 'c') ADVANCE(40);
+      if (lookahead == 'c') ADVANCE(41);
       END_STATE();
     case 35:
       ACCEPT_TOKEN(anon_sym_gen);
-      if (lookahead == 'e') ADVANCE(41);
+      if (lookahead == 'e') ADVANCE(42);
       END_STATE();
     case 36:
-      if (lookahead == 'v') ADVANCE(42);
+      if (lookahead == 'v') ADVANCE(43);
       END_STATE();
     case 37:
       if (lookahead == 't') ADVANCE(9);
@@ -924,55 +924,58 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       ACCEPT_TOKEN(anon_sym_Func);
       END_STATE();
     case 39:
-      if (lookahead == 't') ADVANCE(43);
+      if (lookahead == 'd') ADVANCE(9);
       END_STATE();
     case 40:
-      ACCEPT_TOKEN(anon_sym_func);
+      if (lookahead == 't') ADVANCE(44);
       END_STATE();
     case 41:
-      if (lookahead == 'r') ADVANCE(44);
+      ACCEPT_TOKEN(anon_sym_func);
       END_STATE();
     case 42:
-      if (lookahead == 'i') ADVANCE(45);
+      if (lookahead == 'r') ADVANCE(45);
       END_STATE();
     case 43:
-      ACCEPT_TOKEN(anon_sym_const);
-      if (lookahead == 'r') ADVANCE(46);
+      if (lookahead == 'i') ADVANCE(46);
       END_STATE();
     case 44:
-      if (lookahead == 'a') ADVANCE(47);
+      ACCEPT_TOKEN(anon_sym_const);
+      if (lookahead == 'r') ADVANCE(47);
       END_STATE();
     case 45:
-      if (lookahead == 'd') ADVANCE(48);
+      if (lookahead == 'a') ADVANCE(48);
       END_STATE();
     case 46:
-      if (lookahead == 'u') ADVANCE(49);
+      if (lookahead == 'd') ADVANCE(49);
       END_STATE();
     case 47:
-      if (lookahead == 't') ADVANCE(50);
+      if (lookahead == 'u') ADVANCE(50);
       END_STATE();
     case 48:
-      if (lookahead == 'e') ADVANCE(51);
+      if (lookahead == 't') ADVANCE(51);
       END_STATE();
     case 49:
-      if (lookahead == 'c') ADVANCE(52);
+      if (lookahead == 'e') ADVANCE(52);
       END_STATE();
     case 50:
-      if (lookahead == 'e') ADVANCE(53);
+      if (lookahead == 'c') ADVANCE(53);
       END_STATE();
     case 51:
-      if (lookahead == 'd') ADVANCE(54);
+      if (lookahead == 'e') ADVANCE(54);
       END_STATE();
     case 52:
-      if (lookahead == 't') ADVANCE(55);
+      if (lookahead == 'd') ADVANCE(55);
       END_STATE();
     case 53:
-      ACCEPT_TOKEN(anon_sym_generate);
+      if (lookahead == 't') ADVANCE(56);
       END_STATE();
     case 54:
-      ACCEPT_TOKEN(anon_sym_provided);
+      ACCEPT_TOKEN(anon_sym_generate);
       END_STATE();
     case 55:
+      ACCEPT_TOKEN(anon_sym_provided);
+      END_STATE();
+    case 56:
       ACCEPT_TOKEN(anon_sym_construct);
       END_STATE();
     default:

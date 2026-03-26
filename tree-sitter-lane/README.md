@@ -13,6 +13,8 @@ Generate the parser with:
 tree-sitter generate
 ```
 
+Commit the regenerated `src/parser.c` and `src/grammar.json` artifacts whenever `grammar.js` changes so Neovim and other tree-sitter consumers pick up the new syntax.
+
 Run the corpus tests with:
 
 ```sh
