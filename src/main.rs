@@ -3,6 +3,11 @@ use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process;
 
+const COLOR_FUNCTION: &str = "34";
+const COLOR_TYPE: &str = "33";
+const COLOR_CATEGORY: &str = "93";
+const COLOR_CAT_METATYPE: &str = "97";
+
 const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen PATH is omitted, lane reads source from stdin. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
@@ -292,9 +297,9 @@ fn highlight_builtin_object_line(
 
 fn highlight_builtin_object_name(name: &str, kind: lane::KnownBuiltinObjectKind) -> String {
     match kind {
-        lane::KnownBuiltinObjectKind::Function => color("34", name),
-        lane::KnownBuiltinObjectKind::Type => color("33", name),
-        lane::KnownBuiltinObjectKind::Category => color("93", name),
+        lane::KnownBuiltinObjectKind::Function => color(COLOR_FUNCTION, name),
+        lane::KnownBuiltinObjectKind::Type => color(COLOR_TYPE, name),
+        lane::KnownBuiltinObjectKind::Category => color(COLOR_CATEGORY, name),
     }
 }
 
@@ -334,16 +339,16 @@ fn highlight_lane_ident(token: &str) -> String {
         return color("35", token);
     }
     if token == lane::TYPE_METATYPE_NAME {
-        return color("93", token);
+        return color(COLOR_TYPE, token);
     }
     if token == lane::CATEGORY_METATYPE_NAME {
-        return color("97", token);
+        return color(COLOR_CAT_METATYPE, token);
     }
     if lane::is_known_category_name(token) {
-        return color("93", token);
+        return color(COLOR_CATEGORY, token);
     }
     if lane::is_known_type_name(token) {
-        return color("33", token);
+        return color(COLOR_TYPE, token);
     }
     token.to_string()
 }
@@ -499,6 +504,8 @@ mod tests {
         assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
         assert!(highlighted.contains("\x1b[93mField\x1b[0m"));
         assert!(highlighted.contains("\x1b[93mAlgR\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[33mField\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[33mAlgR\x1b[0m"));
     }
 
     #[test]
@@ -508,6 +515,18 @@ mod tests {
 
         assert!(highlighted.contains("\x1b[93mField\x1b[0m"));
         assert!(highlighted.contains("\x1b[97mCat\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[33mField\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[93mCat\x1b[0m"));
+    }
+
+    #[test]
+    fn highlights_type_metatype_as_type_not_category() {
+        let highlighted =
+            highlight_builtin_object_line("Object", "Type", lane::KnownBuiltinObjectKind::Type);
+
+        assert!(highlighted.contains("\x1b[33mObject\x1b[0m"));
+        assert!(highlighted.contains("\x1b[33mType\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[93mType\x1b[0m"));
     }
 
     #[test]
