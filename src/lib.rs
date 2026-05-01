@@ -145,62 +145,105 @@ const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
     ("H", "#define H vec4"),
 ];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AlgebraicCategory {
+    Ab,
+    Mon,
+    Grp,
+    Ring,
+    Field,
+    VectR,
+    AlgR,
+}
+
 struct SurfaceTypeDef {
     ty: Type,
     aliases: &'static [&'static str],
     surface_name: &'static str,
+    categories: &'static [AlgebraicCategory],
 }
 
-const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 10] = [
+const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 11] = [
     SurfaceTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
         surface_name: "R",
+        categories: &[
+            AlgebraicCategory::Field,
+            AlgebraicCategory::Grp,
+            AlgebraicCategory::AlgR,
+            AlgebraicCategory::VectR,
+        ],
     },
     SurfaceTypeDef {
         ty: Type::Int,
         aliases: &["Int", "Z"],
         surface_name: "Z",
+        categories: &[AlgebraicCategory::Ring],
     },
     SurfaceTypeDef {
         ty: Type::Complex,
         aliases: &["Complex", "C"],
         surface_name: "C",
+        categories: &[
+            AlgebraicCategory::Field,
+            AlgebraicCategory::Grp,
+            AlgebraicCategory::AlgR,
+            AlgebraicCategory::VectR,
+        ],
     },
     SurfaceTypeDef {
         ty: Type::Vec2,
-        aliases: &["Vec2", "R2"],
+        aliases: &["Vec2", "R2", "E2"],
         surface_name: "R2",
+        categories: &[AlgebraicCategory::VectR],
     },
     SurfaceTypeDef {
         ty: Type::Vec3,
-        aliases: &["Vec3", "R3"],
+        aliases: &["Vec3", "R3", "E3"],
         surface_name: "R3",
+        categories: &[AlgebraicCategory::VectR],
     },
     SurfaceTypeDef {
         ty: Type::Vec4,
         aliases: &["Vec4", "R4"],
         surface_name: "R4",
+        categories: &[AlgebraicCategory::VectR],
     },
     SurfaceTypeDef {
         ty: Type::Mat2,
         aliases: &["Mat2"],
         surface_name: "Mat2",
+        categories: &[AlgebraicCategory::Ring, AlgebraicCategory::VectR],
     },
     SurfaceTypeDef {
         ty: Type::Mat3,
         aliases: &["Mat3"],
         surface_name: "Mat3",
+        categories: &[AlgebraicCategory::Ring, AlgebraicCategory::VectR],
     },
     SurfaceTypeDef {
         ty: Type::Mat4,
         aliases: &["Mat4"],
         surface_name: "Mat4",
+        categories: &[AlgebraicCategory::Ring, AlgebraicCategory::VectR],
+    },
+    SurfaceTypeDef {
+        ty: Type::Quat,
+        aliases: &["H"],
+        surface_name: "H",
+        categories: &[
+            AlgebraicCategory::Field,
+            AlgebraicCategory::Grp,
+            AlgebraicCategory::AlgR,
+            AlgebraicCategory::VectR,
+        ],
     },
     SurfaceTypeDef {
         ty: Type::Solid,
         aliases: &["Solid"],
         surface_name: "Solid",
+        categories: &[],
     },
 ];
 
@@ -222,6 +265,7 @@ enum Type {
     Float,
     Int,
     Complex,
+    Quat,
     Vec2,
     Vec3,
     Vec4,
@@ -243,6 +287,7 @@ impl Type {
             Self::Float => "float",
             Self::Int => "int",
             Self::Complex => "vec2",
+            Self::Quat => "vec4",
             Self::Vec2 => "vec2",
             Self::Vec3 => "vec3",
             Self::Vec4 => "vec4",
@@ -271,6 +316,33 @@ fn parse_surface_type_name(name: &str) -> Option<Type> {
         .iter()
         .find(|def| def.aliases.contains(&name))
         .map(|def| def.ty.clone())
+}
+
+fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
+    let Some(def) = SURFACE_TYPE_DEFS.iter().find(|def| &def.ty == ty) else {
+        return false;
+    };
+    def.categories
+        .iter()
+        .any(|candidate| *candidate == category || category_implies(*candidate, category))
+}
+
+fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> bool {
+    matches!(
+        (source, target),
+        (AlgebraicCategory::AlgR, AlgebraicCategory::Ring)
+            | (AlgebraicCategory::AlgR, AlgebraicCategory::VectR)
+            | (AlgebraicCategory::AlgR, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::AlgR, AlgebraicCategory::Mon)
+            | (AlgebraicCategory::Ring, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::Ring, AlgebraicCategory::Mon)
+            | (AlgebraicCategory::Field, AlgebraicCategory::Grp)
+            | (AlgebraicCategory::Field, AlgebraicCategory::Ring)
+            | (AlgebraicCategory::Field, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::Field, AlgebraicCategory::Mon)
+            | (AlgebraicCategory::Grp, AlgebraicCategory::Mon)
+            | (AlgebraicCategory::VectR, AlgebraicCategory::Ab)
+    )
 }
 
 #[derive(Clone, Debug)]
@@ -376,6 +448,12 @@ enum ValueExpr {
     },
     Vec2(Box<ValueExpr>, Box<ValueExpr>),
     Vec3(Box<ValueExpr>, Box<ValueExpr>, Box<ValueExpr>),
+    Vec4(
+        Box<ValueExpr>,
+        Box<ValueExpr>,
+        Box<ValueExpr>,
+        Box<ValueExpr>,
+    ),
     Mat3(Box<ValueExpr>, Box<ValueExpr>, Box<ValueExpr>),
     Derivative {
         epsilon: Box<ValueExpr>,
@@ -415,6 +493,7 @@ impl ValueExpr {
             Self::Binary { ty, .. } => ty.clone(),
             Self::Vec2(_, _) => Type::Vec2,
             Self::Vec3(_, _, _) => Type::Vec3,
+            Self::Vec4(_, _, _, _) => Type::Vec4,
             Self::Mat3(_, _, _) => Type::Mat3,
             Self::Derivative { .. } => Type::Float,
             Self::Partial { .. } => Type::Float,
@@ -587,7 +666,10 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
     }
     if matches!(
         (actual, expected),
-        (Type::Vec2, Type::Complex) | (Type::Complex, Type::Vec2)
+        (Type::Vec2, Type::Complex)
+            | (Type::Complex, Type::Vec2)
+            | (Type::Vec4, Type::Quat)
+            | (Type::Quat, Type::Vec4)
     ) {
         return Ok(());
     }

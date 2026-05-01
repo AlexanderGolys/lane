@@ -43,6 +43,7 @@ impl TypedProgram {
                 Type::Float
                     | Type::Int
                     | Type::Complex
+                    | Type::Quat
                     | Type::Vec2
                     | Type::Vec3
                     | Type::Vec4
@@ -473,6 +474,7 @@ fn infer_value_expr(
                 Type::Float
                 | Type::Int
                 | Type::Complex
+                | Type::Quat
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -546,8 +548,24 @@ fn infer_tuple_value_expr(
             ensure_type(&z.ty(), &Type::Vec3, "mat3 row 3")?;
             Ok(ValueExpr::Mat3(Box::new(x), Box::new(y), Box::new(z)))
         }
+        4 => {
+            let x = infer_value_expr(&items[0], env, lift_param)?;
+            let y = infer_value_expr(&items[1], env, lift_param)?;
+            let z = infer_value_expr(&items[2], env, lift_param)?;
+            let w = infer_value_expr(&items[3], env, lift_param)?;
+            ensure_type(&x.ty(), &Type::Float, "vec4 element 1")?;
+            ensure_type(&y.ty(), &Type::Float, "vec4 element 2")?;
+            ensure_type(&z.ty(), &Type::Float, "vec4 element 3")?;
+            ensure_type(&w.ty(), &Type::Float, "vec4 element 4")?;
+            Ok(ValueExpr::Vec4(
+                Box::new(x),
+                Box::new(y),
+                Box::new(z),
+                Box::new(w),
+            ))
+        }
         _ => Err(Error::new(
-            "only vec2, vec3, and mat3 tuples are supported in value expressions",
+            "only vec2, vec3, vec4, and mat3 tuples are supported in value expressions",
         )),
     }
 }
@@ -829,6 +847,7 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 Type::Float
                 | Type::Int
                 | Type::Complex
+                | Type::Quat
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -898,6 +917,7 @@ fn infer_identifier_value(
         Type::Float
         | Type::Int
         | Type::Complex
+        | Type::Quat
         | Type::Vec2
         | Type::Vec3
         | Type::Vec4
@@ -932,26 +952,43 @@ fn infer_identifier_value(
 }
 
 fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error> {
-    match (op, left, right) {
-        (BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div, Type::Float, Type::Float) => {
-            Ok(Type::Float)
+    if left == right {
+        let category = match op {
+            BinOp::Add | BinOp::Sub => AlgebraicCategory::Ab,
+            BinOp::Mul => AlgebraicCategory::Mon,
+            BinOp::Div => AlgebraicCategory::Field,
+            BinOp::Compose => unreachable!(),
+        };
+        if has_category(left, category) {
+            return Ok(left.clone());
         }
-        (BinOp::Add | BinOp::Sub, Type::Complex, Type::Complex) => Ok(Type::Complex),
-        (BinOp::Add | BinOp::Sub, Type::Vec2, Type::Vec2) => Ok(Type::Vec2),
-        (BinOp::Mul | BinOp::Div, Type::Complex, Type::Float) => Ok(Type::Complex),
-        (BinOp::Mul, Type::Float, Type::Complex) => Ok(Type::Complex),
-        (BinOp::Add | BinOp::Sub, Type::Vec3, Type::Vec3) => Ok(Type::Vec3),
-        (BinOp::Mul | BinOp::Div, Type::Vec2, Type::Float) => Ok(Type::Vec2),
-        (BinOp::Mul, Type::Float, Type::Vec2) => Ok(Type::Vec2),
-        (BinOp::Mul | BinOp::Div, Type::Vec3, Type::Float) => Ok(Type::Vec3),
-        (BinOp::Mul, Type::Float, Type::Vec3) => Ok(Type::Vec3),
-        _ => Err(Error::new(format!(
-            "unsupported operands for binary operator: {} {} {}",
-            format_type(left),
-            op.symbol(),
-            format_type(right)
-        ))),
     }
+
+    if has_category(left, AlgebraicCategory::AlgR) && right == &Type::Float {
+        return Ok(left.clone());
+    }
+
+    if left == &Type::Float && has_category(right, AlgebraicCategory::AlgR) {
+        return Ok(right.clone());
+    }
+
+    if matches!(op, BinOp::Mul | BinOp::Div)
+        && has_category(left, AlgebraicCategory::VectR)
+        && right == &Type::Float
+    {
+        return Ok(left.clone());
+    }
+
+    if op == BinOp::Mul && left == &Type::Float && has_category(right, AlgebraicCategory::VectR) {
+        return Ok(right.clone());
+    }
+
+    Err(Error::new(format!(
+        "unsupported operands for binary operator: {} {} {}",
+        format_type(left),
+        op.symbol(),
+        format_type(right)
+    )))
 }
 fn zero_vec3() -> ValueExpr {
     ValueExpr::Vec3(

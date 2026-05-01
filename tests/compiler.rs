@@ -380,6 +380,37 @@ fn emits_support_for_custom_complex_functions() {
 }
 
 #[test]
+fn lowers_complex_ring_operations_through_category_helpers() {
+    let source = "provided C z\nC product = z * z\nC shifted = 1 - (z / z)\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
+    assert!(glsl.contains("vec2 div_C(vec2 a, vec2 b)"));
+    assert!(glsl.contains("vec2 product = mult_C(z, z);"));
+    assert!(glsl.contains("vec2 shifted = (vec2(1.0, 0.0) - div_C(z, z));"));
+}
+
+#[test]
+fn lowers_quaternion_field_operations_through_category_helpers() {
+    let source = "provided H p\nprovided H q\nH product = p * q\nH ratio = 1 / q\nH literal = (1, 0, 0, 0)\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec4 mult_H(vec4 a, vec4 b)"));
+    assert!(glsl.contains("vec4 div_H(vec4 a, vec4 b)"));
+    assert!(glsl.contains("vec4 product = mult_H(p, q);"));
+    assert!(glsl.contains("vec4 ratio = div_H(vec4(1.0, 0.0, 0.0, 0.0), q);"));
+    assert!(glsl.contains("vec4 literal = vec4(1.0, 0.0, 0.0, 0.0);"));
+}
+
+#[test]
+fn allows_vector_space_scaling_by_category() {
+    let source = "provided R3 p\nR3 scaled = 2 * (p / 3)\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 scaled = (2.0 * (p / 3.0));"));
+}
+
+#[test]
 fn rejects_invalid_function_composition() {
     let source = "provided func(Float -> Vec3) center\nfunc(Float -> Float) wobble = sin @ center\ngenerate Ball3D(r=1)\n";
     let error = compile_program(source).unwrap_err().to_string();

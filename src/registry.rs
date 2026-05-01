@@ -421,6 +421,26 @@ impl Default for Registry {
 
         let value_funcs = HashMap::from([
             (
+                "ops_C",
+                ValueFuncDef {
+                    ty: Type::Func(Box::new(Type::Complex), Box::new(Type::Complex)),
+                    support_glsl: Some(
+                        "vec2 mult_C(vec2 a, vec2 b) {\n    return vec2((a.x * b.x) - (a.y * b.y), (a.x * b.y) + (a.y * b.x));\n}\n\nvec2 div_C(vec2 a, vec2 b) {\n    return mult_C(a, vec2(b.x, -b.y) / dot(b, b));\n}",
+                    ),
+                    listed: false,
+                },
+            ),
+            (
+                "ops_H",
+                ValueFuncDef {
+                    ty: Type::Func(Box::new(Type::Quat), Box::new(Type::Quat)),
+                    support_glsl: Some(
+                        "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}",
+                    ),
+                    listed: false,
+                },
+            ),
+            (
                 "sin",
                 ValueFuncDef {
                     ty: Type::func(Type::Float, Type::Float),
@@ -740,6 +760,9 @@ impl Registry {
         }
 
         if let Some(func) = self.value_funcs.get(name) {
+            if !func.listed {
+                return None;
+            }
             let body = func.support_glsl?;
             return Some(KnownBuiltinObjectDetail {
                 name: name.to_string(),

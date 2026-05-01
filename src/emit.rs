@@ -103,6 +103,7 @@ impl TypedProgram {
                 Type::Float
                 | Type::Int
                 | Type::Complex
+                | Type::Quat
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -122,6 +123,7 @@ impl TypedProgram {
                 Type::Float
                 | Type::Int
                 | Type::Complex
+                | Type::Quat
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -243,6 +245,7 @@ impl TypedProgram {
                 Type::Float
                 | Type::Int
                 | Type::Complex
+                | Type::Quat
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -371,7 +374,12 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_support(arg, names);
             }
         }
-        ValueExpr::Binary { left, right, .. } => {
+        ValueExpr::Binary {
+            op, left, right, ..
+        } => {
+            if let Some(name) = binary_support_name(*op, &left.ty(), &right.ty()) {
+                names.insert(name.to_string());
+            }
             collect_value_support(left, names);
             collect_value_support(right, names);
         }
@@ -383,6 +391,12 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_support(x, names);
             collect_value_support(y, names);
             collect_value_support(z, names);
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_value_support(x, names);
+            collect_value_support(y, names);
+            collect_value_support(z, names);
+            collect_value_support(w, names);
         }
         ValueExpr::Mat3(r0, r1, r2) => {
             collect_value_support(r0, names);
@@ -457,12 +471,7 @@ fn emit_value_expr(
             if *op == BinOp::Sub && is_float_literal(left, 0.0) {
                 return format!("(-{})", emit_value_expr(right, helper_names, value_names));
             }
-            format!(
-                "({} {} {})",
-                emit_value_expr(left, helper_names, value_names),
-                op.symbol(),
-                emit_value_expr(right, helper_names, value_names)
-            )
+            emit_binary_expr(*op, left, right, helper_names, value_names)
         }
         ValueExpr::Vec2(x, y) => format!(
             "vec2({}, {})",
@@ -474,6 +483,13 @@ fn emit_value_expr(
             emit_value_expr(x, helper_names, value_names),
             emit_value_expr(y, helper_names, value_names),
             emit_value_expr(z, helper_names, value_names)
+        ),
+        ValueExpr::Vec4(x, y, z, w) => format!(
+            "vec4({}, {}, {}, {})",
+            emit_value_expr(x, helper_names, value_names),
+            emit_value_expr(y, helper_names, value_names),
+            emit_value_expr(z, helper_names, value_names),
+            emit_value_expr(w, helper_names, value_names)
         ),
         ValueExpr::Mat3(r0, r1, r2) => format!(
             "transpose(mat3({}, {}, {}))",
@@ -507,6 +523,67 @@ fn emit_value_expr(
 
 fn emit_plain_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> String {
     emit_value_expr(expr, helper_names, &HashMap::new())
+}
+
+fn emit_binary_expr(
+    op: BinOp,
+    left: &ValueExpr,
+    right: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
+    let left_ty = left.ty();
+    let right_ty = right.ty();
+    let left = emit_value_expr(left, helper_names, value_names);
+    let right = emit_value_expr(right, helper_names, value_names);
+
+    match (op, &left_ty, &right_ty) {
+        (BinOp::Mul, Type::Complex, Type::Complex) => format!("mult_C({}, {})", left, right),
+        (BinOp::Div, Type::Complex, Type::Complex) => format!("div_C({}, {})", left, right),
+        (BinOp::Mul, Type::Quat, Type::Quat) => format!("mult_H({}, {})", left, right),
+        (BinOp::Div, Type::Quat, Type::Quat) => format!("div_H({}, {})", left, right),
+        (BinOp::Div, Type::Float, Type::Complex) => {
+            format!("div_C({}, {})", scalar_to_algebra(&right_ty, &left), right)
+        }
+        (BinOp::Div, Type::Float, Type::Quat) => {
+            format!("div_H({}, {})", scalar_to_algebra(&right_ty, &left), right)
+        }
+        (BinOp::Add | BinOp::Sub, Type::Complex | Type::Quat, Type::Float) => {
+            format!(
+                "({} {} {})",
+                left,
+                op.symbol(),
+                scalar_to_algebra(&left_ty, &right)
+            )
+        }
+        (BinOp::Add | BinOp::Sub, Type::Float, Type::Complex | Type::Quat) => {
+            format!(
+                "({} {} {})",
+                scalar_to_algebra(&right_ty, &left),
+                op.symbol(),
+                right
+            )
+        }
+        _ => format!("({} {} {})", left, op.symbol(), right),
+    }
+}
+
+fn scalar_to_algebra(ty: &Type, value: &str) -> String {
+    match ty {
+        Type::Complex => format!("vec2({}, 0.0)", value),
+        Type::Quat => format!("vec4({}, 0.0, 0.0, 0.0)", value),
+        _ => value.to_string(),
+    }
+}
+
+fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<&'static str> {
+    match (op, left, right) {
+        (BinOp::Mul | BinOp::Div, Type::Complex, Type::Complex)
+        | (BinOp::Div, Type::Float, Type::Complex) => Some("ops_C"),
+        (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
+        | (BinOp::Div, Type::Float, Type::Quat) => Some("ops_H"),
+        _ => None,
+    }
 }
 
 fn emit_function_application(

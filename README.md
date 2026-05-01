@@ -146,8 +146,9 @@ object representations.
 | `Float` | `R` | `float` |
 | `Int` | `Z` | `int` |
 | `Complex` | `C` | `vec2` |
-| `Vec2` | `R2` | `vec2` |
-| `Vec3` | `R3` | `vec3` |
+| `H` | | `vec4` |
+| `Vec2` | `R2`, `E2` | `vec2` |
+| `Vec3` | `R3`, `E3` | `vec3` |
 | `Vec4` | `R4` | `vec4` |
 | `Mat2` | | `mat2` |
 | `Mat3` | | `mat3` |
@@ -186,6 +187,12 @@ Operators:
   combinations.
 - `f @ g` for unary function composition.
 - `f(x)` for value function calls.
+
+Arithmetic is typechecked through built-in algebraic categories instead of one
+rule per concrete type. Current categories include additive groups, monoids,
+rings, fields, real vector spaces, and real algebras. For example, `C` and `H`
+support field-style multiplication and division through generated helper
+functions, while `R2`/`R3`/matrices share real vector-space scaling rules.
 
 User-defined function bodies currently support `R` inputs. Inside a
 `Func(R, T)` binding, bare unary function identifiers are implicitly applied to
