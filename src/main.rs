@@ -259,8 +259,10 @@ fn print_known_builtin_objects() {
 fn print_known_builtin_object_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(object) = lane::known_builtin_object(name) {
         print_known_builtin_object_line(&object.name, &object.ty, object.kind);
-        println!();
-        print_glsl(&object.body);
+        if !object.body.is_empty() {
+            println!();
+            print_glsl(&object.body);
+        }
         return Ok(());
     }
     Err(format!("unknown builtin object '{name}'").into())
@@ -292,6 +294,7 @@ fn highlight_builtin_object_name(name: &str, kind: lane::KnownBuiltinObjectKind)
     match kind {
         lane::KnownBuiltinObjectKind::Function => color("34", name),
         lane::KnownBuiltinObjectKind::Type => color("33", name),
+        lane::KnownBuiltinObjectKind::Category => color("93", name),
     }
 }
 
@@ -331,6 +334,12 @@ fn highlight_lane_ident(token: &str) -> String {
         return color("35", token);
     }
     if token == lane::TYPE_METATYPE_NAME {
+        return color("93", token);
+    }
+    if token == lane::CATEGORY_METATYPE_NAME {
+        return color("97", token);
+    }
+    if lane::is_known_category_name(token) {
         return color("93", token);
     }
     if lane::is_known_type_name(token) {
@@ -484,11 +493,24 @@ mod tests {
 
     #[test]
     fn highlights_builtin_type_names_as_types() {
-        let highlighted =
-            highlight_builtin_object_line("H", "Type", lane::KnownBuiltinObjectKind::Type);
+        let highlighted = highlight_builtin_object_line(
+            "H",
+            "Field × Grp × AlgR × VectR",
+            lane::KnownBuiltinObjectKind::Type,
+        );
 
         assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
-        assert!(highlighted.contains("\x1b[93mType\x1b[0m"));
+        assert!(highlighted.contains("\x1b[93mField\x1b[0m"));
+        assert!(highlighted.contains("\x1b[93mVectR\x1b[0m"));
+    }
+
+    #[test]
+    fn highlights_categories_as_bright_yellow_and_cat_as_white() {
+        let highlighted =
+            highlight_builtin_object_line("Field", "Cat", lane::KnownBuiltinObjectKind::Category);
+
+        assert!(highlighted.contains("\x1b[93mField\x1b[0m"));
+        assert!(highlighted.contains("\x1b[97mCat\x1b[0m"));
     }
 
     #[test]

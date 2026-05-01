@@ -265,10 +265,19 @@ fn lists_builtin_lane_objects() {
 
     assert!(objects
         .iter()
-        .any(|object| object.name == "C" && object.ty == "Type"));
+        .any(|object| object.name == "Field" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "H" && object.ty == "Type"));
+        .any(|object| object.name == "VectR" && object.ty == "Cat"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "C" && object.ty == "Field × Grp × AlgR × VectR"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "H" && object.ty == "Field × Grp × AlgR × VectR"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "E3" && object.ty == "VectR"));
     assert!(objects
         .iter()
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
@@ -297,6 +306,7 @@ fn looks_up_builtin_object_detail() {
     let pow2 = known_builtin_object("pow2").unwrap();
     let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("H").unwrap();
+    let field = known_builtin_object("Field").unwrap();
 
     assert_eq!(revolution.ty, "Hom(R, Hom(Solid, Solid))");
     assert!(revolution
@@ -304,10 +314,12 @@ fn looks_up_builtin_object_detail() {
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
-    assert_eq!(complex.ty, "Type");
+    assert_eq!(complex.ty, "Field × Grp × AlgR × VectR");
     assert!(complex.body.contains("#define Complex vec2"));
-    assert_eq!(quat.ty, "Type");
+    assert_eq!(quat.ty, "Field × Grp × AlgR × VectR");
     assert!(quat.body.contains("#define H vec4"));
+    assert_eq!(field.ty, "Cat");
+    assert_eq!(field.body, "");
     assert!(known_builtin_object("gradient").is_none());
 }
 

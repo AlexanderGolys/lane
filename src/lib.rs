@@ -121,9 +121,11 @@ pub struct KnownBuiltinObjectDetail {
 pub enum KnownBuiltinObjectKind {
     Function,
     Type,
+    Category,
 }
 
 pub const TYPE_METATYPE_NAME: &str = "Type";
+pub const CATEGORY_METATYPE_NAME: &str = "Cat";
 
 pub fn known_type_names() -> Vec<&'static str> {
     let mut names = SURFACE_TYPE_DEFS
@@ -136,6 +138,14 @@ pub fn known_type_names() -> Vec<&'static str> {
 
 pub fn is_known_type_name(name: &str) -> bool {
     parse_surface_type_name(name).is_some()
+}
+
+pub fn known_category_names() -> Vec<&'static str> {
+    ALGEBRAIC_CATEGORY_DEFS.iter().map(|def| def.name).collect()
+}
+
+pub fn is_known_category_name(name: &str) -> bool {
+    category_by_name(name).is_some()
 }
 
 const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
@@ -154,6 +164,91 @@ enum AlgebraicCategory {
     Field,
     VectR,
     AlgR,
+}
+
+struct AlgebraicCategoryDef {
+    category: AlgebraicCategory,
+    name: &'static str,
+}
+
+const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 7] = [
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::Ab,
+        name: "Ab",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::Mon,
+        name: "Mon",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::Grp,
+        name: "Grp",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::Ring,
+        name: "Ring",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::Field,
+        name: "Field",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::VectR,
+        name: "VectR",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::AlgR,
+        name: "AlgR",
+    },
+];
+
+fn category_by_name(name: &str) -> Option<AlgebraicCategory> {
+    ALGEBRAIC_CATEGORY_DEFS
+        .iter()
+        .find(|def| def.name == name)
+        .map(|def| def.category)
+}
+
+fn category_name(category: AlgebraicCategory) -> &'static str {
+    ALGEBRAIC_CATEGORY_DEFS
+        .iter()
+        .find(|def| def.category == category)
+        .map(|def| def.name)
+        .unwrap()
+}
+
+fn type_category_signature(name: &str) -> Option<String> {
+    let ty = parse_surface_type_name(name)?;
+    let categories = type_direct_categories(&ty);
+    if categories.is_empty() {
+        return Some(TYPE_METATYPE_NAME.to_string());
+    }
+    Some(format_categories(&categories))
+}
+
+fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {
+    if let Type::Mat(rows, columns) = ty {
+        let mut categories = Vec::new();
+        if rows == columns {
+            categories.push(AlgebraicCategory::Ring);
+        }
+        categories.push(AlgebraicCategory::VectR);
+        return categories;
+    }
+
+    SURFACE_TYPE_DEFS
+        .iter()
+        .find(|def| &def.ty == ty)
+        .map(|def| def.categories.to_vec())
+        .unwrap_or_default()
+}
+
+fn format_categories(categories: &[AlgebraicCategory]) -> String {
+    categories
+        .iter()
+        .map(|category| category_name(*category))
+        .collect::<Vec<_>>()
+        .join(" × ")
 }
 
 struct SurfaceTypeDef {

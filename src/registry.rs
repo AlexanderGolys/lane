@@ -710,10 +710,18 @@ impl Registry {
     pub(super) fn known_builtin_objects(&self) -> Vec<KnownBuiltinObject> {
         let mut objects = Vec::new();
 
+        for def in ALGEBRAIC_CATEGORY_DEFS.iter() {
+            objects.push(KnownBuiltinObject {
+                name: def.name.to_string(),
+                ty: CATEGORY_METATYPE_NAME.to_string(),
+                kind: KnownBuiltinObjectKind::Category,
+            });
+        }
+
         for (name, _) in BUILTIN_TYPE_DETAILS {
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
-                ty: TYPE_METATYPE_NAME.to_string(),
+                ty: type_category_signature(name).unwrap_or_else(|| TYPE_METATYPE_NAME.to_string()),
                 kind: KnownBuiltinObjectKind::Type,
             });
         }
@@ -747,13 +755,22 @@ impl Registry {
     }
 
     pub(super) fn known_builtin_object(&self, name: &str) -> Option<KnownBuiltinObjectDetail> {
+        if category_by_name(name).is_some() {
+            return Some(KnownBuiltinObjectDetail {
+                name: name.to_string(),
+                ty: CATEGORY_METATYPE_NAME.to_string(),
+                kind: KnownBuiltinObjectKind::Category,
+                body: String::new(),
+            });
+        }
+
         if let Some((name, body)) = BUILTIN_TYPE_DETAILS
             .iter()
             .find(|(candidate, _)| *candidate == name)
         {
             return Some(KnownBuiltinObjectDetail {
                 name: (*name).to_string(),
-                ty: TYPE_METATYPE_NAME.to_string(),
+                ty: type_category_signature(name).unwrap_or_else(|| TYPE_METATYPE_NAME.to_string()),
                 kind: KnownBuiltinObjectKind::Type,
                 body: (*body).to_string(),
             });

@@ -64,13 +64,13 @@ use `lane -h` or `lane --help` for help.
   shape and generated GLSL support code.
 - `lane -l2` or `lane --list2d` lists only 2D primitives.
 - `lane -l3` or `lane --list3d` lists only 3D primitives.
-- `lane -lo` or `lane --list-objects` lists known builtin Lane objects and type
-  aliases.
+- `lane -lo` or `lane --list-objects` lists known builtin Lane objects, type
+  aliases, and algebraic categories.
 - `lane -lo NAME` or `lane --list-objects NAME` shows one builtin object's GLSL
   implementation.
 - List output is syntax-highlighted when stdout is a terminal: function objects
-  are blue, type objects and type names are yellow, `Type` is bright yellow,
-  `Hom` and `×` are red, and punctuation is white.
+  are blue, type objects and type names are yellow, category names are bright
+  yellow, `Cat` is white, `Hom` and `×` are red, and punctuation is white.
 - `lane -pc SHELL` or `lane --print-completion SHELL` prints shell completion
   code for `bash`, `zsh`, or `fish`; primitive and builtin object candidates
   are generated from the compiler registry.
@@ -354,14 +354,21 @@ larger scene using most registered primitives and operators.
 | `Revolution` | `Hom(R, Hom(Solid, Solid))` | Lifts a 2D profile with `vec2(length(p.xz) - offset, p.y)`. |
 | `Extrusion` | `Hom(R, Hom(Solid, Solid))` | Lifts a 2D profile along the `z` axis. |
 
-### Value Functions And Type Aliases
+### Categories, Value Functions, And Type Aliases
 
 | Object | Type |
 | --- | --- |
-| `C` | `Type` |
-| `E2` | `Type` |
-| `E3` | `Type` |
-| `H` | `Type` |
+| `Ab` | `Cat` |
+| `Mon` | `Cat` |
+| `Grp` | `Cat` |
+| `Ring` | `Cat` |
+| `Field` | `Cat` |
+| `VectR` | `Cat` |
+| `AlgR` | `Cat` |
+| `C` | `Field × Grp × AlgR × VectR` |
+| `E2` | `VectR` |
+| `E3` | `VectR` |
+| `H` | `Field × Grp × AlgR × VectR` |
 | `pow2` | `Hom(R, R)` |
 | `ccos` | `Hom(C, C)` |
 | `ccosh` | `Hom(C, C)` |

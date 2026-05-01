@@ -172,8 +172,11 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("C: Type"));
-    assert!(stdout.contains("H: Type"));
+    assert!(stdout.contains("Field: Cat"));
+    assert!(stdout.contains("VectR: Cat"));
+    assert!(stdout.contains("C: Field × Grp × AlgR × VectR"));
+    assert!(stdout.contains("H: Field × Grp × AlgR × VectR"));
+    assert!(stdout.contains("E2: VectR"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(stdout.contains("cexp: Hom(C, C)"));
     assert!(stdout.contains("Union: Hom(Solid × Solid, Solid)"));
@@ -195,7 +198,8 @@ fn lists_known_builtin_objects_from_short_flag() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("ctanh: Hom(C, C)"));
-    assert!(stdout.contains("E3: Type"));
+    assert!(stdout.contains("E3: VectR"));
+    assert!(stdout.contains("AlgR: Cat"));
 }
 
 #[test]
@@ -222,8 +226,21 @@ fn shows_builtin_type_detail_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("H: Type"));
+    assert!(stdout.contains("H: Field × Grp × AlgR × VectR"));
     assert!(stdout.contains("#define H vec4"));
+}
+
+#[test]
+fn shows_builtin_category_detail_from_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .args(["--list-objects", "Field"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout, "Field: Cat\n");
 }
 
 #[test]
@@ -250,6 +267,7 @@ fn prints_bash_completion_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
+    assert!(stdout.contains("Ab Mon Grp Ring Field VectR AlgR"));
     assert!(stdout.contains("C E2 E3"));
     assert!(stdout.contains("Difference"));
     assert!(!stdout.contains("Complex Difference E2"));
