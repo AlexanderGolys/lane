@@ -493,15 +493,12 @@ mod tests {
 
     #[test]
     fn highlights_builtin_type_names_as_types() {
-        let highlighted = highlight_builtin_object_line(
-            "H",
-            "Field × Grp × AlgR × VectR",
-            lane::KnownBuiltinObjectKind::Type,
-        );
+        let highlighted =
+            highlight_builtin_object_line("H", "Field × AlgR", lane::KnownBuiltinObjectKind::Type);
 
         assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
         assert!(highlighted.contains("\x1b[93mField\x1b[0m"));
-        assert!(highlighted.contains("\x1b[93mVectR\x1b[0m"));
+        assert!(highlighted.contains("\x1b[93mAlgR\x1b[0m"));
     }
 
     #[test]

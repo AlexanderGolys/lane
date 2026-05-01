@@ -219,11 +219,23 @@ fn category_name(category: AlgebraicCategory) -> &'static str {
 
 fn type_category_signature(name: &str) -> Option<String> {
     let ty = parse_builtin_type_name(name)?;
-    let categories = type_direct_categories(&ty);
+    let categories = minimal_categories(type_direct_categories(&ty));
     if categories.is_empty() {
         return Some(TYPE_METATYPE_NAME.to_string());
     }
     Some(format_categories(&categories))
+}
+
+fn minimal_categories(categories: Vec<AlgebraicCategory>) -> Vec<AlgebraicCategory> {
+    categories
+        .iter()
+        .copied()
+        .filter(|category| {
+            !categories
+                .iter()
+                .any(|other| other != category && category_implies(*other, *category))
+        })
+        .collect()
 }
 
 fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {

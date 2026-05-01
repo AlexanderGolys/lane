@@ -271,10 +271,10 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "VectR" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "C" && object.ty == "Field × Grp × AlgR × VectR"));
+        .any(|object| object.name == "C" && object.ty == "Field × AlgR"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "H" && object.ty == "Field × Grp × AlgR × VectR"));
+        .any(|object| object.name == "H" && object.ty == "Field × AlgR"));
     assert!(objects
         .iter()
         .any(|object| object.name == "E3" && object.ty == "VectR"));
@@ -314,9 +314,9 @@ fn looks_up_builtin_object_detail() {
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
-    assert_eq!(complex.ty, "Field × Grp × AlgR × VectR");
+    assert_eq!(complex.ty, "Field × AlgR");
     assert!(complex.body.contains("#define Complex vec2"));
-    assert_eq!(quat.ty, "Field × Grp × AlgR × VectR");
+    assert_eq!(quat.ty, "Field × AlgR");
     assert!(quat.body.contains("#define H vec4"));
     assert_eq!(field.ty, "Cat");
     assert_eq!(field.body, "");

@@ -365,10 +365,10 @@ larger scene using most registered primitives and operators.
 | `Field` | `Cat` |
 | `VectR` | `Cat` |
 | `AlgR` | `Cat` |
-| `C` | `Field × Grp × AlgR × VectR` |
+| `C` | `Field × AlgR` |
 | `E2` | `VectR` |
 | `E3` | `VectR` |
-| `H` | `Field × Grp × AlgR × VectR` |
+| `H` | `Field × AlgR` |
 | `pow2` | `Hom(R, R)` |
 | `ccos` | `Hom(C, C)` |
 | `ccosh` | `Hom(C, C)` |
