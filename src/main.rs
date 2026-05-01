@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process;
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane --list [NAME]\n  lane -l [NAME]\n  lane --list2d\n  lane -l2\n  lane --list3d\n  lane -l3\n  lane --list-objects [NAME]\n  lane -lo [NAME]\n  lane --print-completion <bash|zsh|fish>\n  lane -pc <bash|zsh|fish>\n  lane -h\n  lane --help\n\nWhen PATH is omitted, lane reads source from stdin. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen PATH is omitted, lane reads source from stdin. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
 
 const BASH_COMPLETION: &str = r#"_lane() {
     local cur prev

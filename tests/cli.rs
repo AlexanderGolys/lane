@@ -281,17 +281,14 @@ fn prints_help_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Usage:"));
-    assert!(stdout.contains("lane --list [NAME]"));
-    assert!(stdout.contains("lane -l [NAME]"));
-    assert!(stdout.contains("lane --list2d"));
-    assert!(stdout.contains("lane -l2"));
-    assert!(stdout.contains("lane --list3d"));
-    assert!(stdout.contains("lane -l3"));
-    assert!(stdout.contains("lane --list-objects [NAME]"));
-    assert!(stdout.contains("lane -lo [NAME]"));
-    assert!(stdout.contains("lane --print-completion <bash|zsh|fish>"));
-    assert!(stdout.contains("lane -pc <bash|zsh|fish>"));
-    assert!(stdout.contains("lane -h"));
+    assert!(stdout.contains("lane -l, --list [NAME]"));
+    assert!(stdout.contains("lane -l2, --list2d"));
+    assert!(stdout.contains("lane -l3, --list3d"));
+    assert!(stdout.contains("lane -lo, --list-objects [NAME]"));
+    assert!(stdout.contains("lane -pc, --print-completion <bash|zsh|fish>"));
+    assert!(stdout.contains("lane -h, --help"));
+    assert!(!stdout.contains("lane --list [NAME]"));
+    assert!(!stdout.contains("lane -l [NAME]"));
 }
 
 #[test]
