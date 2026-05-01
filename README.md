@@ -351,7 +351,7 @@ larger scene using most registered primitives and operators.
 | `C` | `Type` |
 | `E2` | `Type` |
 | `E3` | `Type` |
-| `Quat` | `Type` |
+| `H` | `Type` |
 | `pow2` | `Hom(R, R)` |
 | `ccos` | `Hom(C, C)` |
 | `ccosh` | `Hom(C, C)` |

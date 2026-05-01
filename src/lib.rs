@@ -142,7 +142,7 @@ const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
     ("C", "#define Complex vec2"),
     ("E2", "#define E2 vec2"),
     ("E3", "#define E3 vec3"),
-    ("Quat", "#define Quat vec4"),
+    ("H", "#define H vec4"),
 ];
 
 struct SurfaceTypeDef {

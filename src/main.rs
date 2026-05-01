@@ -485,9 +485,9 @@ mod tests {
     #[test]
     fn highlights_builtin_type_names_as_types() {
         let highlighted =
-            highlight_builtin_object_line("Quat", "Type", lane::KnownBuiltinObjectKind::Type);
+            highlight_builtin_object_line("H", "Type", lane::KnownBuiltinObjectKind::Type);
 
-        assert!(highlighted.contains("\x1b[33mQuat\x1b[0m"));
+        assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
         assert!(highlighted.contains("\x1b[93mType\x1b[0m"));
     }
 
