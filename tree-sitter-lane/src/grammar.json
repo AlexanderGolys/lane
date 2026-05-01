@@ -178,10 +178,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "legacy_function_type"
-        },
-        {
-          "type": "SYMBOL",
           "name": "hom_type"
         },
         {
@@ -193,8 +189,13 @@
           "name": "parenthesized_type"
         },
         {
-          "type": "SYMBOL",
-          "name": "type_identifier"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          },
+          "named": true,
+          "value": "type_identifier"
         }
       ]
     },
@@ -289,43 +290,6 @@
         }
       ]
     },
-    "legacy_function_type": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "func"
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "input",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_type"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "->"
-        },
-        {
-          "type": "FIELD",
-          "name": "output",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_type"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        }
-      ]
-    },
     "hom_type": {
       "type": "SEQ",
       "members": [
@@ -387,70 +351,6 @@
           "value": ")"
         }
       ]
-    },
-    "type_identifier": {
-      "type": "TOKEN",
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "Float"
-          },
-          {
-            "type": "STRING",
-            "value": "R"
-          },
-          {
-            "type": "STRING",
-            "value": "Int"
-          },
-          {
-            "type": "STRING",
-            "value": "Z"
-          },
-          {
-            "type": "STRING",
-            "value": "Vec2"
-          },
-          {
-            "type": "STRING",
-            "value": "R2"
-          },
-          {
-            "type": "STRING",
-            "value": "Vec3"
-          },
-          {
-            "type": "STRING",
-            "value": "R3"
-          },
-          {
-            "type": "STRING",
-            "value": "Vec4"
-          },
-          {
-            "type": "STRING",
-            "value": "R4"
-          },
-          {
-            "type": "STRING",
-            "value": "Mat2"
-          },
-          {
-            "type": "STRING",
-            "value": "Mat3"
-          },
-          {
-            "type": "STRING",
-            "value": "Mat4"
-          },
-          {
-            "type": "STRING",
-            "value": "Solid"
-          }
-        ]
-      }
     },
     "_expression": {
       "type": "CHOICE",

@@ -1,0 +1,145 @@
+==================
+3D Example
+==================
+
+provided R time
+
+R3 p = (0, 0, 0)
+R3 p2 = (2, 1, .3)
+R3 p3 = (3, -3, -.4)
+R3 p4 = (5, 1., .1)
+
+Solid b1 = Ball3D(r=.1e-0)
+Solid b2 = Ball3D(.4e0)
+Solid b3 = Ball3D(.3)
+Solid b4 = Ball3D(.2)
+
+Solid v12 = Segment3D(p, p2)
+Solid v23 = Segment3D(p2, p3)
+Solid v34 = Segment3D(p3, p4)
+
+const Solid v = Union(b1, b2, b3, b4)
+construct Solid e = Union(v12, v23, v34)
+
+gen SmoothUnion(.5)(v, e)
+
+---
+
+(source_file
+  (input_declaration
+    (type_identifier)
+    (identifier))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (tuple_expression
+      (number)
+      (number)
+      (number)))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (tuple_expression
+      (number)
+      (number)
+      (number)))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (tuple_expression
+      (number)
+      (unary_expression
+        (number))
+      (unary_expression
+        (number))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (tuple_expression
+      (number)
+      (number)
+      (number)))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (named_argument
+          (identifier)
+          (number)))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (number))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (number))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (number))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (identifier)
+        (identifier))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (identifier)
+        (identifier))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (identifier)
+        (identifier))))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (identifier)
+        (identifier)
+        (identifier)
+        (identifier))))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (identifier)
+        (identifier)
+        (identifier))))
+  (output_declaration
+    (call_expression
+      (call_expression
+        (identifier)
+        (argument_list
+          (number)))
+      (argument_list
+        (identifier)
+        (identifier)))))

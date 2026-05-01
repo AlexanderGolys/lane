@@ -183,10 +183,6 @@
             "named": true
           },
           {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
             "type": "parenthesized_type",
             "named": true
           },
@@ -303,10 +299,6 @@
             "named": true
           },
           {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
             "type": "parenthesized_type",
             "named": true
           },
@@ -343,10 +335,6 @@
             "named": true
           },
           {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
             "type": "parenthesized_type",
             "named": true
           },
@@ -374,10 +362,6 @@
           },
           {
             "type": "hom_type",
-            "named": true
-          },
-          {
-            "type": "legacy_function_type",
             "named": true
           },
           {
@@ -422,10 +406,6 @@
             "named": true
           },
           {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
             "type": "parenthesized_type",
             "named": true
           },
@@ -453,10 +433,6 @@
           },
           {
             "type": "hom_type",
-            "named": true
-          },
-          {
-            "type": "legacy_function_type",
             "named": true
           },
           {
@@ -503,84 +479,6 @@
           },
           {
             "type": "hom_type",
-            "named": true
-          },
-          {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
-            "type": "parenthesized_type",
-            "named": true
-          },
-          {
-            "type": "product_type",
-            "named": true
-          },
-          {
-            "type": "type_identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "legacy_function_type",
-    "named": true,
-    "fields": {
-      "input": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "end_type",
-            "named": true
-          },
-          {
-            "type": "function_type",
-            "named": true
-          },
-          {
-            "type": "hom_type",
-            "named": true
-          },
-          {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
-            "type": "parenthesized_type",
-            "named": true
-          },
-          {
-            "type": "product_type",
-            "named": true
-          },
-          {
-            "type": "type_identifier",
-            "named": true
-          }
-        ]
-      },
-      "output": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "end_type",
-            "named": true
-          },
-          {
-            "type": "function_type",
-            "named": true
-          },
-          {
-            "type": "hom_type",
-            "named": true
-          },
-          {
-            "type": "legacy_function_type",
             "named": true
           },
           {
@@ -750,10 +648,6 @@
           "named": true
         },
         {
-          "type": "legacy_function_type",
-          "named": true
-        },
-        {
           "type": "parenthesized_type",
           "named": true
         },
@@ -789,10 +683,6 @@
             "named": true
           },
           {
-            "type": "legacy_function_type",
-            "named": true
-          },
-          {
             "type": "parenthesized_type",
             "named": true
           },
@@ -816,10 +706,6 @@
           },
           {
             "type": "hom_type",
-            "named": true
-          },
-          {
-            "type": "legacy_function_type",
             "named": true
           },
           {
@@ -1041,10 +927,6 @@
     "named": false
   },
   {
-    "type": "->",
-    "named": false
-  },
-  {
     "type": "/",
     "named": false
   },
@@ -1079,10 +961,6 @@
   },
   {
     "type": "construct",
-    "named": false
-  },
-  {
-    "type": "func",
     "named": false
   },
   {

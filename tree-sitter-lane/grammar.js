@@ -56,11 +56,10 @@ module.exports = grammar({
 
         _non_product_type: ($) => choice(
             $.function_type,
-            $.legacy_function_type,
             $.hom_type,
             $.end_type,
             $.parenthesized_type,
-            $.type_identifier,
+            alias($.identifier, $.type_identifier),
         ),
 
         product_type: ($) => prec.left(PREC.product, seq(
@@ -79,14 +78,6 @@ module.exports = grammar({
             ')',
         ),
 
-        legacy_function_type: ($) => seq(
-            'func',
-            '(',
-            field('input', $._type),
-            '->',
-            field('output', $._type),
-            ')',
-        ),
 
         hom_type: ($) => seq(
             'Hom',
@@ -103,23 +94,6 @@ module.exports = grammar({
             field('value', $._type),
             ')',
         ),
-
-        type_identifier: () => token(choice(
-            'Float',
-            'R',
-            'Int',
-            'Z',
-            'Vec2',
-            'R2',
-            'Vec3',
-            'R3',
-            'Vec4',
-            'R4',
-            'Mat2',
-            'Mat3',
-            'Mat4',
-            'Solid',
-        )),
 
         _expression: ($) => choice(
             $.binary_expression,

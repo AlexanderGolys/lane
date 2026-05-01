@@ -1,8 +1,8 @@
-["provided" "generate" "gen" "construct" "const" "Func" "func" "Hom" "End"] @keyword
+["provided" "generate" "gen" "construct" "const" "Func" "Hom" "End"] @keyword
 
 (gen_modifier) @keyword.modifier
 
-["+" "-" "*" "/" "@" "=" "->" "×"] @operator
+["+" "-" "*" "/" "@" "=" "×"] @operator
 
 ["(" ")"] @punctuation.bracket
 [","] @punctuation.delimiter
@@ -10,6 +10,7 @@
 (comment) @comment
 (number) @number
 
+(type_identifier) @type
 (type_identifier) @type.builtin
 
 (input_declaration
@@ -23,7 +24,6 @@
     (end_type)
     (function_type)
     (hom_type)
-    (legacy_function_type)
   ]
   name: (identifier) @function)
 

@@ -5,7 +5,8 @@ Declarations
 provided Float time
 construct Solid shell = Ball3D(r=1 + time)
 Solid moved = shell + (1, 2, 3)
-func(Float -> Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+Func(Float, Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+Hom(Float, Float) warp = spin
 generate spin(time) * moved
 
 ---
@@ -36,7 +37,7 @@ generate spin(time) * moved
         (number)
         (number))))
   (binding_declaration
-    (legacy_function_type
+    (function_type
       (type_identifier)
       (type_identifier))
     (identifier)
@@ -53,6 +54,12 @@ generate spin(time) * moved
         (number)
         (number)
         (number))))
+  (binding_declaration
+    (hom_type
+      (type_identifier)
+      (type_identifier))
+    (identifier)
+    (identifier))
   (output_declaration
     (binary_expression
       (call_expression
