@@ -230,18 +230,87 @@ fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
 
 fn print_known_builtin_objects() {
     for object in lane::known_builtin_objects() {
-        println!("{}: {}", object.name, object.ty);
+        print_known_builtin_object_line(&object.name, &object.ty);
     }
 }
 
 fn print_known_builtin_object_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(object) = lane::known_builtin_object(name) {
-        println!("{}: {}", object.name, object.ty);
+        print_known_builtin_object_line(&object.name, &object.ty);
         println!();
         print_glsl(&object.body);
         return Ok(());
     }
     Err(format!("unknown builtin object '{name}'").into())
+}
+
+fn print_known_builtin_object_line(name: &str, ty: &str) {
+    if io::stdout().is_terminal() {
+        println!("{}", highlight_builtin_object_line(name, ty));
+        return;
+    }
+
+    println!("{name}: {ty}");
+}
+
+fn highlight_builtin_object_line(name: &str, ty: &str) -> String {
+    format!(
+        "{}: {}",
+        highlight_builtin_object_name(name, ty),
+        highlight_lane_signature(ty)
+    )
+}
+
+fn highlight_builtin_object_name(name: &str, ty: &str) -> String {
+    if ty == "Type" {
+        return color("34", name);
+    }
+
+    color("33", name)
+}
+
+fn highlight_lane_signature(source: &str) -> String {
+    let mut out = String::new();
+    let bytes = source.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let ch = source[i..].chars().next().unwrap();
+        if ch.is_ascii_alphabetic() {
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                let next = bytes[i] as char;
+                if next.is_ascii_alphanumeric() {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            out.push_str(&highlight_lane_ident(&source[start..i]));
+            continue;
+        }
+        match ch {
+            '(' | ')' => out.push_str(&color("90", &source[i..i + 1])),
+            ',' => out.push_str(&color("90", &source[i..i + 1])),
+            '×' => out.push_str(&color("35", "×")),
+            _ => out.push(ch),
+        }
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn highlight_lane_ident(token: &str) -> String {
+    if matches!(token, "Func" | "Hom" | "End") {
+        return color("35", token);
+    }
+    if matches!(
+        token,
+        "R" | "Z" | "C" | "R2" | "R3" | "R4" | "Mat2" | "Mat3" | "Mat4" | "Solid" | "Type"
+    ) {
+        return color("34", token);
+    }
+    token.to_string()
 }
 
 fn print_known_primitive(primitive: &lane::KnownPrimitive, separate_from_previous: bool) {
@@ -356,7 +425,8 @@ fn color<'a>(code: &'a str, text: &'a str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        fragment_shader_version, highlight_glsl, scene_sdf_accepts_only_point, wrap_fragment_shader,
+        fragment_shader_version, highlight_builtin_object_line, highlight_glsl,
+        scene_sdf_accepts_only_point, wrap_fragment_shader,
     };
 
     #[test]
@@ -367,6 +437,24 @@ mod tests {
         assert!(highlighted.contains("\x1b[34mvec3\x1b[0m"));
         assert!(highlighted.contains("\x1b[33mscene_sdf\x1b[0m"));
         assert!(highlighted.contains("\x1b[36m1.0\x1b[0m"));
+    }
+
+    #[test]
+    fn highlights_builtin_object_names_and_lane_types() {
+        let highlighted = highlight_builtin_object_line("Union", "Hom(Solid × Solid, Solid)");
+
+        assert!(highlighted.contains("\x1b[33mUnion\x1b[0m"));
+        assert!(highlighted.contains("\x1b[35mHom\x1b[0m"));
+        assert!(highlighted.contains("\x1b[34mSolid\x1b[0m"));
+        assert!(highlighted.contains("\x1b[35m×\x1b[0m"));
+    }
+
+    #[test]
+    fn highlights_builtin_type_names_as_types() {
+        let highlighted = highlight_builtin_object_line("Quat", "Type");
+
+        assert!(highlighted.contains("\x1b[34mQuat\x1b[0m"));
+        assert!(highlighted.contains("\x1b[34mType\x1b[0m"));
     }
 
     #[test]
