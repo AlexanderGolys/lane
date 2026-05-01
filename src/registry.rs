@@ -690,10 +690,11 @@ impl Registry {
     pub(super) fn known_builtin_objects(&self) -> Vec<KnownBuiltinObject> {
         let mut objects = Vec::new();
 
-        for (name, ty, _) in BUILTIN_TYPE_DETAILS {
+        for (name, _) in BUILTIN_TYPE_DETAILS {
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
-                ty: ty.to_string(),
+                ty: TYPE_METATYPE_NAME.to_string(),
+                kind: KnownBuiltinObjectKind::Type,
             });
         }
 
@@ -707,6 +708,7 @@ impl Registry {
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
                 ty: format_object_type(&self.value_funcs[name].ty),
+                kind: KnownBuiltinObjectKind::Function,
             });
         }
 
@@ -717,6 +719,7 @@ impl Registry {
             objects.push(KnownBuiltinObject {
                 name: op.name.to_string(),
                 ty: format_object_type(&object_op_type(op)),
+                kind: KnownBuiltinObjectKind::Function,
             });
         }
 
@@ -724,13 +727,14 @@ impl Registry {
     }
 
     pub(super) fn known_builtin_object(&self, name: &str) -> Option<KnownBuiltinObjectDetail> {
-        if let Some((name, ty, body)) = BUILTIN_TYPE_DETAILS
+        if let Some((name, body)) = BUILTIN_TYPE_DETAILS
             .iter()
-            .find(|(candidate, _, _)| *candidate == name)
+            .find(|(candidate, _)| *candidate == name)
         {
             return Some(KnownBuiltinObjectDetail {
                 name: (*name).to_string(),
-                ty: (*ty).to_string(),
+                ty: TYPE_METATYPE_NAME.to_string(),
+                kind: KnownBuiltinObjectKind::Type,
                 body: (*body).to_string(),
             });
         }
@@ -740,6 +744,7 @@ impl Registry {
             return Some(KnownBuiltinObjectDetail {
                 name: name.to_string(),
                 ty: format_object_type(&func.ty),
+                kind: KnownBuiltinObjectKind::Function,
                 body: body.to_string(),
             });
         }
@@ -748,6 +753,7 @@ impl Registry {
         Some(KnownBuiltinObjectDetail {
             name: op.name.to_string(),
             ty: format_object_type(&object_op_type(op)),
+            kind: KnownBuiltinObjectKind::Function,
             body: op.support_glsl.to_string(),
         })
     }

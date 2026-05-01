@@ -250,7 +250,8 @@ fn prints_bash_completion_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
-    assert!(stdout.contains("C Difference E2"));
+    assert!(stdout.contains("C E2 E3"));
+    assert!(stdout.contains("Difference"));
     assert!(!stdout.contains("Complex Difference E2"));
     assert!(stdout.contains("--print-completion"));
     assert!(stdout.contains("-pc"));

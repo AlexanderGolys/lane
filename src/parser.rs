@@ -493,18 +493,9 @@ fn parse_type(source: &str) -> Result<Type, Error> {
         }
         return Ok(Type::Product(parsed));
     }
-    match source {
-        "Float" | "R" => Ok(Type::Float),
-        "Int" | "Z" => Ok(Type::Int),
-        "Complex" | "C" => Ok(Type::Complex),
-        "Vec2" | "R2" => Ok(Type::Vec2),
-        "Vec3" | "R3" => Ok(Type::Vec3),
-        "Vec4" | "R4" => Ok(Type::Vec4),
-        "Mat2" => Ok(Type::Mat2),
-        "Mat3" => Ok(Type::Mat3),
-        "Mat4" => Ok(Type::Mat4),
-        "Solid" => Ok(Type::Solid),
-        _ => Err(Error::new(format!("unsupported type '{}'", source))),
+    match parse_surface_type_name(source) {
+        Some(ty) => Ok(ty),
+        None => Err(Error::new(format!("unsupported type '{}'", source))),
     }
 }
 

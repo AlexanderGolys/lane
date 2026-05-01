@@ -72,7 +72,8 @@ use `lane -h` or `lane --help` for help.
   are blue, type objects and type names are yellow, `Type` is bright yellow,
   `Hom` and `×` are red, and punctuation is white.
 - `lane -pc SHELL` or `lane --print-completion SHELL` prints shell completion
-  code for `bash`, `zsh`, or `fish`.
+  code for `bash`, `zsh`, or `fish`; primitive and builtin object candidates
+  are generated from the compiler registry.
 
 Add this directive comment to request a minimal fullscreen fragment shader
 wrapper instead of a bare GLSL SDF snippet:

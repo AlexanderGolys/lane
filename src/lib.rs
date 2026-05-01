@@ -106,20 +106,102 @@ pub struct KnownPrimitiveField {
 pub struct KnownBuiltinObject {
     pub name: String,
     pub ty: String,
+    pub kind: KnownBuiltinObjectKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KnownBuiltinObjectDetail {
     pub name: String,
     pub ty: String,
+    pub kind: KnownBuiltinObjectKind,
     pub body: String,
 }
 
-const BUILTIN_TYPE_DETAILS: [(&str, &str, &str); 4] = [
-    ("C", "Type", "#define Complex vec2"),
-    ("E2", "Type", "#define E2 vec2"),
-    ("E3", "Type", "#define E3 vec3"),
-    ("Quat", "Type", "#define Quat vec4"),
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KnownBuiltinObjectKind {
+    Function,
+    Type,
+}
+
+pub const TYPE_METATYPE_NAME: &str = "Type";
+
+pub fn known_type_names() -> Vec<&'static str> {
+    SURFACE_TYPE_DEFS
+        .iter()
+        .flat_map(|def| def.aliases.iter().copied())
+        .collect()
+}
+
+pub fn is_known_type_name(name: &str) -> bool {
+    SURFACE_TYPE_DEFS
+        .iter()
+        .any(|def| def.aliases.contains(&name))
+}
+
+const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
+    ("C", "#define Complex vec2"),
+    ("E2", "#define E2 vec2"),
+    ("E3", "#define E3 vec3"),
+    ("Quat", "#define Quat vec4"),
+];
+
+struct SurfaceTypeDef {
+    ty: Type,
+    aliases: &'static [&'static str],
+    surface_name: &'static str,
+}
+
+const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 10] = [
+    SurfaceTypeDef {
+        ty: Type::Float,
+        aliases: &["Float", "R"],
+        surface_name: "R",
+    },
+    SurfaceTypeDef {
+        ty: Type::Int,
+        aliases: &["Int", "Z"],
+        surface_name: "Z",
+    },
+    SurfaceTypeDef {
+        ty: Type::Complex,
+        aliases: &["Complex", "C"],
+        surface_name: "C",
+    },
+    SurfaceTypeDef {
+        ty: Type::Vec2,
+        aliases: &["Vec2", "R2"],
+        surface_name: "R2",
+    },
+    SurfaceTypeDef {
+        ty: Type::Vec3,
+        aliases: &["Vec3", "R3"],
+        surface_name: "R3",
+    },
+    SurfaceTypeDef {
+        ty: Type::Vec4,
+        aliases: &["Vec4", "R4"],
+        surface_name: "R4",
+    },
+    SurfaceTypeDef {
+        ty: Type::Mat2,
+        aliases: &["Mat2"],
+        surface_name: "Mat2",
+    },
+    SurfaceTypeDef {
+        ty: Type::Mat3,
+        aliases: &["Mat3"],
+        surface_name: "Mat3",
+    },
+    SurfaceTypeDef {
+        ty: Type::Mat4,
+        aliases: &["Mat4"],
+        surface_name: "Mat4",
+    },
+    SurfaceTypeDef {
+        ty: Type::Solid,
+        aliases: &["Solid"],
+        surface_name: "Solid",
+    },
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -172,21 +254,23 @@ impl Type {
     }
 
     fn surface_name(&self) -> &'static str {
-        match self {
-            Self::Float => "R",
-            Self::Int => "Z",
-            Self::Complex => "C",
-            Self::Vec2 => "R2",
-            Self::Vec3 => "R3",
-            Self::Vec4 => "R4",
-            Self::Mat2 => "Mat2",
-            Self::Mat3 => "Mat3",
-            Self::Mat4 => "Mat4",
-            Self::Solid => "Solid",
-            Self::Product(_) => "Product",
-            Self::Func(_, _) => "Func",
-        }
+        SURFACE_TYPE_DEFS
+            .iter()
+            .find(|def| &def.ty == self)
+            .map(|def| def.surface_name)
+            .unwrap_or_else(|| match self {
+                Self::Product(_) => "Product",
+                Self::Func(_, _) => "Func",
+                _ => unreachable!(),
+            })
     }
+}
+
+fn parse_surface_type_name(name: &str) -> Option<Type> {
+    SURFACE_TYPE_DEFS
+        .iter()
+        .find(|def| def.aliases.contains(&name))
+        .map(|def| def.ty.clone())
 }
 
 #[derive(Clone, Debug)]
@@ -517,16 +601,6 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
 
 fn format_type(ty: &Type) -> String {
     match ty {
-        Type::Float => "R".to_string(),
-        Type::Int => "Z".to_string(),
-        Type::Complex => "C".to_string(),
-        Type::Vec2 => "R2".to_string(),
-        Type::Vec3 => "R3".to_string(),
-        Type::Vec4 => "R4".to_string(),
-        Type::Mat2 => "Mat2".to_string(),
-        Type::Mat3 => "Mat3".to_string(),
-        Type::Mat4 => "Mat4".to_string(),
-        Type::Solid => "Solid".to_string(),
         Type::Product(parts) => parts
             .iter()
             .map(format_type)
@@ -541,21 +615,12 @@ fn format_type(ty: &Type) -> String {
             };
             format!("Func({}, {})", domain, format_type(output))
         }
+        _ => ty.surface_name().to_string(),
     }
 }
 
 fn format_object_type(ty: &Type) -> String {
     match ty {
-        Type::Float => "R".to_string(),
-        Type::Int => "Z".to_string(),
-        Type::Complex => "C".to_string(),
-        Type::Vec2 => "R2".to_string(),
-        Type::Vec3 => "R3".to_string(),
-        Type::Vec4 => "R4".to_string(),
-        Type::Mat2 => "Mat2".to_string(),
-        Type::Mat3 => "Mat3".to_string(),
-        Type::Mat4 => "Mat4".to_string(),
-        Type::Solid => "Solid".to_string(),
         Type::Product(parts) => parts
             .iter()
             .map(format_object_type)
@@ -568,6 +633,7 @@ fn format_object_type(ty: &Type) -> String {
                 format_object_type(output)
             )
         }
+        _ => ty.surface_name().to_string(),
     }
 }
 

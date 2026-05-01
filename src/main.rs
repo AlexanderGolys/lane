@@ -5,7 +5,7 @@ use std::process;
 
 const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen PATH is omitted, lane reads source from stdin. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
 
-const BASH_COMPLETION: &str = r#"_lane() {
+const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -17,12 +17,12 @@ const BASH_COMPLETION: &str = r#"_lane() {
     fi
 
     if [[ "$prev" == "--list" || "$prev" == "-l" ]]; then
-        COMPREPLY=( $(compgen -W "Ball2D Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D" -- "$cur") )
+        COMPREPLY=( $(compgen -W "__PRIMITIVES__" -- "$cur") )
         return
     fi
 
     if [[ "$prev" == "--list-objects" || "$prev" == "-lo" ]]; then
-        COMPREPLY=( $(compgen -W "C Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2" -- "$cur") )
+        COMPREPLY=( $(compgen -W "__OBJECTS__" -- "$cur") )
         return
     fi
 
@@ -35,15 +35,15 @@ const BASH_COMPLETION: &str = r#"_lane() {
 complete -F _lane lane
 "#;
 
-const ZSH_COMPLETION: &str = r#"#compdef lane
+const ZSH_COMPLETION_TEMPLATE: &str = r#"#compdef lane
 
 _lane() {
     _arguments \
         '1:command or file:_files' \
-        '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(Ball2D Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D)' \
+        '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(__PRIMITIVES__)' \
         '(-l2 --list2d)'{-l2,--list2d}'[list only 2D primitives]' \
         '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
-        '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(C Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2)' \
+        '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(__OBJECTS__)' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-h --help)'{-h,--help}'[show help]'
 }
@@ -51,13 +51,13 @@ _lane() {
 _lane "$@"
 "#;
 
-const FISH_COMPLETION: &str = r#"complete -c lane -f
+const FISH_COMPLETION_TEMPLATE: &str = r#"complete -c lane -f
 complete -c lane -s l -l list -d 'List known primitives'
-complete -c lane -s l -l list -r -a 'Ball2D Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D' -d 'Show one primitive'
+complete -c lane -s l -l list -r -a '__PRIMITIVES__' -d 'Show one primitive'
 complete -c lane -o l2 -l list2d -d 'List only 2D primitives'
 complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
 complete -c lane -o lo -l list-objects -d 'List builtin Lane objects'
-complete -c lane -o lo -l list-objects -r -a 'C Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2' -d 'Show one builtin object'
+complete -c lane -o lo -l list-objects -r -a '__OBJECTS__' -d 'Show one builtin object'
 complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s h -l help -d 'Show help'
 "#;
@@ -205,13 +205,35 @@ fn visible_parameter_space(primitive: &lane::KnownPrimitive) -> String {
 
 fn print_completion(shell: &str) -> Result<(), Box<dyn std::error::Error>> {
     let script = match shell {
-        "bash" => BASH_COMPLETION,
-        "zsh" => ZSH_COMPLETION,
-        "fish" => FISH_COMPLETION,
+        "bash" => completion_script(BASH_COMPLETION_TEMPLATE),
+        "zsh" => completion_script(ZSH_COMPLETION_TEMPLATE),
+        "fish" => completion_script(FISH_COMPLETION_TEMPLATE),
         _ => return Err(format!("unsupported shell '{shell}'").into()),
     };
     print!("{script}");
     Ok(())
+}
+
+fn completion_script(template: &str) -> String {
+    template
+        .replace("__PRIMITIVES__", &completion_primitive_names())
+        .replace("__OBJECTS__", &completion_object_names())
+}
+
+fn completion_primitive_names() -> String {
+    lane::known_primitives()
+        .into_iter()
+        .map(|primitive| primitive.name)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn completion_object_names() -> String {
+    lane::known_builtin_objects()
+        .into_iter()
+        .map(|object| object.name)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn print_known_primitives() {
@@ -230,13 +252,13 @@ fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
 
 fn print_known_builtin_objects() {
     for object in lane::known_builtin_objects() {
-        print_known_builtin_object_line(&object.name, &object.ty);
+        print_known_builtin_object_line(&object.name, &object.ty, object.kind);
     }
 }
 
 fn print_known_builtin_object_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(object) = lane::known_builtin_object(name) {
-        print_known_builtin_object_line(&object.name, &object.ty);
+        print_known_builtin_object_line(&object.name, &object.ty, object.kind);
         println!();
         print_glsl(&object.body);
         return Ok(());
@@ -244,30 +266,33 @@ fn print_known_builtin_object_detail(name: &str) -> Result<(), Box<dyn std::erro
     Err(format!("unknown builtin object '{name}'").into())
 }
 
-fn print_known_builtin_object_line(name: &str, ty: &str) {
+fn print_known_builtin_object_line(name: &str, ty: &str, kind: lane::KnownBuiltinObjectKind) {
     if io::stdout().is_terminal() {
-        println!("{}", highlight_builtin_object_line(name, ty));
+        println!("{}", highlight_builtin_object_line(name, ty, kind));
         return;
     }
 
     println!("{name}: {ty}");
 }
 
-fn highlight_builtin_object_line(name: &str, ty: &str) -> String {
+fn highlight_builtin_object_line(
+    name: &str,
+    ty: &str,
+    kind: lane::KnownBuiltinObjectKind,
+) -> String {
     format!(
         "{}{} {}",
-        highlight_builtin_object_name(name, ty),
+        highlight_builtin_object_name(name, kind),
         color("97", ":"),
         highlight_lane_signature(ty)
     )
 }
 
-fn highlight_builtin_object_name(name: &str, ty: &str) -> String {
-    if ty == "Type" {
-        return color("33", name);
+fn highlight_builtin_object_name(name: &str, kind: lane::KnownBuiltinObjectKind) -> String {
+    match kind {
+        lane::KnownBuiltinObjectKind::Function => color("34", name),
+        lane::KnownBuiltinObjectKind::Type => color("33", name),
     }
-
-    color("34", name)
 }
 
 fn highlight_lane_signature(source: &str) -> String {
@@ -305,13 +330,10 @@ fn highlight_lane_ident(token: &str) -> String {
     if matches!(token, "Func" | "Hom" | "End") {
         return color("35", token);
     }
-    if token == "Type" {
+    if token == lane::TYPE_METATYPE_NAME {
         return color("93", token);
     }
-    if matches!(
-        token,
-        "R" | "Z" | "C" | "R2" | "R3" | "R4" | "Mat2" | "Mat3" | "Mat4" | "Solid"
-    ) {
+    if lane::is_known_type_name(token) {
         return color("33", token);
     }
     token.to_string()
@@ -445,7 +467,11 @@ mod tests {
 
     #[test]
     fn highlights_builtin_object_names_and_lane_types() {
-        let highlighted = highlight_builtin_object_line("Union", "Hom(Solid × Solid, Solid)");
+        let highlighted = highlight_builtin_object_line(
+            "Union",
+            "Hom(Solid × Solid, Solid)",
+            lane::KnownBuiltinObjectKind::Function,
+        );
 
         assert!(highlighted.contains("\x1b[34mUnion\x1b[0m"));
         assert!(highlighted.contains("\x1b[97m:\x1b[0m"));
@@ -458,7 +484,8 @@ mod tests {
 
     #[test]
     fn highlights_builtin_type_names_as_types() {
-        let highlighted = highlight_builtin_object_line("Quat", "Type");
+        let highlighted =
+            highlight_builtin_object_line("Quat", "Type", lane::KnownBuiltinObjectKind::Type);
 
         assert!(highlighted.contains("\x1b[33mQuat\x1b[0m"));
         assert!(highlighted.contains("\x1b[93mType\x1b[0m"));
