@@ -1,8 +1,10 @@
+[workspace]
+members = [".", "crates/lane-lsp"]
+resolver = "2"
+
 [package]
 name = "lane"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1", features = ["io-std", "macros", "rt-multi-thread"] }
-tower-lsp = "0.20"

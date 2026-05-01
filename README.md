@@ -2,6 +2,11 @@
 
 A small Rust prototype for the lane DSL that compiles object expressions into GLSL.
 
+The workspace contains the core `lane` compiler crate at the repository root and
+the Language Server Protocol binary in `crates/lane-lsp`. Compiler internals are
+split by pass under `src/`: `parser.rs`, `typecheck.rs`, `emit.rs`, and
+`registry.rs`.
+
 Current slice:
 
 - pre-registered 3D `Ball3D(r=...)`, `Box3D(a=..., b=..., c=...)`, `Triangle3D(p1=..., p2=..., p3=...)`, `Quad3D(p1=..., p2=..., p3=..., p4=...)`, `Plane3D(n=..., origin=...)`, `Line3D(x0=..., dir=...)`, `Simplex3D(p0=..., p1=..., p2=..., p3=...)`, `Halfspace3D(n=..., h=...)`, `Segment3D(a=..., b=...)`, and `Torus3D(major=..., minor=...)` primitives
@@ -49,7 +54,7 @@ cargo test
 Run the minimal Language Server Protocol server with:
 
 ```sh
-cargo run --bin lane-lsp
+cargo run -p lane-lsp
 ```
 
 The LSP currently provides full-document sync and basic compile diagnostics by re-running the Lane compiler on open, change, and save.
@@ -60,7 +65,7 @@ To hook the server up to Neovim's built-in LSP client, add a config such as:
 vim.filetype.add({ extension = { lane = "lane" } })
 
 vim.lsp.config("lane_lsp", {
-    cmd = { "cargo", "run", "--bin", "lane-lsp" },
+    cmd = { "cargo", "run", "-p", "lane-lsp" },
     filetypes = { "lane" },
     root_markers = { "Cargo.toml", ".git" },
 })

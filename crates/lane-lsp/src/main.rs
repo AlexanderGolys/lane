@@ -4,8 +4,8 @@ use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams,
-    MessageType, Position, Range, ServerCapabilities, TextDocumentContentChangeEvent,
+    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, MessageType,
+    Position, Range, ServerCapabilities, TextDocumentContentChangeEvent,
     TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -41,7 +41,9 @@ impl Backend {
                 ..Diagnostic::default()
             }],
         };
-        self.client.publish_diagnostics(uri, diagnostics, None).await;
+        self.client
+            .publish_diagnostics(uri, diagnostics, None)
+            .await;
     }
 
     fn newest_text(changes: Vec<TextDocumentContentChangeEvent>) -> Option<String> {
@@ -93,12 +95,14 @@ impl LanguageServer for Backend {
             self.documents
                 .set(params.text_document.uri.clone(), text.clone())
                 .await;
-            self.publish_diagnostics(params.text_document.uri, text).await;
+            self.publish_diagnostics(params.text_document.uri, text)
+                .await;
             return;
         }
 
         if let Some(text) = self.documents.get(&params.text_document.uri).await {
-            self.publish_diagnostics(params.text_document.uri, text).await;
+            self.publish_diagnostics(params.text_document.uri, text)
+                .await;
         }
     }
 }
