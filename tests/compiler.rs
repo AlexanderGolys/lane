@@ -839,6 +839,37 @@ fn emits_mat3_helpers_and_uses_them_in_object_actions() {
 }
 
 #[test]
+fn emits_mat2_and_mat4_bracket_constructors() {
+    let source = "Mat2 a = ((1, 2), (3, 4))\nMat4 b = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat2 a = transpose(mat2(vec2(1.0, 2.0), vec2(3.0, 4.0)));"));
+    assert!(glsl.contains("mat4 b = transpose(mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0)));"));
+}
+
+#[test]
+fn emits_rectangular_matrix_bracket_constructors() {
+    let source = "Mat2x3 wide = ((1, 2, 3), (4, 5, 6))\nMat3x2 tall = ((1, 2), (3, 4), (5, 6))\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(
+        glsl.contains("mat3x2 wide = transpose(mat2x3(vec3(1.0, 2.0, 3.0), vec3(4.0, 5.0, 6.0)));")
+    );
+    assert!(glsl.contains(
+        "mat2x3 tall = transpose(mat3x2(vec2(1.0, 2.0), vec2(3.0, 4.0), vec2(5.0, 6.0)));"
+    ));
+}
+
+#[test]
+fn treats_square_matrices_as_rings_by_shape() {
+    let source = "provided Mat2 a\nprovided Mat2 b\nMat2 c = (a * b) + a\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p, mat2 a, mat2 b) {"));
+    assert!(glsl.contains("mat2 c = ((a * b) + a);"));
+}
+
+#[test]
 fn emits_difference_operator() {
     let source =
         "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Difference(a, b)\n";

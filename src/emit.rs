@@ -107,9 +107,9 @@ impl TypedProgram {
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat2
-                | Type::Mat3
-                | Type::Mat4 => signature.push(format!("{} {}", input.ty.glsl_name(), input.name)),
+                | Type::Mat(_, _) => {
+                    signature.push(format!("{} {}", input.ty.glsl_name(), input.name))
+                }
                 Type::Solid | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
@@ -127,9 +127,7 @@ impl TypedProgram {
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat2
-                | Type::Mat3
-                | Type::Mat4 => Some(input.name.clone()),
+                | Type::Mat(_, _) => Some(input.name.clone()),
                 Type::Solid | Type::Product(_) | Type::Func(_, _) => None,
             })
             .collect()
@@ -249,9 +247,7 @@ impl TypedProgram {
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat2
-                | Type::Mat3
-                | Type::Mat4 => {
+                | Type::Mat(_, _) => {
                     forbidden.insert(input.name.clone());
                 }
                 Type::Solid | Type::Product(_) | Type::Func(_, _) => {}
@@ -398,10 +394,10 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_support(z, names);
             collect_value_support(w, names);
         }
-        ValueExpr::Mat3(r0, r1, r2) => {
-            collect_value_support(r0, names);
-            collect_value_support(r1, names);
-            collect_value_support(r2, names);
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_value_support(row, names);
+            }
         }
         ValueExpr::Derivative { epsilon, func, at }
         | ValueExpr::Gradient { epsilon, func, at }
@@ -491,12 +487,9 @@ fn emit_value_expr(
             emit_value_expr(z, helper_names, value_names),
             emit_value_expr(w, helper_names, value_names)
         ),
-        ValueExpr::Mat3(r0, r1, r2) => format!(
-            "transpose(mat3({}, {}, {}))",
-            emit_value_expr(r0, helper_names, value_names),
-            emit_value_expr(r1, helper_names, value_names),
-            emit_value_expr(r2, helper_names, value_names)
-        ),
+        ValueExpr::Matrix { columns, rows } => {
+            emit_matrix(rows, *columns, helper_names, value_names)
+        }
         ValueExpr::Derivative { epsilon, func, at } => {
             emit_scalar_derivative(func, epsilon, at, helper_names, value_names)
         }
@@ -523,6 +516,24 @@ fn emit_value_expr(
 
 fn emit_plain_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> String {
     emit_value_expr(expr, helper_names, &HashMap::new())
+}
+
+fn emit_matrix(
+    rows: &[ValueExpr],
+    columns: usize,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
+    let rendered_rows = rows
+        .iter()
+        .map(|row| emit_value_expr(row, helper_names, value_names))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "transpose({}({}))",
+        matrix_constructor_type(rows.len(), columns),
+        rendered_rows
+    )
 }
 
 fn emit_binary_expr(
@@ -965,10 +976,10 @@ fn is_zero_vec3(expr: &ValueExpr) -> bool {
 
 fn is_identity_mat3(expr: &ValueExpr) -> bool {
     match expr {
-        ValueExpr::Mat3(r0, r1, r2) => {
-            is_vec3_literal(r0, [1.0, 0.0, 0.0])
-                && is_vec3_literal(r1, [0.0, 1.0, 0.0])
-                && is_vec3_literal(r2, [0.0, 0.0, 1.0])
+        ValueExpr::Matrix { columns: 3, rows } if rows.len() == 3 => {
+            is_vec3_literal(&rows[0], [1.0, 0.0, 0.0])
+                && is_vec3_literal(&rows[1], [0.0, 1.0, 0.0])
+                && is_vec3_literal(&rows[2], [0.0, 0.0, 1.0])
         }
         _ => false,
     }

@@ -153,6 +153,7 @@ object representations.
 | `Mat2` | | `mat2` |
 | `Mat3` | | `mat3` |
 | `Mat4` | | `mat4` |
+| `MatNxM` | `N,M in {2,3,4}` | GLSL `matMxN` |
 | `Solid` | | SDF object |
 
 Function types use `Func(input, output)` or `Hom(input, output)`:
@@ -203,7 +204,9 @@ Tuple rules:
 
 - `(x, y)` creates `R2` or `C` depending on the expected type.
 - `(x, y, z)` creates `R3` when all three elements are scalar values.
-- `((...), (...), (...))` creates `Mat3` from three `R3` rows.
+- `((...), ...)` creates `MatN` or `MatNxM` from 2 to 4 row vectors.
+  Lane matrix names use row-by-column shape; GLSL stores them as column-by-row,
+  so `Mat2x3` lowers to GLSL `mat3x2`.
 
 ### Object Expressions
 

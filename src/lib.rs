@@ -126,16 +126,16 @@ pub enum KnownBuiltinObjectKind {
 pub const TYPE_METATYPE_NAME: &str = "Type";
 
 pub fn known_type_names() -> Vec<&'static str> {
-    SURFACE_TYPE_DEFS
+    let mut names = SURFACE_TYPE_DEFS
         .iter()
         .flat_map(|def| def.aliases.iter().copied())
-        .collect()
+        .collect::<Vec<_>>();
+    names.extend(MATRIX_TYPE_NAMES.iter().copied());
+    names
 }
 
 pub fn is_known_type_name(name: &str) -> bool {
-    SURFACE_TYPE_DEFS
-        .iter()
-        .any(|def| def.aliases.contains(&name))
+    parse_surface_type_name(name).is_some()
 }
 
 const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
@@ -163,7 +163,11 @@ struct SurfaceTypeDef {
     categories: &'static [AlgebraicCategory],
 }
 
-const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 11] = [
+const MATRIX_TYPE_NAMES: [&str; 9] = [
+    "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
+];
+
+const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 8] = [
     SurfaceTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
@@ -211,24 +215,6 @@ const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 11] = [
         categories: &[AlgebraicCategory::VectR],
     },
     SurfaceTypeDef {
-        ty: Type::Mat2,
-        aliases: &["Mat2"],
-        surface_name: "Mat2",
-        categories: &[AlgebraicCategory::Ring, AlgebraicCategory::VectR],
-    },
-    SurfaceTypeDef {
-        ty: Type::Mat3,
-        aliases: &["Mat3"],
-        surface_name: "Mat3",
-        categories: &[AlgebraicCategory::Ring, AlgebraicCategory::VectR],
-    },
-    SurfaceTypeDef {
-        ty: Type::Mat4,
-        aliases: &["Mat4"],
-        surface_name: "Mat4",
-        categories: &[AlgebraicCategory::Ring, AlgebraicCategory::VectR],
-    },
-    SurfaceTypeDef {
         ty: Type::Quat,
         aliases: &["H"],
         surface_name: "H",
@@ -269,9 +255,7 @@ enum Type {
     Vec2,
     Vec3,
     Vec4,
-    Mat2,
-    Mat3,
-    Mat4,
+    Mat(usize, usize),
     Solid,
     Product(Vec<Type>),
     Func(Box<Type>, Box<Type>),
@@ -282,30 +266,31 @@ impl Type {
         Self::Func(Box::new(input), Box::new(output))
     }
 
-    fn glsl_name(&self) -> &'static str {
+    fn glsl_name(&self) -> String {
         match self {
-            Self::Float => "float",
-            Self::Int => "int",
-            Self::Complex => "vec2",
-            Self::Quat => "vec4",
-            Self::Vec2 => "vec2",
-            Self::Vec3 => "vec3",
-            Self::Vec4 => "vec4",
-            Self::Mat2 => "mat2",
-            Self::Mat3 => "mat3",
-            Self::Mat4 => "mat4",
-            Self::Solid | Self::Product(_) | Self::Func(_, _) => "",
+            Self::Float => "float".to_string(),
+            Self::Int => "int".to_string(),
+            Self::Complex => "vec2".to_string(),
+            Self::Quat => "vec4".to_string(),
+            Self::Vec2 => "vec2".to_string(),
+            Self::Vec3 => "vec3".to_string(),
+            Self::Vec4 => "vec4".to_string(),
+            Self::Mat(rows, columns) => matrix_glsl_type(*rows, *columns),
+            Self::Solid | Self::Product(_) | Self::Func(_, _) => "".to_string(),
         }
     }
 
-    fn surface_name(&self) -> &'static str {
+    fn surface_name(&self) -> String {
+        if let Self::Mat(rows, columns) = self {
+            return matrix_surface_type(*rows, *columns);
+        }
         SURFACE_TYPE_DEFS
             .iter()
             .find(|def| &def.ty == self)
-            .map(|def| def.surface_name)
+            .map(|def| def.surface_name.to_string())
             .unwrap_or_else(|| match self {
-                Self::Product(_) => "Product",
-                Self::Func(_, _) => "Func",
+                Self::Product(_) => "Product".to_string(),
+                Self::Func(_, _) => "Func".to_string(),
                 _ => unreachable!(),
             })
     }
@@ -316,9 +301,63 @@ fn parse_surface_type_name(name: &str) -> Option<Type> {
         .iter()
         .find(|def| def.aliases.contains(&name))
         .map(|def| def.ty.clone())
+        .or_else(|| parse_matrix_type_name(name))
+}
+
+fn parse_matrix_type_name(name: &str) -> Option<Type> {
+    let suffix = name.strip_prefix("Mat")?;
+    if suffix.len() == 1 {
+        let dimension = parse_matrix_dimension(suffix)?;
+        return Some(Type::Mat(dimension, dimension));
+    }
+
+    let (rows, columns) = suffix.split_once('x')?;
+    Some(Type::Mat(
+        parse_matrix_dimension(rows)?,
+        parse_matrix_dimension(columns)?,
+    ))
+}
+
+fn parse_matrix_dimension(source: &str) -> Option<usize> {
+    match source {
+        "2" => Some(2),
+        "3" => Some(3),
+        "4" => Some(4),
+        _ => None,
+    }
+}
+
+fn matrix_surface_type(rows: usize, columns: usize) -> String {
+    if rows == columns {
+        format!("Mat{rows}")
+    } else {
+        format!("Mat{rows}x{columns}")
+    }
+}
+
+fn matrix_glsl_type(rows: usize, columns: usize) -> String {
+    if rows == columns {
+        format!("mat{rows}")
+    } else {
+        format!("mat{columns}x{rows}")
+    }
+}
+
+fn matrix_constructor_type(rows: usize, columns: usize) -> String {
+    if rows == columns {
+        format!("mat{rows}")
+    } else {
+        format!("mat{rows}x{columns}")
+    }
 }
 
 fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
+    if let Type::Mat(rows, columns) = ty {
+        return category == AlgebraicCategory::VectR
+            || (rows == columns
+                && (category == AlgebraicCategory::Ring
+                    || category_implies(AlgebraicCategory::Ring, category)));
+    }
     let Some(def) = SURFACE_TYPE_DEFS.iter().find(|def| &def.ty == ty) else {
         return false;
     };
@@ -454,7 +493,10 @@ enum ValueExpr {
         Box<ValueExpr>,
         Box<ValueExpr>,
     ),
-    Mat3(Box<ValueExpr>, Box<ValueExpr>, Box<ValueExpr>),
+    Matrix {
+        columns: usize,
+        rows: Vec<ValueExpr>,
+    },
     Derivative {
         epsilon: Box<ValueExpr>,
         func: FunctionExpr,
@@ -494,7 +536,7 @@ impl ValueExpr {
             Self::Vec2(_, _) => Type::Vec2,
             Self::Vec3(_, _, _) => Type::Vec3,
             Self::Vec4(_, _, _, _) => Type::Vec4,
-            Self::Mat3(_, _, _) => Type::Mat3,
+            Self::Matrix { columns, rows } => Type::Mat(rows.len(), *columns),
             Self::Derivative { .. } => Type::Float,
             Self::Partial { .. } => Type::Float,
             Self::DirectionalDerivative { .. } => Type::Float,

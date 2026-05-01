@@ -47,9 +47,7 @@ impl TypedProgram {
                     | Type::Vec2
                     | Type::Vec3
                     | Type::Vec4
-                    | Type::Mat2
-                    | Type::Mat3
-                    | Type::Mat4
+                    | Type::Mat(_, _)
             ) {
                 return Err(Error::new(format!(
                     "function '{}' currently only supports scalar, vector, or matrix outputs",
@@ -260,7 +258,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             right,
         } => {
             let linear = infer_value_expr(left, env, None)?;
-            ensure_type(&linear.ty(), &Type::Mat3, "object action")?;
+            ensure_type(&linear.ty(), &Type::Mat(3, 3), "object action")?;
             let object = infer_object_expr(right, env)?;
             Ok(ObjectExpr::AmbientTransform {
                 object: Box::new(object),
@@ -478,9 +476,7 @@ fn infer_value_expr(
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat2
-                | Type::Mat3
-                | Type::Mat4 => Ok(ValueExpr::Call {
+                | Type::Mat(_, _) => Ok(ValueExpr::Call {
                     func: name.clone(),
                     args: typed_args,
                     ty: current_ty,
@@ -528,45 +524,74 @@ fn infer_tuple_value_expr(
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
-    match items.len() {
-        2 => {
-            let x = infer_value_expr(&items[0], env, lift_param)?;
-            let y = infer_value_expr(&items[1], env, lift_param)?;
-            ensure_type(&x.ty(), &Type::Float, "vec2 element 1")?;
-            ensure_type(&y.ty(), &Type::Float, "vec2 element 2")?;
-            Ok(ValueExpr::Vec2(Box::new(x), Box::new(y)))
-        }
-        3 => {
-            let x = infer_value_expr(&items[0], env, lift_param)?;
-            let y = infer_value_expr(&items[1], env, lift_param)?;
-            let z = infer_value_expr(&items[2], env, lift_param)?;
-            if x.ty() == Type::Float && y.ty() == Type::Float && z.ty() == Type::Float {
-                return Ok(ValueExpr::Vec3(Box::new(x), Box::new(y), Box::new(z)));
-            }
-            ensure_type(&x.ty(), &Type::Vec3, "mat3 row 1")?;
-            ensure_type(&y.ty(), &Type::Vec3, "mat3 row 2")?;
-            ensure_type(&z.ty(), &Type::Vec3, "mat3 row 3")?;
-            Ok(ValueExpr::Mat3(Box::new(x), Box::new(y), Box::new(z)))
-        }
-        4 => {
-            let x = infer_value_expr(&items[0], env, lift_param)?;
-            let y = infer_value_expr(&items[1], env, lift_param)?;
-            let z = infer_value_expr(&items[2], env, lift_param)?;
-            let w = infer_value_expr(&items[3], env, lift_param)?;
-            ensure_type(&x.ty(), &Type::Float, "vec4 element 1")?;
-            ensure_type(&y.ty(), &Type::Float, "vec4 element 2")?;
-            ensure_type(&z.ty(), &Type::Float, "vec4 element 3")?;
-            ensure_type(&w.ty(), &Type::Float, "vec4 element 4")?;
-            Ok(ValueExpr::Vec4(
-                Box::new(x),
-                Box::new(y),
-                Box::new(z),
-                Box::new(w),
-            ))
-        }
-        _ => Err(Error::new(
-            "only vec2, vec3, vec4, and mat3 tuples are supported in value expressions",
+    let values = items
+        .iter()
+        .map(|item| infer_value_expr(item, env, lift_param))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if values.iter().all(|value| value.ty() == Type::Float) {
+        return infer_vector_tuple(values);
+    }
+
+    infer_matrix_tuple(values)
+}
+
+fn infer_vector_tuple(values: Vec<ValueExpr>) -> Result<ValueExpr, Error> {
+    match values.as_slice() {
+        [x, y] => Ok(ValueExpr::Vec2(Box::new(x.clone()), Box::new(y.clone()))),
+        [x, y, z] => Ok(ValueExpr::Vec3(
+            Box::new(x.clone()),
+            Box::new(y.clone()),
+            Box::new(z.clone()),
         )),
+        [x, y, z, w] => Ok(ValueExpr::Vec4(
+            Box::new(x.clone()),
+            Box::new(y.clone()),
+            Box::new(z.clone()),
+            Box::new(w.clone()),
+        )),
+        _ => Err(Error::new(
+            "only vec2, vec3, vec4, and 2x2 through 4x4 matrix tuples are supported in value expressions",
+        )),
+    }
+}
+
+fn infer_matrix_tuple(rows: Vec<ValueExpr>) -> Result<ValueExpr, Error> {
+    let Some(columns) = rows.first().and_then(|row| vector_dimension(&row.ty())) else {
+        return Err(Error::new(
+            "matrix tuple rows must be vec2, vec3, or vec4 values",
+        ));
+    };
+    if !(2..=4).contains(&rows.len()) || !(2..=4).contains(&columns) {
+        return Err(Error::new(
+            "only 2x2 through 4x4 matrix tuples are supported in value expressions",
+        ));
+    }
+    for (index, row) in rows.iter().enumerate() {
+        ensure_type(
+            &row.ty(),
+            &vector_type(columns),
+            &format!("matrix row {}", index + 1),
+        )?;
+    }
+    Ok(ValueExpr::Matrix { columns, rows })
+}
+
+fn vector_dimension(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Vec2 => Some(2),
+        Type::Vec3 => Some(3),
+        Type::Vec4 => Some(4),
+        _ => None,
+    }
+}
+
+fn vector_type(dimension: usize) -> Type {
+    match dimension {
+        2 => Type::Vec2,
+        3 => Type::Vec3,
+        4 => Type::Vec4,
+        _ => unreachable!(),
     }
 }
 
@@ -851,9 +876,9 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat2
-                | Type::Mat3
-                | Type::Mat4 => Err(Error::new(format!("'{}' is a value, not a function", name))),
+                | Type::Mat(_, _) => {
+                    Err(Error::new(format!("'{}' is a value, not a function", name)))
+                }
                 Type::Solid | Type::Product(_) => Err(Error::new(format!(
                     "object '{}' is not a function expression",
                     name
@@ -921,9 +946,7 @@ fn infer_identifier_value(
         | Type::Vec2
         | Type::Vec3
         | Type::Vec4
-        | Type::Mat2
-        | Type::Mat3
-        | Type::Mat4 => Ok(ValueExpr::Var(name.to_string(), ty)),
+        | Type::Mat(_, _) => Ok(ValueExpr::Var(name.to_string(), ty)),
         Type::Func(input, output) => {
             if lift_param.is_none() {
                 return Err(Error::new(format!(
@@ -999,21 +1022,24 @@ fn zero_vec3() -> ValueExpr {
 }
 
 fn identity_mat3() -> ValueExpr {
-    ValueExpr::Mat3(
-        Box::new(ValueExpr::Vec3(
-            Box::new(ValueExpr::Float(1.0)),
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(ValueExpr::Float(0.0)),
-        )),
-        Box::new(ValueExpr::Vec3(
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(ValueExpr::Float(1.0)),
-            Box::new(ValueExpr::Float(0.0)),
-        )),
-        Box::new(ValueExpr::Vec3(
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(ValueExpr::Float(1.0)),
-        )),
-    )
+    ValueExpr::Matrix {
+        columns: 3,
+        rows: vec![
+            ValueExpr::Vec3(
+                Box::new(ValueExpr::Float(1.0)),
+                Box::new(ValueExpr::Float(0.0)),
+                Box::new(ValueExpr::Float(0.0)),
+            ),
+            ValueExpr::Vec3(
+                Box::new(ValueExpr::Float(0.0)),
+                Box::new(ValueExpr::Float(1.0)),
+                Box::new(ValueExpr::Float(0.0)),
+            ),
+            ValueExpr::Vec3(
+                Box::new(ValueExpr::Float(0.0)),
+                Box::new(ValueExpr::Float(0.0)),
+                Box::new(ValueExpr::Float(1.0)),
+            ),
+        ],
+    }
 }
