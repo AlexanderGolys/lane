@@ -116,7 +116,7 @@ pub struct KnownBuiltinObjectDetail {
 }
 
 const BUILTIN_TYPE_DETAILS: [(&str, &str, &str); 4] = [
-    ("Complex", "Type", "#define Complex vec2"),
+    ("C", "Type", "#define Complex vec2"),
     ("E2", "Type", "#define E2 vec2"),
     ("E3", "Type", "#define E3 vec3"),
     ("Quat", "Type", "#define Quat vec4"),

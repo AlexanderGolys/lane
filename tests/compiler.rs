@@ -265,7 +265,7 @@ fn lists_builtin_lane_objects() {
 
     assert!(objects
         .iter()
-        .any(|object| object.name == "Complex" && object.ty == "Type"));
+        .any(|object| object.name == "C" && object.ty == "Type"));
     assert!(objects
         .iter()
         .any(|object| object.name == "Quat" && object.ty == "Type"));
@@ -295,6 +295,7 @@ fn lists_builtin_lane_objects() {
 fn looks_up_builtin_object_detail() {
     let revolution = known_builtin_object("Revolution").unwrap();
     let pow2 = known_builtin_object("pow2").unwrap();
+    let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("Quat").unwrap();
 
     assert_eq!(revolution.ty, "Hom(R, Hom(Solid, Solid))");
@@ -303,6 +304,8 @@ fn looks_up_builtin_object_detail() {
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
+    assert_eq!(complex.ty, "Type");
+    assert!(complex.body.contains("#define Complex vec2"));
     assert_eq!(quat.ty, "Type");
     assert!(quat.body.contains("#define Quat vec4"));
     assert!(known_builtin_object("gradient").is_none());

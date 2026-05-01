@@ -172,7 +172,7 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Complex: Type"));
+    assert!(stdout.contains("C: Type"));
     assert!(stdout.contains("Quat: Type"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(stdout.contains("cexp: Hom(C, C)"));
@@ -250,6 +250,8 @@ fn prints_bash_completion_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
+    assert!(stdout.contains("C Difference E2"));
+    assert!(!stdout.contains("Complex Difference E2"));
     assert!(stdout.contains("--print-completion"));
     assert!(stdout.contains("-pc"));
     assert!(stdout.contains("--list"));

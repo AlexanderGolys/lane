@@ -68,9 +68,9 @@ use `lane -h` or `lane --help` for help.
   aliases.
 - `lane -lo NAME` or `lane --list-objects NAME` shows one builtin object's GLSL
   implementation.
-- List output is syntax-highlighted when stdout is a terminal, using the same
-  keyword, type, function, constructor, punctuation, and operator categories as
-  the Tree-sitter highlight queries.
+- List output is syntax-highlighted when stdout is a terminal: function objects
+  are blue, type objects and type names are yellow, `Type` is bright yellow,
+  `Hom` and `×` are red, and punctuation is white.
 - `lane -pc SHELL` or `lane --print-completion SHELL` prints shell completion
   code for `bash`, `zsh`, or `fish`.
 
@@ -347,7 +347,7 @@ larger scene using most registered primitives and operators.
 
 | Object | Type |
 | --- | --- |
-| `Complex` | `Type` |
+| `C` | `Type` |
 | `E2` | `Type` |
 | `E3` | `Type` |
 | `Quat` | `Type` |

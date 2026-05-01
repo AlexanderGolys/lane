@@ -22,7 +22,7 @@ const BASH_COMPLETION: &str = r#"_lane() {
     fi
 
     if [[ "$prev" == "--list-objects" || "$prev" == "-lo" ]]; then
-        COMPREPLY=( $(compgen -W "Complex Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2" -- "$cur") )
+        COMPREPLY=( $(compgen -W "C Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2" -- "$cur") )
         return
     fi
 
@@ -43,7 +43,7 @@ _lane() {
         '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(Ball2D Ball3D Box2D Halfspace3D Point2D Polygon2D Segment2D Segment3D Simplex3D Torus3D Triangle2D)' \
         '(-l2 --list2d)'{-l2,--list2d}'[list only 2D primitives]' \
         '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
-        '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(Complex Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2)' \
+        '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(C Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2)' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-h --help)'{-h,--help}'[show help]'
 }
@@ -57,7 +57,7 @@ complete -c lane -s l -l list -r -a 'Ball2D Ball3D Box2D Halfspace3D Point2D Pol
 complete -c lane -o l2 -l list2d -d 'List only 2D primitives'
 complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
 complete -c lane -o lo -l list-objects -d 'List builtin Lane objects'
-complete -c lane -o lo -l list-objects -r -a 'Complex Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2' -d 'Show one builtin object'
+complete -c lane -o lo -l list-objects -r -a 'C Difference E2 E3 Extrusion Intersection Quat Revolution SmoothDifference SmoothIntersection SmoothUnion SmoothXor Union Xor ccos ccosh cexp cinv clog csin csinh csqrt ctan ctanh pow2' -d 'Show one builtin object'
 complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s h -l help -d 'Show help'
 "#;
@@ -255,18 +255,19 @@ fn print_known_builtin_object_line(name: &str, ty: &str) {
 
 fn highlight_builtin_object_line(name: &str, ty: &str) -> String {
     format!(
-        "{}: {}",
+        "{}{} {}",
         highlight_builtin_object_name(name, ty),
+        color("97", ":"),
         highlight_lane_signature(ty)
     )
 }
 
 fn highlight_builtin_object_name(name: &str, ty: &str) -> String {
     if ty == "Type" {
-        return color("34", name);
+        return color("33", name);
     }
 
-    color("33", name)
+    color("34", name)
 }
 
 fn highlight_lane_signature(source: &str) -> String {
@@ -290,8 +291,8 @@ fn highlight_lane_signature(source: &str) -> String {
             continue;
         }
         match ch {
-            '(' | ')' => out.push_str(&color("90", &source[i..i + 1])),
-            ',' => out.push_str(&color("90", &source[i..i + 1])),
+            '(' | ')' => out.push_str(&color("97", &source[i..i + 1])),
+            ',' => out.push_str(&color("97", &source[i..i + 1])),
             '×' => out.push_str(&color("35", "×")),
             _ => out.push(ch),
         }
@@ -304,11 +305,14 @@ fn highlight_lane_ident(token: &str) -> String {
     if matches!(token, "Func" | "Hom" | "End") {
         return color("35", token);
     }
+    if token == "Type" {
+        return color("93", token);
+    }
     if matches!(
         token,
-        "R" | "Z" | "C" | "R2" | "R3" | "R4" | "Mat2" | "Mat3" | "Mat4" | "Solid" | "Type"
+        "R" | "Z" | "C" | "R2" | "R3" | "R4" | "Mat2" | "Mat3" | "Mat4" | "Solid"
     ) {
-        return color("34", token);
+        return color("33", token);
     }
     token.to_string()
 }
@@ -443,9 +447,12 @@ mod tests {
     fn highlights_builtin_object_names_and_lane_types() {
         let highlighted = highlight_builtin_object_line("Union", "Hom(Solid × Solid, Solid)");
 
-        assert!(highlighted.contains("\x1b[33mUnion\x1b[0m"));
+        assert!(highlighted.contains("\x1b[34mUnion\x1b[0m"));
+        assert!(highlighted.contains("\x1b[97m:\x1b[0m"));
         assert!(highlighted.contains("\x1b[35mHom\x1b[0m"));
-        assert!(highlighted.contains("\x1b[34mSolid\x1b[0m"));
+        assert!(highlighted.contains("\x1b[33mSolid\x1b[0m"));
+        assert!(highlighted.contains("\x1b[97m(\x1b[0m"));
+        assert!(highlighted.contains("\x1b[97m,\x1b[0m"));
         assert!(highlighted.contains("\x1b[35m×\x1b[0m"));
     }
 
@@ -453,8 +460,8 @@ mod tests {
     fn highlights_builtin_type_names_as_types() {
         let highlighted = highlight_builtin_object_line("Quat", "Type");
 
-        assert!(highlighted.contains("\x1b[34mQuat\x1b[0m"));
-        assert!(highlighted.contains("\x1b[34mType\x1b[0m"));
+        assert!(highlighted.contains("\x1b[33mQuat\x1b[0m"));
+        assert!(highlighted.contains("\x1b[93mType\x1b[0m"));
     }
 
     #[test]
