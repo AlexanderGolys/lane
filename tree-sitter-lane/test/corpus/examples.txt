@@ -9,17 +9,17 @@ R3 p2 = (2, 1, .3)
 R3 p3 = (3, -3, -.4)
 R3 p4 = (5, 1., .1)
 
-Solid b1 = Ball3D(r=.1e-0)
-Solid b2 = Ball3D(.4e0)
-Solid b3 = Ball3D(.3)
-Solid b4 = Ball3D(.2)
+Object b1 = Ball3D(r=.1e-0)
+Object b2 = Ball3D(.4e0)
+Object b3 = Ball3D(.3)
+Object b4 = Ball3D(.2)
 
-Solid v12 = Segment3D(p, p2)
-Solid v23 = Segment3D(p2, p3)
-Solid v34 = Segment3D(p3, p4)
+Object v12 = Segment3D(p, p2)
+Object v23 = Segment3D(p2, p3)
+Object v34 = Segment3D(p3, p4)
 
-const Solid v = Union(b1, b2, b3, b4)
-construct Solid e = Union(v12, v23, v34)
+const Object v = Union(b1, b2, b3, b4)
+construct Object e = Union(v12, v23, v34)
 
 gen SmoothUnion(.5)(v, e)
 

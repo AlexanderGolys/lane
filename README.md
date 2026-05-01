@@ -114,7 +114,7 @@ starts a comment that runs to the end of the line.
 ```lane
 provided R time
 Func(R, R) pulse = pow2 @ sin
-Solid ball = Ball3D(r=1 + pulse(time))
+Object ball = Ball3D(r=1 + pulse(time))
 generate ball
 ```
 
@@ -123,23 +123,23 @@ Supported declaration forms:
 ```lane
 provided TYPE name
 TYPE name = expression
-construct Solid name = object_expression
-const Solid name = object_expression
+construct Object name = object_expression
+const Object name = object_expression
 generate object_expression
 gen object_expression
 ```
 
 `provided` declares an external GLSL input. A typed binding declares either a
-value binding, a value function, or a `Solid` object binding depending on its
-type. `construct` and `const` are only valid for `Solid` bindings and export
+value binding, a value function, or an `Object` binding depending on its type.
+`construct` and `const` are only valid for `Object` bindings and export
 stable helper functions named `sdf_name` and `grad_sdf_name` in the generated
 GLSL. A program must contain exactly one final output declaration using
 `generate` or `gen`.
 
 ### Types
 
-Lane has nominal surface types that lower to GLSL scalar, vector, matrix, or SDF
-object representations.
+Lane has nominal types that lower to GLSL scalar, vector, matrix, or SDF object
+representations.
 
 | Lane type | Alias | GLSL value |
 | --- | --- | --- |
@@ -154,7 +154,7 @@ object representations.
 | `Mat3` | | `mat3` |
 | `Mat4` | | `mat4` |
 | `MatNxM` | `N,M in {2,3,4}` | GLSL `matMxN` |
-| `Solid` | | SDF object |
+| `Object` | `Object3D` | SDF object |
 
 Function types use `Func(input, output)` or `Hom(input, output)`:
 
@@ -165,7 +165,7 @@ End(R) loop = sin
 ```
 
 `End(T)` means `Hom(T, T)`. Product types are written with `×`, for example
-`Solid × Solid`, and appear in builtin object listings.
+`Object × Object`, and appear in builtin object listings.
 
 ### Value Expressions
 
@@ -211,12 +211,12 @@ Tuple rules:
 ### Object Expressions
 
 Objects denote SDFs. Primitive constructors, object operators, and ambient
-actions produce `Solid` values.
+actions produce `Object` values.
 
 ```lane
-Solid a = Ball3D(r=2)
-Solid b = Box3D(1, .5, .25) + (2, 0, 0)
-Solid c = SmoothUnion(.2)(a, b)
+Object a = Ball3D(r=2)
+Object b = Box3D(1, .5, .25) + (2, 0, 0)
+Object c = SmoothUnion(.2)(a, b)
 generate c
 ```
 
@@ -231,10 +231,10 @@ Box3D(1, 2, 3)
 
 Object actions:
 
-- `Solid + R3` translates an object in ambient 3D space.
-- `Mat3 * Solid` applies an orthogonal linear action to an object.
+- `Object + R3` translates an object in ambient 3D space.
+- `Mat3 * Object` applies an orthogonal linear action to an object.
 
-2D primitives live in the XY plane but still produce `Solid` objects in the
+2D primitives live in the XY plane but still produce `Object` values in the
 current compiler slice. Operators such as `Union`, `Intersection`, and `Xor`
 accept two or more object arguments and are lowered to balanced binary GLSL
 calls. Other binary operators require exactly two object arguments.
@@ -280,9 +280,9 @@ provided R time
 provided Func(R, R3) center
 
 Func(R, R) pulse = pow2 @ sin + .25
-Solid a = Ball3D(r=1 + pulse(time))
-Solid b = Box3D(.75, .5, .5) + center(time)
-Solid scene = SmoothUnion(.2)(a, b)
+Object a = Ball3D(r=1 + pulse(time))
+Object b = Box3D(.75, .5, .5) + center(time)
+Object scene = SmoothUnion(.2)(a, b)
 
 generate scene
 ```
@@ -291,7 +291,7 @@ generate scene
 
 ```lane
 provided R radius
-construct Solid shell = Ball3D(r=radius) + (1, 0, 0)
+construct Object shell = Ball3D(r=radius) + (1, 0, 0)
 generate shell
 ```
 
@@ -301,9 +301,9 @@ This exports `sdf_shell(...)` and `grad_sdf_shell(...)` in addition to the final
 ### 2D Profile Lifted Into 3D
 
 ```lane
-Solid profile = Triangle2D(p0=(0, -.5), p1=(.5, 0), p2=(0, .5))
-Solid lathe = Revolution(1.25)(profile)
-Solid slab = Extrusion(.2)(Box2D(1, .5)) + (0, 0, 1)
+Object profile = Triangle2D(p0=(0, -.5), p1=(.5, 0), p2=(0, .5))
+Object lathe = Revolution(1.25)(profile)
+Object slab = Extrusion(.2)(Box2D(1, .5)) + (0, 0, 1)
 generate Union(lathe, slab)
 ```
 
@@ -343,16 +343,16 @@ larger scene using most registered primitives and operators.
 
 | Object | Type | Notes |
 | --- | --- | --- |
-| `Union` | `Hom(Solid × Solid, Solid)` | Associative, accepts two or more solids. |
-| `Intersection` | `Hom(Solid × Solid, Solid)` | Associative, accepts two or more solids. |
-| `Difference` | `Hom(Solid × Solid, Solid)` | Binary set difference. |
-| `Xor` | `Hom(Solid × Solid, Solid)` | Associative, accepts two or more solids. |
-| `SmoothUnion` | `Hom(R, Hom(Solid × Solid, Solid))` | Curried by smoothing radius `k`. |
-| `SmoothIntersection` | `Hom(R, Hom(Solid × Solid, Solid))` | Curried by smoothing radius `k`. |
-| `SmoothDifference` | `Hom(R, Hom(Solid × Solid, Solid))` | Curried by smoothing radius `k`. |
-| `SmoothXor` | `Hom(R, Hom(Solid × Solid, Solid))` | Curried by smoothing radius `k`. |
-| `Revolution` | `Hom(R, Hom(Solid, Solid))` | Lifts a 2D profile with `vec2(length(p.xz) - offset, p.y)`. |
-| `Extrusion` | `Hom(R, Hom(Solid, Solid))` | Lifts a 2D profile along the `z` axis. |
+| `Union` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
+| `Intersection` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
+| `Difference` | `Hom(Object × Object, Object)` | Binary set difference. |
+| `Xor` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
+| `SmoothUnion` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `SmoothIntersection` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `SmoothDifference` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `SmoothXor` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `Revolution` | `Hom(R, Hom(Object, Object))` | Lifts a 2D profile with `vec2(length(p.xz) - offset, p.y)`. |
+| `Extrusion` | `Hom(R, Hom(Object, Object))` | Lifts a 2D profile along the `z` axis. |
 
 ### Categories, Value Functions, And Type Aliases
 

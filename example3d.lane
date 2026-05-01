@@ -5,18 +5,18 @@ R3 p2 = (2, 1, .3)
 R3 p3 = (3, -3, -.4)
 R3 p4 = (5, 1, .1)
 
-Obj3 b1 = Ball3D(r=.1)
-Obj3 b2 = Ball3D(.4)
-Obj3 b3 = Ball3D(.3)
-Obj3 b4 = Ball3D(.2)
+Object b1 = Ball3D(r=.1)
+Object b2 = Ball3D(.4)
+Object b3 = Ball3D(.3)
+Object b4 = Ball3D(.2)
 
-Obj3 v12 = Segment3D(p1, p2)
-Obj3 v23 = Segment3D(p2, p3)
-Obj3 v34 = Segment3D(p3, p4)
+Object v12 = Segment3D(p1, p2)
+Object v23 = Segment3D(p2, p3)
+Object v34 = Segment3D(p3, p4)
 
 
-construct Obj3 v = Union(b1, b2, b3, b4)
-construct Obj3 e = Union(v12, v23, v34)
+construct Object v = Union(b1, b2, b3, b4)
+construct Object e = Union(v12, v23, v34)
 
 generate SmoothUnion(.5)(v, e)
 

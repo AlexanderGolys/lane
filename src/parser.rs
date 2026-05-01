@@ -106,7 +106,7 @@ impl<'a> Parser<'a> {
         if matches!(ty, Type::Func(_, _)) {
             if generated {
                 return Err(Error::new(
-                    "'construct' currently only supports Solid bindings",
+                    "'construct' currently only supports Object bindings",
                 ));
             }
             return Ok(Decl::Func(FuncDecl {
@@ -115,10 +115,10 @@ impl<'a> Parser<'a> {
                 expr,
             }));
         }
-        if !matches!(ty, Type::Solid) {
+        if !matches!(ty, Type::Object) {
             if generated {
                 return Err(Error::new(
-                    "'construct' currently only supports Solid bindings",
+                    "'construct' currently only supports Object bindings",
                 ));
             }
             return Ok(Decl::ValueBinding(ValueBindingDecl {
@@ -493,7 +493,7 @@ fn parse_type(source: &str) -> Result<Type, Error> {
         }
         return Ok(Type::Product(parsed));
     }
-    match parse_surface_type_name(source) {
+    match parse_builtin_type_name(source) {
         Some(ty) => Ok(ty),
         None => Err(Error::new(format!("unsupported type '{}'", source))),
     }

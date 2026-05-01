@@ -20,5 +20,5 @@
 
 ## Style
 - Keep functions short and explicit.
-- Prefer nominal surface types with simple internal representations.
+- Prefer nominal Lane types with simple internal representations.
 - Add focused tests for each new DSL feature.

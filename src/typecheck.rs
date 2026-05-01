@@ -83,7 +83,7 @@ impl TypedProgram {
         for binding in &program.bindings {
             ensure_type(
                 &binding.ty,
-                &Type::Solid,
+                &Type::Object,
                 &format!("binding '{}'", binding.name),
             )?;
             let expr = infer_object_expr(&binding.expr, &env)?;
@@ -143,7 +143,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             let ty = env
                 .get(name)
                 .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
-            ensure_type(ty, &Type::Solid, &format!("identifier '{}'", name))?;
+            ensure_type(ty, &Type::Object, &format!("identifier '{}'", name))?;
             Ok(ObjectExpr::Var(name.clone()))
         }
         Expr::Constructor { name, args } => {
@@ -267,7 +267,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             })
         }
         Expr::Call { .. } => infer_object_call(expr, env),
-        Expr::Number(_) | Expr::Tuple(_) => Err(Error::new("expected an Solid expression")),
+        Expr::Number(_) | Expr::Tuple(_) => Err(Error::new("expected an Object expression")),
         Expr::Binary { .. } => Err(Error::new("unsupported object expression")),
     }
 }
@@ -481,7 +481,7 @@ fn infer_value_expr(
                     args: typed_args,
                     ty: current_ty,
                 }),
-                Type::Solid | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
+                Type::Object | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
                     "value expression '{}' does not return a value type",
                     name
                 ))),
@@ -879,7 +879,7 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 | Type::Mat(_, _) => {
                     Err(Error::new(format!("'{}' is a value, not a function", name)))
                 }
-                Type::Solid | Type::Product(_) => Err(Error::new(format!(
+                Type::Object | Type::Product(_) => Err(Error::new(format!(
                     "object '{}' is not a function expression",
                     name
                 ))),
@@ -967,7 +967,7 @@ fn infer_identifier_value(
                 ty: (*output).clone(),
             })
         }
-        Type::Solid | Type::Product(_) => Err(Error::new(format!(
+        Type::Object | Type::Product(_) => Err(Error::new(format!(
             "object '{}' is not a value expression",
             name
         ))),

@@ -11,9 +11,9 @@ provided func(Float -> Vec3) centerA
     func(Float -> Float) hardness = pow2 @ sin + .5
     func(Float -> Vec3) centerB = (1, sin, cos) + centerA / 2
 
-    Solid A = Ball3D(r=3) + centerA(time)
-    Solid B = Ball3D(r=rB(time)) + centerB(time)
-    Solid C = SmoothUnion(hardness(time))(A, B)
+    Object A = Ball3D(r=3) + centerA(time)
+    Object B = Ball3D(r=rB(time)) + centerB(time)
+    Object C = SmoothUnion(hardness(time))(A, B)
 
 generate C
 "#;

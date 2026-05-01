@@ -3,8 +3,8 @@ Declarations
 ==================
 
 provided Float time
-construct Solid shell = Ball3D(r=1 + time)
-Solid moved = shell + (1, 2, 3)
+construct Object shell = Ball3D(r=1 + time)
+Object moved = shell + (1, 2, 3)
 Func(Float, Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 Hom(Float, Float) warp = spin
 generate spin(time) * moved

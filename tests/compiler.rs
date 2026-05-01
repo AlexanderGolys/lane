@@ -286,16 +286,16 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "cexp" && object.ty == "Hom(C, C)"));
     assert!(objects
         .iter()
-        .any(|object| { object.name == "Union" && object.ty == "Hom(Solid × Solid, Solid)" }));
+        .any(|object| { object.name == "Union" && object.ty == "Hom(Object × Object, Object)" }));
     assert!(objects.iter().any(|object| {
-        object.name == "SmoothUnion" && object.ty == "Hom(R, Hom(Solid × Solid, Solid))"
+        object.name == "SmoothUnion" && object.ty == "Hom(R, Hom(Object × Object, Object))"
     }));
-    assert!(objects
-        .iter()
-        .any(|object| { object.name == "Revolution" && object.ty == "Hom(R, Hom(Solid, Solid))" }));
-    assert!(objects
-        .iter()
-        .any(|object| { object.name == "Extrusion" && object.ty == "Hom(R, Hom(Solid, Solid))" }));
+    assert!(objects.iter().any(|object| {
+        object.name == "Revolution" && object.ty == "Hom(R, Hom(Object, Object))"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.name == "Extrusion" && object.ty == "Hom(R, Hom(Object, Object))"
+    }));
     assert!(!objects.iter().any(|object| object.name == "sin"));
     assert!(!objects.iter().any(|object| object.name == "gradient"));
 }
@@ -308,7 +308,7 @@ fn looks_up_builtin_object_detail() {
     let quat = known_builtin_object("H").unwrap();
     let field = known_builtin_object("Field").unwrap();
 
-    assert_eq!(revolution.ty, "Hom(R, Hom(Solid, Solid))");
+    assert_eq!(revolution.ty, "Hom(R, Hom(Object, Object))");
     assert!(revolution
         .body
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
@@ -440,10 +440,18 @@ fn supports_generate_alias() {
 
 #[test]
 fn supports_construct_alias() {
-    let source = "const Solid shell = Ball3D(r=2)\ngenerate shell\n";
+    let source = "const Object shell = Ball3D(r=2)\ngenerate shell\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_shell(vec3 p) {"));
+}
+
+#[test]
+fn supports_object3d_type_alias() {
+    let source = "Object3D shell = Ball3D(r=2)\ngenerate shell\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("sdf0_Ball3D(p, ParamBall3D(2.0))"));
 }
 
 #[test]
@@ -458,7 +466,7 @@ fn supports_full_line_comments() {
 
 #[test]
 fn supports_trailing_line_comments() {
-    let source = "provided Float time // animation clock\nSolid A = Ball3D(r=1) + (1, 0, 0) // translated sphere\ngenerate A // final object\n";
+    let source = "provided Float time // animation clock\nObject A = Ball3D(r=1) + (1, 0, 0) // translated sphere\ngenerate A // final object\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
@@ -467,7 +475,7 @@ fn supports_trailing_line_comments() {
 
 #[test]
 fn emits_generated_object_helpers() {
-    let source = "construct Solid shell = Ball3D(r=2) + (1, 0, 0)\ngenerate shell\n";
+    let source = "construct Object shell = Ball3D(r=2) + (1, 0, 0)\ngenerate shell\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_shell(vec3 p) {"));
@@ -478,7 +486,7 @@ fn emits_generated_object_helpers() {
 #[test]
 fn generated_helpers_capture_scene_inputs_in_their_signatures() {
     let source =
-        "provided Float time\nconstruct Solid shell = Ball3D(r=1 + time)\ngenerate shell\n";
+        "provided Float time\nconstruct Object shell = Ball3D(r=1 + time)\ngenerate shell\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
@@ -500,7 +508,7 @@ fn renames_generated_locals_on_name_conflicts() {
 
 #[test]
 fn plain_object_bindings_do_not_export_helpers() {
-    let source = "Solid shell = Ball3D(r=2)\ngenerate shell\n";
+    let source = "Object shell = Ball3D(r=2)\ngenerate shell\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(!glsl.contains("float sdf_shell("));
@@ -517,7 +525,7 @@ fn reports_the_offending_token_for_expression_parse_errors() {
 
 #[test]
 fn emits_only_used_support_code() {
-    let source = "Solid A = Ball3D(r=3)\ngenerate A\n";
+    let source = "Object A = Ball3D(r=3)\ngenerate A\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamBall3D"));
@@ -528,7 +536,7 @@ fn emits_only_used_support_code() {
 
 #[test]
 fn rejects_unknown_primitive_field() {
-    let source = "Solid A = Ball3D(radius=3)\ngenerate A\n";
+    let source = "Object A = Ball3D(radius=3)\ngenerate A\n";
     let error = compile_program(source).unwrap_err().to_string();
 
     assert!(error.contains("missing field 'r'"));
@@ -536,7 +544,7 @@ fn rejects_unknown_primitive_field() {
 
 #[test]
 fn rejects_old_binding_syntax() {
-    let source = "A : Solid = Ball3D(r=3)\ngenerate A\n";
+    let source = "A : Object = Ball3D(r=3)\ngenerate A\n";
     let error = compile_program(source).unwrap_err().to_string();
 
     assert!(error.contains("use 'type name = value'"));
@@ -547,12 +555,12 @@ fn rejects_construct_on_non_object_bindings() {
     let source = "construct R radius = 2\ngenerate Ball3D(r=radius)\n";
     let error = compile_program(source).unwrap_err().to_string();
 
-    assert!(error.contains("'construct' currently only supports Solid bindings"));
+    assert!(error.contains("'construct' currently only supports Object bindings"));
 }
 
 #[test]
 fn rejects_old_out_syntax() {
-    let source = "Solid A = Ball3D(r=3)\ngenerate Solid = A\n";
+    let source = "Object A = Ball3D(r=3)\ngenerate Object = A\n";
     let error = compile_program(source).unwrap_err().to_string();
 
     assert!(error.contains("use 'generate value'"));
@@ -560,7 +568,7 @@ fn rejects_old_out_syntax() {
 
 #[test]
 fn emits_box_primitive() {
-    let source = "Solid shape = Box2D(a=2, b=1)\ngenerate shape\n";
+    let source = "Object shape = Box2D(a=2, b=1)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamBox2D"));
@@ -573,7 +581,7 @@ fn emits_box_primitive() {
 
 #[test]
 fn emits_box3d_primitive() {
-    let source = "Solid shape = Box3D(a=2, b=1, c=3)\ngenerate shape\n";
+    let source = "Object shape = Box3D(a=2, b=1, c=3)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamBox3D"));
@@ -587,7 +595,7 @@ fn emits_box3d_primitive() {
 
 #[test]
 fn emits_box3d_from_flat_positional_arguments() {
-    let source = "Solid shape = Box3D(2, 1, 3)\ngenerate shape\n";
+    let source = "Object shape = Box3D(2, 1, 3)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("sdf0_Box3D(p, ParamBox3D(2.0, 1.0, 3.0))"));
@@ -595,7 +603,7 @@ fn emits_box3d_from_flat_positional_arguments() {
 
 #[test]
 fn supports_negative_tuple_components() {
-    let source = "Solid shape = Box3D(2, 1, 3) + (-1, -2, -3)\ngenerate shape\n";
+    let source = "Object shape = Box3D(2, 1, 3) + (-1, -2, -3)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("(p - vec3((-1.0), (-2.0), (-3.0)))"));
@@ -603,7 +611,7 @@ fn supports_negative_tuple_components() {
 
 #[test]
 fn supports_scientific_notation_literals() {
-    let source = "Solid shape = Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)\ngenerate shape\n";
+    let source = "Object shape = Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("ParamBall3D(0.1)"));
@@ -612,7 +620,7 @@ fn supports_scientific_notation_literals() {
 
 #[test]
 fn emits_primitive_with_positional_arguments() {
-    let source = "Solid shape = Box2D(2, 1)\ngenerate shape\n";
+    let source = "Object shape = Box2D(2, 1)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("sdf0_Box2D((p).xy, ParamBox2D(2.0, 1.0))"));
@@ -628,7 +636,7 @@ fn rejects_wrong_number_of_positional_primitive_arguments() {
 
 #[test]
 fn emits_simplex3d_primitive() {
-    let source = "Solid shape = Simplex3D(p0=(0, 0, 0), p1=(1, 0, 0), p2=(0, 1, 0), p3=(0, 0, 1))\ngenerate shape\n";
+    let source = "Object shape = Simplex3D(p0=(0, 0, 0), p1=(1, 0, 0), p2=(0, 1, 0), p3=(0, 0, 1))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamSimplex3D"));
@@ -645,7 +653,7 @@ fn emits_simplex3d_primitive() {
 
 #[test]
 fn emits_halfspace3d_primitive() {
-    let source = "Solid shape = Halfspace3D(n=(0, 1, 0), h=2)\ngenerate shape\n";
+    let source = "Object shape = Halfspace3D(n=(0, 1, 0), h=2)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamHalfspace3D"));
@@ -656,7 +664,7 @@ fn emits_halfspace3d_primitive() {
 
 #[test]
 fn emits_plane3d_primitive() {
-    let source = "Solid shape = Plane3D(n=(0, 1, 0), origin=(0, 2, 0))\ngenerate shape\n";
+    let source = "Object shape = Plane3D(n=(0, 1, 0), origin=(0, 2, 0))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamPlane3D"));
@@ -667,7 +675,7 @@ fn emits_plane3d_primitive() {
 
 #[test]
 fn emits_line3d_primitive() {
-    let source = "Solid shape = Line3D(x0=(0, 0, 0), dir=(2, 1, 3))\ngenerate shape\n";
+    let source = "Object shape = Line3D(x0=(0, 0, 0), dir=(2, 1, 3))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamLine3D"));
@@ -679,7 +687,7 @@ fn emits_line3d_primitive() {
 #[test]
 fn emits_triangle3d_primitive() {
     let source =
-        "Solid shape = Triangle3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(0, 1, 0))\ngenerate shape\n";
+        "Object shape = Triangle3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(0, 1, 0))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamTriangle3D"));
@@ -692,7 +700,7 @@ fn emits_triangle3d_primitive() {
 
 #[test]
 fn emits_torus3d_primitive() {
-    let source = "Solid shape = Torus3D(major=3, minor=.5)\ngenerate shape\n";
+    let source = "Object shape = Torus3D(major=3, minor=.5)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamTorus3D"));
@@ -703,7 +711,7 @@ fn emits_torus3d_primitive() {
 
 #[test]
 fn emits_segment_primitive() {
-    let source = "Solid shape = Segment2D(a=(0, 0), b=(2, 1))\ngenerate shape\n";
+    let source = "Object shape = Segment2D(a=(0, 0), b=(2, 1))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamSegment2D"));
@@ -713,7 +721,7 @@ fn emits_segment_primitive() {
 
 #[test]
 fn emits_segment2d_length_constructor() {
-    let source = "Solid shape = Segment2D(length=2)\ngenerate shape\n";
+    let source = "Object shape = Segment2D(length=2)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("sdf0_Segment2D((p).xy, ParamSegment2D(vec2((-1.0 * (0.5 * 2.0)), 0.0), vec2((0.5 * 2.0), 0.0)))"));
@@ -721,7 +729,7 @@ fn emits_segment2d_length_constructor() {
 
 #[test]
 fn emits_segment3d_primitive() {
-    let source = "Solid shape = Segment3D(a=(0, 0, 0), b=(2, 1, 3))\ngenerate shape\n";
+    let source = "Object shape = Segment3D(a=(0, 0, 0), b=(2, 1, 3))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamSegment3D"));
@@ -732,7 +740,7 @@ fn emits_segment3d_primitive() {
 
 #[test]
 fn emits_segment3d_length_constructor() {
-    let source = "Solid shape = Segment3D(2)\ngenerate shape\n";
+    let source = "Object shape = Segment3D(2)\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("sdf0_Segment3D(p, ParamSegment3D(vec3((-1.0 * (0.5 * 2.0)), 0.0, 0.0), vec3((0.5 * 2.0), 0.0, 0.0)))"));
@@ -740,7 +748,7 @@ fn emits_segment3d_length_constructor() {
 
 #[test]
 fn emits_triangle_primitive() {
-    let source = "Solid shape = Triangle2D(p0=(0, 0), p1=(2, 0), p2=(0, 2))\ngenerate shape\n";
+    let source = "Object shape = Triangle2D(p0=(0, 0), p1=(2, 0), p2=(0, 2))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamTriangle2D"));
@@ -753,7 +761,7 @@ fn emits_triangle_primitive() {
 #[test]
 fn emits_quad2d_primitive() {
     let source =
-        "Solid shape = Quad2D(p1=(0, 0), p2=(2, 0), p3=(2, 1), p4=(0, 1))\ngenerate shape\n";
+        "Object shape = Quad2D(p1=(0, 0), p2=(2, 0), p3=(2, 1), p4=(0, 1))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamQuad2D"));
@@ -765,7 +773,7 @@ fn emits_quad2d_primitive() {
 
 #[test]
 fn emits_quad3d_primitive() {
-    let source = "Solid shape = Quad3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(1, 1, 0), p4=(0, 1, 0))\ngenerate shape\n";
+    let source = "Object shape = Quad3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(1, 1, 0), p4=(0, 1, 0))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamQuad3D"));
@@ -779,7 +787,7 @@ fn emits_quad3d_primitive() {
 #[test]
 fn emits_polygon_primitive() {
     let source =
-        "Solid shape = Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))\ngenerate shape\n";
+        "Object shape = Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("const int POLYGON2D_MAX_VERTICES = 16;"));
@@ -793,7 +801,7 @@ fn emits_polygon_primitive() {
 
 #[test]
 fn emits_point_primitive() {
-    let source = "Solid shape = Point2D(at=(3, 4))\ngenerate shape\n";
+    let source = "Object shape = Point2D(at=(3, 4))\ngenerate shape\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct ParamPoint2D"));
@@ -884,7 +892,7 @@ fn treats_square_matrices_as_rings_by_shape() {
 #[test]
 fn emits_difference_operator() {
     let source =
-        "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Difference(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Difference(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_difference(float a, float b) {"));
@@ -895,7 +903,7 @@ fn emits_difference_operator() {
 #[test]
 fn emits_union_operator() {
     let source =
-        "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Union(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Union(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_union(float a, float b) {"));
@@ -905,7 +913,7 @@ fn emits_union_operator() {
 
 #[test]
 fn emits_associative_union_operator_with_four_args() {
-    let source = "Solid a = Ball3D(r=4)\nSolid b = Ball3D(r=3) + (1, 0, 0)\nSolid c = Ball3D(r=2) + (2, 0, 0)\nSolid d = Ball3D(r=1) + (3, 0, 0)\ngenerate Union(a, b, c, d)\n";
+    let source = "Object a = Ball3D(r=4)\nObject b = Ball3D(r=3) + (1, 0, 0)\nObject c = Ball3D(r=2) + (2, 0, 0)\nObject d = Ball3D(r=1) + (3, 0, 0)\ngenerate Union(a, b, c, d)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("return op_union(op_union("));
@@ -914,7 +922,7 @@ fn emits_associative_union_operator_with_four_args() {
 
 #[test]
 fn emits_associative_union_operator_with_three_args() {
-    let source = "Solid a = Ball3D(r=3)\nSolid b = Ball3D(r=2) + (1, 0, 0)\nSolid c = Ball3D(r=1) + (2, 0, 0)\ngenerate Union(a, b, c)\n";
+    let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2) + (1, 0, 0)\nObject c = Ball3D(r=1) + (2, 0, 0)\ngenerate Union(a, b, c)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("return op_union(sdf0_Ball3D("));
@@ -924,7 +932,7 @@ fn emits_associative_union_operator_with_three_args() {
 #[test]
 fn emits_intersection_operator() {
     let source =
-        "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Intersection(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Intersection(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_intersection(float a, float b) {"));
@@ -934,7 +942,8 @@ fn emits_intersection_operator() {
 
 #[test]
 fn emits_xor_operator() {
-    let source = "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Xor(a, b)\n";
+    let source =
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Xor(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_xor(float a, float b) {"));
@@ -945,7 +954,7 @@ fn emits_xor_operator() {
 #[test]
 fn emits_smooth_union_operator() {
     let source =
-        "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothUnion(0.25)(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothUnion(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_union_min(float a, float b, float k) {"));
@@ -955,7 +964,7 @@ fn emits_smooth_union_operator() {
 
 #[test]
 fn emits_smooth_intersection_operator() {
-    let source = "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothIntersection(0.25)(a, b)\n";
+    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothIntersection(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_intersection(float a, float b, float k) {"));
@@ -965,7 +974,7 @@ fn emits_smooth_intersection_operator() {
 
 #[test]
 fn emits_smooth_difference_operator() {
-    let source = "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothDifference(0.25)(a, b)\n";
+    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothDifference(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_difference(float a, float b, float k) {"));
@@ -976,7 +985,7 @@ fn emits_smooth_difference_operator() {
 #[test]
 fn emits_smooth_xor_operator() {
     let source =
-        "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothXor(0.25)(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothXor(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
@@ -988,7 +997,7 @@ fn emits_smooth_xor_operator() {
 
 #[test]
 fn emits_only_used_object_operator_support() {
-    let source = "Solid a = Ball3D(r=2)\nSolid b = Ball3D(r=1)\ngenerate Difference(a, b)\n";
+    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1)\ngenerate Difference(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("op_difference"));
@@ -1003,7 +1012,7 @@ fn emits_only_used_object_operator_support() {
 
 #[test]
 fn rejects_extra_arguments_for_non_associative_operator() {
-    let source = "Solid a = Ball3D(r=3)\nSolid b = Ball3D(r=2)\nSolid c = Ball3D(r=1)\ngenerate Difference(a, b, c)\n";
+    let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2)\nObject c = Ball3D(r=1)\ngenerate Difference(a, b, c)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(

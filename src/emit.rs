@@ -110,7 +110,7 @@ impl TypedProgram {
                 | Type::Mat(_, _) => {
                     signature.push(format!("{} {}", input.ty.glsl_name(), input.name))
                 }
-                Type::Solid | Type::Product(_) | Type::Func(_, _) => {}
+                Type::Object | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
         signature
@@ -128,7 +128,7 @@ impl TypedProgram {
                 | Type::Vec3
                 | Type::Vec4
                 | Type::Mat(_, _) => Some(input.name.clone()),
-                Type::Solid | Type::Product(_) | Type::Func(_, _) => None,
+                Type::Object | Type::Product(_) | Type::Func(_, _) => None,
             })
             .collect()
     }
@@ -250,7 +250,7 @@ impl TypedProgram {
                 | Type::Mat(_, _) => {
                     forbidden.insert(input.name.clone());
                 }
-                Type::Solid | Type::Product(_) | Type::Func(_, _) => {}
+                Type::Object | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
         for binding in &self.value_bindings {

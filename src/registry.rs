@@ -924,7 +924,7 @@ impl KnownPrimitiveField {
         Self {
             name: field.name.to_string(),
             domain: match &field.kind {
-                PrimitiveFieldKind::Value(ty) => ty.surface_name().to_string(),
+                PrimitiveFieldKind::Value(ty) => ty.type_name().to_string(),
                 PrimitiveFieldKind::Vec2List => "R2 list".to_string(),
             },
         }

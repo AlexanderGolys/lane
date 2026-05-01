@@ -4,8 +4,8 @@ provided Func(R, R3) centerA
 
 Func(R, R) hardness = pow2 @ sin * sin + .5*cos - .5
 Func(R, R3) centerB = (1, sin, cos) + centerA / 2e0
-Solid A = Box2D(
-Solid B = Ball3D(r=rB(time)) + centerB(time)
-Solid C = SmoothUnion(hardness(time))(A, B)
+Object A = Box2D(
+Object B = Ball3D(r=rB(time)) + centerB(time)
+Object C = SmoothUnion(hardness(time))(A, B)
 
 generate C

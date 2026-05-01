@@ -128,7 +128,7 @@ pub const TYPE_METATYPE_NAME: &str = "Type";
 pub const CATEGORY_METATYPE_NAME: &str = "Cat";
 
 pub fn known_type_names() -> Vec<&'static str> {
-    let mut names = SURFACE_TYPE_DEFS
+    let mut names = BUILTIN_TYPE_DEFS
         .iter()
         .flat_map(|def| def.aliases.iter().copied())
         .collect::<Vec<_>>();
@@ -137,7 +137,7 @@ pub fn known_type_names() -> Vec<&'static str> {
 }
 
 pub fn is_known_type_name(name: &str) -> bool {
-    parse_surface_type_name(name).is_some()
+    parse_builtin_type_name(name).is_some()
 }
 
 pub fn known_category_names() -> Vec<&'static str> {
@@ -218,7 +218,7 @@ fn category_name(category: AlgebraicCategory) -> &'static str {
 }
 
 fn type_category_signature(name: &str) -> Option<String> {
-    let ty = parse_surface_type_name(name)?;
+    let ty = parse_builtin_type_name(name)?;
     let categories = type_direct_categories(&ty);
     if categories.is_empty() {
         return Some(TYPE_METATYPE_NAME.to_string());
@@ -236,7 +236,7 @@ fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {
         return categories;
     }
 
-    SURFACE_TYPE_DEFS
+    BUILTIN_TYPE_DEFS
         .iter()
         .find(|def| &def.ty == ty)
         .map(|def| def.categories.to_vec())
@@ -251,10 +251,10 @@ fn format_categories(categories: &[AlgebraicCategory]) -> String {
         .join(" × ")
 }
 
-struct SurfaceTypeDef {
+struct BuiltinTypeDef {
     ty: Type,
     aliases: &'static [&'static str],
-    surface_name: &'static str,
+    display_name: &'static str,
     categories: &'static [AlgebraicCategory],
 }
 
@@ -262,11 +262,11 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 8] = [
-    SurfaceTypeDef {
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 8] = [
+    BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
-        surface_name: "R",
+        display_name: "R",
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
@@ -274,16 +274,16 @@ const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 8] = [
             AlgebraicCategory::VectR,
         ],
     },
-    SurfaceTypeDef {
+    BuiltinTypeDef {
         ty: Type::Int,
         aliases: &["Int", "Z"],
-        surface_name: "Z",
+        display_name: "Z",
         categories: &[AlgebraicCategory::Ring],
     },
-    SurfaceTypeDef {
+    BuiltinTypeDef {
         ty: Type::Complex,
         aliases: &["Complex", "C"],
-        surface_name: "C",
+        display_name: "C",
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
@@ -291,28 +291,28 @@ const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 8] = [
             AlgebraicCategory::VectR,
         ],
     },
-    SurfaceTypeDef {
+    BuiltinTypeDef {
         ty: Type::Vec2,
         aliases: &["Vec2", "R2", "E2"],
-        surface_name: "R2",
+        display_name: "R2",
         categories: &[AlgebraicCategory::VectR],
     },
-    SurfaceTypeDef {
+    BuiltinTypeDef {
         ty: Type::Vec3,
         aliases: &["Vec3", "R3", "E3"],
-        surface_name: "R3",
+        display_name: "R3",
         categories: &[AlgebraicCategory::VectR],
     },
-    SurfaceTypeDef {
+    BuiltinTypeDef {
         ty: Type::Vec4,
         aliases: &["Vec4", "R4"],
-        surface_name: "R4",
+        display_name: "R4",
         categories: &[AlgebraicCategory::VectR],
     },
-    SurfaceTypeDef {
+    BuiltinTypeDef {
         ty: Type::Quat,
         aliases: &["H"],
-        surface_name: "H",
+        display_name: "H",
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
@@ -320,10 +320,10 @@ const SURFACE_TYPE_DEFS: [SurfaceTypeDef; 8] = [
             AlgebraicCategory::VectR,
         ],
     },
-    SurfaceTypeDef {
-        ty: Type::Solid,
-        aliases: &["Solid"],
-        surface_name: "Solid",
+    BuiltinTypeDef {
+        ty: Type::Object,
+        aliases: &["Object", "Object3D"],
+        display_name: "Object",
         categories: &[],
     },
 ];
@@ -351,7 +351,7 @@ enum Type {
     Vec3,
     Vec4,
     Mat(usize, usize),
-    Solid,
+    Object,
     Product(Vec<Type>),
     Func(Box<Type>, Box<Type>),
 }
@@ -371,18 +371,18 @@ impl Type {
             Self::Vec3 => "vec3".to_string(),
             Self::Vec4 => "vec4".to_string(),
             Self::Mat(rows, columns) => matrix_glsl_type(*rows, *columns),
-            Self::Solid | Self::Product(_) | Self::Func(_, _) => "".to_string(),
+            Self::Object | Self::Product(_) | Self::Func(_, _) => "".to_string(),
         }
     }
 
-    fn surface_name(&self) -> String {
+    fn type_name(&self) -> String {
         if let Self::Mat(rows, columns) = self {
-            return matrix_surface_type(*rows, *columns);
+            return matrix_type_name(*rows, *columns);
         }
-        SURFACE_TYPE_DEFS
+        BUILTIN_TYPE_DEFS
             .iter()
             .find(|def| &def.ty == self)
-            .map(|def| def.surface_name.to_string())
+            .map(|def| def.display_name.to_string())
             .unwrap_or_else(|| match self {
                 Self::Product(_) => "Product".to_string(),
                 Self::Func(_, _) => "Func".to_string(),
@@ -391,8 +391,8 @@ impl Type {
     }
 }
 
-fn parse_surface_type_name(name: &str) -> Option<Type> {
-    SURFACE_TYPE_DEFS
+fn parse_builtin_type_name(name: &str) -> Option<Type> {
+    BUILTIN_TYPE_DEFS
         .iter()
         .find(|def| def.aliases.contains(&name))
         .map(|def| def.ty.clone())
@@ -422,7 +422,7 @@ fn parse_matrix_dimension(source: &str) -> Option<usize> {
     }
 }
 
-fn matrix_surface_type(rows: usize, columns: usize) -> String {
+fn matrix_type_name(rows: usize, columns: usize) -> String {
     if rows == columns {
         format!("Mat{rows}")
     } else {
@@ -453,7 +453,7 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
                 && (category == AlgebraicCategory::Ring
                     || category_implies(AlgebraicCategory::Ring, category)));
     }
-    let Some(def) = SURFACE_TYPE_DEFS.iter().find(|def| &def.ty == ty) else {
+    let Some(def) = BUILTIN_TYPE_DEFS.iter().find(|def| &def.ty == ty) else {
         return false;
     };
     def.categories
@@ -786,11 +786,11 @@ struct Registry {
 
 fn object_op_type(op: &ObjectOpDef) -> Type {
     let object_domain = if op.object_arg_count == 1 {
-        Type::Solid
+        Type::Object
     } else {
-        Type::Product(vec![Type::Solid; op.object_arg_count])
+        Type::Product(vec![Type::Object; op.object_arg_count])
     };
-    let mut ty = Type::func(object_domain, Type::Solid);
+    let mut ty = Type::func(object_domain, Type::Object);
     for value_arg in op.value_arg_types.iter().rev() {
         ty = Type::func(value_arg.clone(), ty);
     }
@@ -834,7 +834,7 @@ fn format_type(ty: &Type) -> String {
             };
             format!("Func({}, {})", domain, format_type(output))
         }
-        _ => ty.surface_name().to_string(),
+        _ => ty.type_name().to_string(),
     }
 }
 
@@ -852,7 +852,7 @@ fn format_object_type(ty: &Type) -> String {
                 format_object_type(output)
             )
         }
-        _ => ty.surface_name().to_string(),
+        _ => ty.type_name().to_string(),
     }
 }
 
