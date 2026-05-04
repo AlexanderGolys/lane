@@ -988,6 +988,10 @@
     "named": true
   },
   {
+    "type": "x",
+    "named": false
+  },
+  {
     "type": "×",
     "named": false
   }

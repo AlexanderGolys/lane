@@ -160,7 +160,7 @@ End(R) loop = sin
 ```
 
 `End(T)` means `Hom(T, T)`. Product types are written with `×`, for example
-`Object × Object`, and appear in builtin object listings.
+`Object × Object`, and spaced ASCII `x` is also accepted in source.
 
 ### Value Expressions
 

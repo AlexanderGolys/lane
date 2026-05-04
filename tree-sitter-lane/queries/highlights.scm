@@ -2,7 +2,7 @@
 
 (gen_modifier) @keyword.modifier
 
-["+" "-" "*" "/" "@" "=" "×"] @operator
+["+" "-" "*" "/" "@" "=" "×" "x"] @operator
 
 ["(" ")"] @punctuation.bracket
 [","] @punctuation.delimiter

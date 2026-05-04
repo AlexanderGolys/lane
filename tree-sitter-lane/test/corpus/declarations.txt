@@ -7,6 +7,7 @@ construct Object shell = Ball3D(r=1 + time)
 Object moved = shell + (1, 2, 3)
 Func(Float, Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 Hom(Float, Float) warp = spin
+provided Hom(R3 x R3, R3) cross
 generate spin(time) * moved
 
 ---
@@ -59,6 +60,13 @@ generate spin(time) * moved
       (type_identifier)
       (type_identifier))
     (identifier)
+    (identifier))
+  (input_declaration
+    (hom_type
+      (product_type
+        (type_identifier)
+        (type_identifier))
+      (type_identifier))
     (identifier))
   (output_declaration
     (binary_expression

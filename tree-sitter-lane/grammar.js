@@ -64,7 +64,7 @@ module.exports = grammar({
 
         product_type: ($) => prec.left(PREC.product, seq(
             field('left', $._non_product_type),
-            repeat1(seq('×', field('right', $._non_product_type))),
+            repeat1(seq(choice('×', 'x'), field('right', $._non_product_type))),
         )),
 
         parenthesized_type: ($) => seq('(', $._type, ')'),
