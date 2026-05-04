@@ -469,22 +469,6 @@ impl Default for Registry {
                 },
             ),
             (
-                "rot_point",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::Vec3,
-                        Type::func(
-                            Type::Vec3,
-                            Type::func(Type::Vec3, Type::func(Type::Float, Type::Vec3)),
-                        ),
-                    ),
-                    support_glsl: Some(
-                        "mat3 value_rot_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nvec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {\n    mat3 r = value_rot_matrix(binormal, angle);\n    return anchor + (r * (p - anchor));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
                 "cinv",
                 ValueFuncDef {
                     ty: Type::func(Type::Complex, Type::Complex),
@@ -852,7 +836,7 @@ impl Registry {
             });
         }
 
-        for name in ["C", "H", "SE3"] {
+        for name in ["C", "H", "E3", "SE3"] {
             objects.push(PreregisteredObject {
                 name: name.to_string(),
                 kind: PreregisteredObjectKind::Type,

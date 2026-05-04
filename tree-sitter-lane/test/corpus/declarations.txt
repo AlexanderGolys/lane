@@ -128,7 +128,35 @@ Func(Float, Array(R)) pair = [sin, cos]
       (type_identifier)
       (array_type
         (type_identifier)))
+        (identifier)
+        (array_expression
+          (identifier)
+          (identifier))))
+
+==================
+Provided Categories
+==================
+
+provided Grp G
+provided G a
+provided G b
+G product = a * b
+
+---
+
+(source_file
+  (provided_category_declaration
+    (category_identifier)
+    (identifier))
+  (input_declaration
+    (type_identifier)
+    (identifier))
+  (input_declaration
+    (type_identifier)
+    (identifier))
+  (binding_declaration
+    (type_identifier)
     (identifier)
-    (array_expression
+    (binary_expression
       (identifier)
       (identifier))))

@@ -31,6 +31,10 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "provided_category_declaration"
+        },
+        {
+          "type": "SYMBOL",
           "name": "input_declaration"
         },
         {
@@ -40,6 +44,31 @@
         {
           "type": "SYMBOL",
           "name": "binding_declaration"
+        }
+      ]
+    },
+    "provided_category_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "provided"
+        },
+        {
+          "type": "FIELD",
+          "name": "category",
+          "content": {
+            "type": "SYMBOL",
+            "name": "category_identifier"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
         }
       ]
     },
@@ -387,6 +416,39 @@
         {
           "type": "STRING",
           "value": ")"
+        }
+      ]
+    },
+    "category_identifier": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "Ab"
+        },
+        {
+          "type": "STRING",
+          "value": "Mon"
+        },
+        {
+          "type": "STRING",
+          "value": "Grp"
+        },
+        {
+          "type": "STRING",
+          "value": "Ring"
+        },
+        {
+          "type": "STRING",
+          "value": "Field"
+        },
+        {
+          "type": "STRING",
+          "value": "VectR"
+        },
+        {
+          "type": "STRING",
+          "value": "AlgR"
         }
       ]
     },

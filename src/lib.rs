@@ -231,7 +231,7 @@ pub fn is_known_category_name(name: &str) -> bool {
 const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
     ("C", "#define Complex vec2"),
     ("E2", "#define E2 vec2"),
-    ("E3", "#define E3 vec3"),
+    ("E3", ""),
     ("H", "#define H vec4"),
     ("SE3", ""),
 ];
@@ -239,6 +239,8 @@ const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
 const COMPLEX_FIELD_SUPPORT_GLSL: &str = "vec2 mult_C(vec2 a, vec2 b) {\n    return vec2((a.x * b.x) - (a.y * b.y), (a.x * b.y) + (a.y * b.x));\n}\n\nvec2 div_C(vec2 a, vec2 b) {\n    return mult_C(a, vec2(b.x, -b.y) / dot(b, b));\n}";
 
 const QUAT_FIELD_SUPPORT_GLSL: &str = "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}";
+
+const E3_GROUP_SUPPORT_GLSL: &str = "struct E3 {\n    mat3 A;\n    vec3 t;\n};\n\nvec3 act_E3(E3 g, vec3 p) {\n    return (g.A * p) + g.t;\n}\n\nE3 mult_E3(E3 a, E3 b) {\n    return E3(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE3 inv_E3(E3 g) {\n    mat3 inverse_linear = transpose(g.A);\n    return E3(inverse_linear, -(inverse_linear * g.t));\n}\n\nE3 div_E3(E3 a, E3 b) {\n    return mult_E3(a, inv_E3(b));\n}\n\nmat3 rot_E3_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nE3 rot(vec3 binormal, vec3 anchor, float angle) {\n    mat3 A = rot_E3_matrix(binormal, angle);\n    return E3(A, anchor - (A * anchor));\n}";
 
 const SE3_GROUP_SUPPORT_GLSL: &str = "struct SE3 {\n    vec4 q;\n    vec3 t;\n};\n\nvec4 se3_mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 se3_inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec3 act_SE3(SE3 tf, vec3 p) {\n    vec4 rotated = se3_mult_H(se3_mult_H(tf.q, vec4(0.0, p)), vec4(tf.q.x, -tf.q.y, -tf.q.z, -tf.q.w));\n    return rotated.yzw + tf.t;\n}\n\nSE3 mult_SE3(SE3 a, SE3 b) {\n    return SE3(se3_mult_H(a.q, b.q), act_SE3(a, b.t));\n}\n\nSE3 inv_SE3(SE3 a) {\n    vec4 q_inv = se3_inv_H(a.q);\n    vec4 rotated = se3_mult_H(se3_mult_H(q_inv, vec4(0.0, -a.t)), vec4(q_inv.x, -q_inv.y, -q_inv.z, -q_inv.w));\n    return SE3(q_inv, rotated.yzw);\n}\n\nSE3 div_SE3(SE3 a, SE3 b) {\n    return mult_SE3(a, inv_SE3(b));\n}";
 
@@ -362,7 +364,7 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 9] = [
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
     BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
@@ -403,7 +405,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 9] = [
     },
     BuiltinTypeDef {
         ty: Type::Vec3,
-        aliases: &["Vec3", "R3", "E3"],
+        aliases: &["Vec3", "R3"],
         display_name: "R3",
         support_glsl: None,
         categories: &[AlgebraicCategory::VectR],
@@ -441,6 +443,13 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 9] = [
         support_glsl: Some(SE3_GROUP_SUPPORT_GLSL),
         categories: &[AlgebraicCategory::Grp],
     },
+    BuiltinTypeDef {
+        ty: Type::E3,
+        aliases: &["E3"],
+        display_name: "E3",
+        support_glsl: Some(E3_GROUP_SUPPORT_GLSL),
+        categories: &[AlgebraicCategory::Grp],
+    },
 ];
 
 fn builtin_type_support_glsl(name: &str) -> Option<&'static str> {
@@ -470,6 +479,11 @@ enum Type {
     Complex,
     Quat,
     SE3,
+    E3,
+    Custom {
+        name: String,
+        categories: Vec<AlgebraicCategory>,
+    },
     Vec2,
     Vec3,
     Vec4,
@@ -492,6 +506,8 @@ impl Type {
             Self::Complex => "vec2".to_string(),
             Self::Quat => "vec4".to_string(),
             Self::SE3 => "SE3".to_string(),
+            Self::E3 => "E3".to_string(),
+            Self::Custom { name, .. } => name.clone(),
             Self::Vec2 => "vec2".to_string(),
             Self::Vec3 => "vec3".to_string(),
             Self::Vec4 => "vec4".to_string(),
@@ -510,6 +526,7 @@ impl Type {
             .find(|def| &def.ty == self)
             .map(|def| def.display_name.to_string())
             .unwrap_or_else(|| match self {
+                Self::Custom { name, .. } => name.clone(),
                 Self::Product(_) => "Product".to_string(),
                 Self::Func(_, _) => "Func".to_string(),
                 Self::Array(element) => format!("Array({})", format_type(element)),
@@ -524,6 +541,13 @@ fn parse_builtin_type_name(name: &str) -> Option<Type> {
         .find(|def| def.aliases.contains(&name))
         .map(|def| def.ty.clone())
         .or_else(|| parse_matrix_type_name(name))
+}
+
+fn custom_type(name: &str, category: AlgebraicCategory) -> Type {
+    Type::Custom {
+        name: name.to_string(),
+        categories: vec![category],
+    }
 }
 
 fn parse_matrix_type_name(name: &str) -> Option<Type> {
@@ -580,6 +604,11 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
                 && (category == AlgebraicCategory::Ring
                     || category_implies(AlgebraicCategory::Ring, category)));
     }
+    if let Type::Custom { categories, .. } = ty {
+        return categories
+            .iter()
+            .any(|candidate| *candidate == category || category_implies(*candidate, category));
+    }
     let Some(def) = BUILTIN_TYPE_DEFS.iter().find(|def| &def.ty == ty) else {
         return false;
     };
@@ -611,6 +640,12 @@ struct InputDecl {
     name: String,
     ty: Type,
     line: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ProvidedTypeDecl {
+    name: String,
+    category: AlgebraicCategory,
 }
 
 #[derive(Clone, Debug)]
@@ -655,6 +690,7 @@ struct Program {
 
 #[derive(Clone, Debug)]
 enum Decl {
+    ProvidedType(ProvidedTypeDecl),
     Input(InputDecl),
     Func(FuncDecl),
     ValueBinding(ValueBindingDecl),
@@ -855,6 +891,10 @@ enum ObjectExpr {
         object: Box<ObjectExpr>,
         translation: ValueExpr,
         linear: ValueExpr,
+    },
+    IsometryTransform {
+        object: Box<ObjectExpr>,
+        transform: ValueExpr,
     },
     RegisteredOp {
         name: String,

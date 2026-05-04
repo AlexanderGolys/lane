@@ -307,7 +307,7 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "SE3" && object.ty == "Grp"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "E3" && object.ty == "VectR"));
+        .any(|object| object.name == "E3" && object.ty == "Grp"));
     assert!(objects
         .iter()
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
@@ -373,6 +373,17 @@ fn looks_up_builtin_object_detail() {
     assert!(se3.body.contains("struct SE3"));
     assert!(se3.body.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
     assert!(se3.body.contains("SE3 inv_SE3(SE3 a)"));
+    let e3 = known_builtin_object("E3").unwrap();
+    assert_eq!(e3.ty, "Grp");
+    assert!(e3.body.contains("struct E3"));
+    assert!(e3.body.contains("mat3 A"));
+    assert!(e3.body.contains("vec3 t"));
+    assert!(e3.body.contains("vec3 act_E3(E3 g, vec3 p)"));
+    assert!(e3.body.contains("E3 mult_E3(E3 a, E3 b)"));
+    assert!(e3.body.contains("E3 inv_E3(E3 g)"));
+    assert!(e3
+        .body
+        .contains("E3 rot(vec3 binormal, vec3 anchor, float angle)"));
     assert_eq!(field.ty, "Cat");
     assert_eq!(field.body, "");
     assert_eq!(gradient.ty, "Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))");
@@ -499,6 +510,46 @@ fn lowers_se3_group_operations_through_category_helpers() {
 }
 
 #[test]
+fn supports_provided_group_category_types() {
+    let source = "provided Grp G\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure((a * b) / a)\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p, G a, G b) {"));
+    assert!(glsl.contains("float radius = measure(mult_G(mult_G(a, b), inv_G(a)));"));
+}
+
+#[test]
+fn supports_provided_vector_space_category_types() {
+    let source = "provided VectR V\nprovided V v\nprovided Hom(V, R) norm\nR radius = norm(2 * (v / 3))\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec3 p, V v) {"));
+    assert!(glsl.contains("float radius = norm(scale_V(scale_V(v, (1.0 / 3.0)), 2.0));"));
+}
+
+#[test]
+fn rejects_category_names_as_value_binding_types() {
+    let source = "Grp g = g\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "line 1: category 'Grp' cannot be used as a type"
+    );
+}
+
+#[test]
+fn rejects_category_names_as_provided_type_names() {
+    let source = "provided Grp Field\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "line 1: 'Field' cannot be used as a provided type name"
+    );
+}
+
+#[test]
 fn allows_vector_space_scaling_by_category() {
     let source = "provided R3 p\nR3 scaled = 2 * (p / 3)\ngenerate Ball3D(r=1) + scaled\n";
     let glsl = compile_program(source).unwrap();
@@ -591,13 +642,14 @@ fn scene_sdf_reuses_generated_object_helpers() {
 
 #[test]
 fn hoists_scene_invariant_value_bindings_to_global_consts() {
-    let source = "provided R time\nR3 axis = (0, 0, 1)\nR3 start = (1, 0, 0)\nR3 p = rot(start, axis, axis * 0, time)\nconst Object b = Ball3D(r=1) + p\ngenerate b\n";
+    let source = "provided R time\nR3 axis = (0, 0, 1)\nR3 start = (1, 0, 0)\nE3 r = rot(axis, axis * 0, time)\nR3 p = r * start\nconst Object b = Ball3D(r=1) + p\ngenerate b\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("const vec3 axis = vec3(0.0, 0.0, 1.0);"));
     assert!(glsl.contains("const vec3 start = vec3(1.0, 0.0, 0.0);"));
     assert!(glsl.contains("float sdf_b(vec3 p_"));
-    assert!(glsl.contains("vec3 p = rot_point(start, axis, (axis * 0.0), time);"));
+    assert!(glsl.contains("E3 r = rot(axis, (axis * 0.0), time);"));
+    assert!(glsl.contains("vec3 p = act_E3(r, start);"));
     assert!(glsl.contains("float scene_sdf(vec3 p_"));
     assert!(glsl.contains("return sdf_b(p_"));
 }
@@ -988,11 +1040,13 @@ fn emits_builtin_3d_rotation_operator() {
 
 #[test]
 fn emits_value_level_3d_rotation() {
-    let source = "provided R time\nR3 e3 = (0, 0, 1)\nR3 p = rot((1, 0, 0), e3, e3 * 0, time)\ngenerate Ball3D(r=1) + p\n";
+    let source = "provided R time\nR3 e3 = (0, 0, 1)\nE3 r = rot(e3, e3 * 0, time)\nR3 p = r * (1, 0, 0)\ngenerate Ball3D(r=1) + p\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle)"));
-    assert!(glsl.contains("vec3 p = rot_point(vec3(1.0, 0.0, 0.0), e3, (e3 * 0.0), time);"));
+    assert!(glsl.contains("struct E3"));
+    assert!(glsl.contains("E3 rot(vec3 binormal, vec3 anchor, float angle)"));
+    assert!(glsl.contains("E3 r = rot(e3, (e3 * 0.0), time);"));
+    assert!(glsl.contains("vec3 p = act_E3(r, vec3(1.0, 0.0, 0.0));"));
     assert!(glsl.contains("sdf0_Ball3D(("));
     assert!(glsl.contains(" - p), ParamBall3D(1.0))"));
 }

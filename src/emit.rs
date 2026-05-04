@@ -132,6 +132,8 @@ impl TypedProgram {
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E3
+                | Type::Custom { .. }
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -154,6 +156,8 @@ impl TypedProgram {
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E3
+                | Type::Custom { .. }
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -362,6 +366,8 @@ impl TypedProgram {
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E3
+                | Type::Custom { .. }
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -463,9 +469,10 @@ impl TypedProgram {
 
 fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
     match ty {
-        Type::SE3 => {
-            names.insert("SE3".to_string());
+        Type::SE3 | Type::E3 => {
+            names.insert(ty.type_name());
         }
+        Type::Custom { .. } => {}
         Type::Array(element) => collect_type_support(element, names),
         Type::Product(parts) => {
             for part in parts {
@@ -610,6 +617,10 @@ fn collect_object_concat_helpers(expr: &ObjectExpr, helpers: &mut BTreeMap<Strin
         } => {
             collect_concat_helpers(translation, helpers);
             collect_concat_helpers(linear, helpers);
+            collect_object_concat_helpers(object, helpers);
+        }
+        ObjectExpr::IsometryTransform { object, transform } => {
+            collect_concat_helpers(transform, helpers);
             collect_object_concat_helpers(object, helpers);
         }
         ObjectExpr::RegisteredOp {
@@ -769,6 +780,10 @@ fn collect_object_value_refs(
             collect_value_refs(linear, names);
             collect_object_value_refs(object, object_bindings, names);
         }
+        ObjectExpr::IsometryTransform { object, transform } => {
+            collect_value_refs(transform, names);
+            collect_object_value_refs(object, object_bindings, names);
+        }
         ObjectExpr::RegisteredOp {
             value_args,
             object_args,
@@ -880,6 +895,10 @@ fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
             collect_value_support(linear, names);
             collect_object_support(object, names);
         }
+        ObjectExpr::IsometryTransform { object, transform } => {
+            collect_value_support(transform, names);
+            collect_object_support(object, names);
+        }
         ObjectExpr::RegisteredOp {
             name,
             value_args,
@@ -900,8 +919,11 @@ fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
 fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
         ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Var { .. } => {}
-        ValueExpr::Call { func, args, .. } => {
-            names.insert(func.clone());
+        ValueExpr::Call { func, args, ty } => {
+            collect_type_support(ty, names);
+            if func != "rot" {
+                names.insert(func.clone());
+            }
             for arg in args {
                 collect_value_support(arg, names);
             }
@@ -1124,6 +1146,20 @@ fn emit_binary_expr(
         (BinOp::Div, Type::Quat, Type::Quat) => format!("div_H({}, {})", left, right),
         (BinOp::Mul, Type::SE3, Type::SE3) => format!("mult_SE3({}, {})", left, right),
         (BinOp::Div, Type::SE3, Type::SE3) => format!("div_SE3({}, {})", left, right),
+        (BinOp::Mul, Type::E3, Type::E3) => format!("mult_E3({}, {})", left, right),
+        (BinOp::Div, Type::E3, Type::E3) => format!("div_E3({}, {})", left, right),
+        (BinOp::Mul, Type::E3, Type::Vec3) => format!("act_E3({}, {})", left, right),
+        (
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div,
+            Type::Custom { .. },
+            Type::Custom { .. },
+        ) if left_ty == right_ty => emit_custom_binary_expr(op, &left_ty, &left, &right),
+        (BinOp::Mul | BinOp::Div, Type::Custom { .. }, Type::Float) => {
+            emit_custom_scale_expr(op, &left_ty, &left, &right)
+        }
+        (BinOp::Mul, Type::Float, Type::Custom { .. }) => {
+            emit_custom_scale_expr(op, &right_ty, &right, &left)
+        }
         (BinOp::Div, Type::Float, Type::Complex) => {
             format!("div_C({}, {})", scalar_to_algebra(&right_ty, &left), right)
         }
@@ -1150,6 +1186,30 @@ fn emit_binary_expr(
     }
 }
 
+fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> String {
+    let Type::Custom { name, .. } = ty else {
+        unreachable!();
+    };
+    match op {
+        BinOp::Add => format!("add_{}({}, {})", name, left, right),
+        BinOp::Sub => format!("sub_{}({}, {})", name, left, right),
+        BinOp::Mul => format!("mult_{}({}, {})", name, left, right),
+        BinOp::Div => format!("mult_{}({}, inv_{}({}))", name, left, name, right),
+        BinOp::Compose => unreachable!(),
+    }
+}
+
+fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> String {
+    let Type::Custom { name, .. } = ty else {
+        unreachable!();
+    };
+    match op {
+        BinOp::Mul => format!("scale_{}({}, {})", name, value, scalar),
+        BinOp::Div => format!("scale_{}({}, (1.0 / {}))", name, value, scalar),
+        BinOp::Add | BinOp::Sub | BinOp::Compose => unreachable!(),
+    }
+}
+
 fn scalar_to_algebra(ty: &Type, value: &str) -> String {
     match ty {
         Type::Complex => format!("vec2({}, 0.0)", value),
@@ -1165,6 +1225,9 @@ fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<&'static 
         (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
         | (BinOp::Div, Type::Float, Type::Quat) => Some("H"),
         (BinOp::Mul | BinOp::Div, Type::SE3, Type::SE3) => Some("SE3"),
+        (BinOp::Mul | BinOp::Div, Type::E3, Type::E3) | (BinOp::Mul, Type::E3, Type::Vec3) => {
+            Some("E3")
+        }
         _ => None,
     }
 }
@@ -1452,6 +1515,17 @@ fn emit_object_expr(
         } => {
             let transformed_point =
                 emit_transformed_point(point_expr, translation, linear, helper_names);
+            emit_object_expr(
+                object,
+                &transformed_point,
+                object_bindings,
+                helper_names,
+                scene_input_names,
+            )
+        }
+        ObjectExpr::IsometryTransform { object, transform } => {
+            let inverse = format!("inv_E3({})", emit_plain_value_expr(transform, helper_names));
+            let transformed_point = format!("act_E3({}, {})", inverse, point_expr);
             emit_object_expr(
                 object,
                 &transformed_point,

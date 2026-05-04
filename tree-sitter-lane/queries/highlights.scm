@@ -1,6 +1,6 @@
 ["provided" "generate" "gen" "construct" "const" "Func" "Hom" "End" "Array"] @keyword
 
-(gen_modifier) @keyword.modifier
+(gen_modifier) @keyword
 
 ["+" "-" "*" "/" "@" "=" "×" "x"] @operator
 
@@ -12,6 +12,7 @@
 
 (type_identifier) @type
 (type_identifier) @type.builtin
+(category_identifier) @constant.builtin
 
 (input_declaration
   name: (identifier) @variable.parameter)
@@ -46,4 +47,4 @@
   (#any-of? @function.builtin "size" "concat"))
 
 (call_expression
-  function: (identifier) @function.call)
+  function: (identifier) @function)

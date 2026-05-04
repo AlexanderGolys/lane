@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Token {
@@ -29,6 +30,7 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_program(&self) -> Result<Program, Error> {
+        let mut custom_types: HashMap<String, AlgebraicCategory> = HashMap::new();
         let mut inputs = Vec::new();
         let mut funcs = Vec::new();
         let mut value_bindings = Vec::new();
@@ -44,8 +46,30 @@ impl<'a> Parser<'a> {
 
             match self
                 .parse_decl(line, line_number)
+                .or_else(|_| self.parse_decl_with_custom_types(line, line_number, &custom_types))
                 .map_err(|err| err.with_line(line_number))?
             {
+                Decl::ProvidedType(provided_type) => {
+                    if is_known_type_name(&provided_type.name)
+                        || is_known_category_name(&provided_type.name)
+                    {
+                        return Err(Error::new(format!(
+                            "'{}' cannot be used as a provided type name",
+                            provided_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                    if custom_types
+                        .insert(provided_type.name.clone(), provided_type.category)
+                        .is_some()
+                    {
+                        return Err(Error::new(format!(
+                            "duplicate provided type '{}'",
+                            provided_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                }
                 Decl::Input(input) => inputs.push(input),
                 Decl::Func(func) => funcs.push(func),
                 Decl::ValueBinding(binding) => value_bindings.push(binding),
@@ -71,11 +95,26 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_decl(&self, line: &str, line_number: usize) -> Result<Decl, Error> {
+        self.parse_decl_with_custom_types(line, line_number, &HashMap::new())
+    }
+
+    fn parse_decl_with_custom_types(
+        &self,
+        line: &str,
+        line_number: usize,
+        custom_types: &HashMap<String, AlgebraicCategory>,
+    ) -> Result<Decl, Error> {
         if let Some(rest) = line.strip_prefix("provided ") {
             let (ty, name) = split_type_name(rest.trim())?;
+            if let Some(category) = category_by_name(ty) {
+                return Ok(Decl::ProvidedType(ProvidedTypeDecl {
+                    name: name.to_string(),
+                    category,
+                }));
+            }
             return Ok(Decl::Input(InputDecl {
                 name: name.to_string(),
-                ty: parse_type(ty)?,
+                ty: parse_type_with_custom_types(ty, custom_types)?,
                 line: line_number,
             }));
         }
@@ -111,7 +150,7 @@ impl<'a> Parser<'a> {
             ));
         }
         let (ty_source, name) = split_type_name(left.trim())?;
-        let ty = parse_type(ty_source.trim())?;
+        let ty = parse_type_with_custom_types(ty_source.trim(), custom_types)?;
         let expr = ExprParser::new(expr_source.trim()).parse()?;
         if matches!(ty, Type::Func(_, _)) {
             if generated {
@@ -521,33 +560,61 @@ fn tokenize(source: &str) -> Vec<Token> {
 }
 
 fn parse_type(source: &str) -> Result<Type, Error> {
+    parse_type_with_custom_types(source, &HashMap::new())
+}
+
+fn parse_type_with_custom_types(
+    source: &str,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+) -> Result<Type, Error> {
     let source = source.trim();
     if source.starts_with("func(") && source.ends_with(')') {
         let inner = &source[5..source.len() - 1];
         let (input, output) = split_arrow_legacy(inner)?;
-        return Ok(Type::func(parse_type(input)?, parse_type(output)?));
+        return Ok(Type::func(
+            parse_type_with_custom_types(input, custom_types)?,
+            parse_type_with_custom_types(output, custom_types)?,
+        ));
     }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
-        return Ok(Type::func(parse_type(input)?, parse_type(output)?));
+        return Ok(Type::func(
+            parse_type_with_custom_types(input, custom_types)?,
+            parse_type_with_custom_types(output, custom_types)?,
+        ));
     }
     if let Some(inner) = strip_type_head(source, "Hom") {
         let (input, output) = split_top_level_comma(inner)?;
-        return Ok(Type::func(parse_type(input)?, parse_type(output)?));
+        return Ok(Type::func(
+            parse_type_with_custom_types(input, custom_types)?,
+            parse_type_with_custom_types(output, custom_types)?,
+        ));
     }
     if let Some(inner) = strip_type_head(source, "End") {
-        let ty = parse_type(inner)?;
+        let ty = parse_type_with_custom_types(inner, custom_types)?;
         return Ok(Type::func(ty.clone(), ty));
     }
     if let Some(inner) = strip_type_head(source, "Array") {
-        return Ok(Type::Array(Box::new(parse_type(inner)?)));
+        return Ok(Type::Array(Box::new(parse_type_with_custom_types(
+            inner,
+            custom_types,
+        )?)));
     }
     if let Some(parts) = split_top_level_product(source) {
         let mut parsed = Vec::new();
         for part in parts {
-            parsed.push(parse_type(part)?);
+            parsed.push(parse_type_with_custom_types(part, custom_types)?);
         }
         return Ok(Type::Product(parsed));
+    }
+    if category_by_name(source).is_some() {
+        return Err(Error::new(format!(
+            "category '{}' cannot be used as a type",
+            source
+        )));
+    }
+    if let Some(category) = custom_types.get(source) {
+        return Ok(custom_type(source, *category));
     }
     match parse_builtin_type_name(source) {
         Some(ty) => Ok(ty),

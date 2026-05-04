@@ -118,6 +118,7 @@ Supported declaration forms:
 
 ```lane
 provided TYPE name
+provided CATEGORY TypeName
 TYPE name = expression
 construct Object name = object_expression
 const Object name = object_expression
@@ -125,8 +126,11 @@ generate object_expression
 gen object_expression
 ```
 
-`provided` declares an external GLSL input. A typed binding declares either a
-value binding, a value function, or an `Object` binding depending on its type.
+`provided TYPE name` declares an external GLSL input. `provided CATEGORY
+TypeName` declares a nominal external type whose GLSL representation and
+category operations are provided by the host shader environment. A typed
+binding declares either a value binding, a value function, or an `Object`
+binding depending on its type.
 `construct` and `const` are only valid for `Object` bindings and export
 stable helper functions named `sdf_name` and `grad_sdf_name` in the generated
 GLSL. Later object expressions reuse those generated helpers instead of
@@ -145,7 +149,8 @@ representations.
 | `Complex` | `C` | `vec2` |
 | `H` | | `vec4` |
 | `Vec2` | `R2`, `E2` | `vec2` |
-| `Vec3` | `R3`, `E3` | `vec3` |
+| `Vec3` | `R3` | `vec3` |
+| `E3` | | `E3` struct |
 | `Vec4` | `R4` | `vec4` |
 | `SE3` | | `SE3` struct |
 | `Mat2` | | `mat2` |
@@ -186,20 +191,40 @@ Operators:
   combinations.
 - `f @ g` for unary function composition.
 - `f(x)` for value function calls.
-- `rot(p, axis, anchor, angle)` rotates an `R3` point around `axis` and
-  `anchor`. The object form remains `rot(axis, anchor, angle)(object)`.
+- `rot(axis, anchor, angle)` constructs an `E3` isometry. `E3 * R3` applies an
+  isometry to a point/vector, `E3 * E3` composes isometries, and `E3 * Object`
+  applies the inverse transform to the object's local SDF. The object form
+  remains `rot(axis, anchor, angle)(object)`.
 
 Arithmetic is typechecked through built-in algebraic categories instead of one
 rule per concrete type. Current categories include additive groups, monoids,
 rings, fields, real vector spaces, and real algebras. For example, `C` and `H`
 support field-style multiplication and division through generated helper
-functions, `SE3` emits its GLSL struct plus group multiplication and inverse
-helpers, and `R2`/`R3`/matrices share real vector-space scaling rules.
+functions, `E3` and `SE3` emit their GLSL structs plus group multiplication and
+inverse helpers, and `R2`/`R3`/matrices share real vector-space scaling rules.
+`E3` is the Euclidean group of 3D isometries, including reflections; `SE3` is
+the orientation-preserving subgroup.
 
 User-defined function bodies currently support `R` inputs. Inside a
 `Func(R, T)` binding, bare unary function identifiers are implicitly applied to
 the generated parameter `t`, so `pow2 @ sin + .5` emits a function of `t`.
 Provided functions may use other function types, such as `Hom(R3, R)`.
+
+Provided category types use the category names `Ab`, `Mon`, `Grp`, `Ring`,
+`Field`, `VectR`, and `AlgR`. For example:
+
+```lane
+provided Grp G
+provided G a
+provided G b
+provided Hom(G, R) measure
+R radius = measure((a * b) / a)
+generate Ball3D(r=radius)
+```
+
+This assumes the GLSL side defines type `G` and the relevant operations with
+Lane's suffix convention, such as `mult_G(a, b)` and `inv_G(a)` for group
+division. Category names are reserved and cannot be used as type names.
 
 Tuple rules:
 
@@ -376,7 +401,7 @@ scene using most registered primitives and operators.
 | `AlgR` | `Cat` |
 | `C` | `Field × AlgR` |
 | `E2` | `VectR` |
-| `E3` | `VectR` |
+| `E3` | `Grp` |
 | `H` | `Field × AlgR` |
 | `SE3` | `Grp` |
 | `pow2` | `Hom(R, R)` |
@@ -391,9 +416,9 @@ scene using most registered primitives and operators.
 | `ctan` | `Hom(C, C)` |
 | `ctanh` | `Hom(C, C)` |
 
-`lane --list-objects C`, `lane --list-objects H`, and
-`lane --list-objects SE3` show the operation support required by those types,
-such as complex and quaternion multiplication or the `SE3` struct,
+`lane --list-objects C`, `lane --list-objects H`, `lane --list-objects E3`,
+and `lane --list-objects SE3` show the operation support required by those
+types, such as complex and quaternion multiplication or the `E3`/`SE3` structs,
 multiplication, inverse, and division helpers. These structural operations are
 attached to the type definitions, not listed as separate arbitrary value
 functions.

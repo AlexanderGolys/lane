@@ -54,6 +54,8 @@ impl TypedProgram {
                     | Type::Complex
                     | Type::Quat
                     | Type::SE3
+                    | Type::E3
+                    | Type::Custom { .. }
                     | Type::Vec2
                     | Type::Vec3
                     | Type::Vec4
@@ -268,7 +270,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
                     })?;
                 let typed = match &field.kind {
                     PrimitiveFieldKind::Value(expected_ty) => {
-                        let typed = infer_value_expr(&value.1, env, None)?;
+                        let typed = infer_value_expr_for_type(&value.1, expected_ty, env, None)?;
                         ensure_type(
                             &typed.ty(),
                             expected_ty,
@@ -298,7 +300,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             right,
         } => {
             let object = infer_object_expr(left, env)?;
-            let offset = infer_value_expr(right, env, None)?;
+            let offset = infer_value_expr_for_type(right, &Type::Vec3, env, None)?;
             ensure_type(&offset.ty(), &Type::Vec3, "object shift")?;
             Ok(ObjectExpr::AmbientTransform {
                 object: Box::new(object),
@@ -311,14 +313,23 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             left,
             right,
         } => {
-            let linear = infer_value_expr(left, env, None)?;
-            ensure_type(&linear.ty(), &Type::Mat(3, 3), "object action")?;
+            let action = infer_value_expr(left, env, None)?;
             let object = infer_object_expr(right, env)?;
-            Ok(ObjectExpr::AmbientTransform {
-                object: Box::new(object),
-                translation: zero_vec3(),
-                linear,
-            })
+            match action.ty() {
+                Type::Mat(3, 3) => Ok(ObjectExpr::AmbientTransform {
+                    object: Box::new(object),
+                    translation: zero_vec3(),
+                    linear: action,
+                }),
+                Type::E3 => Ok(ObjectExpr::IsometryTransform {
+                    object: Box::new(object),
+                    transform: action,
+                }),
+                ty => Err(Error::new(format!(
+                    "unsupported object action: {} * Object",
+                    format_type(&ty)
+                ))),
+            }
         }
         Expr::Call { .. } => infer_object_call(expr, env),
         Expr::Number(_) | Expr::Tuple(_) | Expr::Array(_) | Expr::Index { .. } => {
@@ -515,13 +526,13 @@ fn infer_rot_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr>,
             infer_value_expr(angle, env, None)?,
         ),
         [binormal, angle] => (
-            infer_value_expr(binormal, env, None)?,
+            infer_value_expr_for_type(binormal, &Type::Vec3, env, None)?,
             zero_vec3(),
             infer_value_expr(angle, env, None)?,
         ),
         [binormal, anchor, angle] => (
-            infer_value_expr(binormal, env, None)?,
-            infer_value_expr(anchor, env, None)?,
+            infer_value_expr_for_type(binormal, &Type::Vec3, env, None)?,
+            infer_value_expr_for_type(anchor, &Type::Vec3, env, None)?,
             infer_value_expr(angle, env, None)?,
         ),
         _ => unreachable!(),
@@ -598,7 +609,7 @@ fn infer_value_expr(
             if let Some(result) = infer_array_builtin(expr, env, lift_param)? {
                 return Ok(result);
             }
-            if let Some(result) = infer_rot_point_builtin(callee, args, env, lift_param)? {
+            if let Some(result) = infer_rot_builtin(callee, args, env, lift_param)? {
                 return Ok(result);
             }
             if let Some(result) = infer_differential_builtin(expr, env, lift_param)? {
@@ -667,6 +678,8 @@ fn infer_value_expr(
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E3
+                | Type::Custom { .. }
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -987,6 +1000,8 @@ fn is_array_element_type(ty: &Type) -> bool {
             | Type::Complex
             | Type::Quat
             | Type::SE3
+            | Type::E3
+            | Type::Custom { .. }
             | Type::Vec2
             | Type::Vec3
             | Type::Vec4
@@ -1281,6 +1296,8 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E3
+                | Type::Custom { .. }
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
@@ -1353,6 +1370,8 @@ fn infer_identifier_value(
         | Type::Complex
         | Type::Quat
         | Type::SE3
+        | Type::E3
+        | Type::Custom { .. }
         | Type::Vec2
         | Type::Vec3
         | Type::Vec4
@@ -1393,7 +1412,7 @@ fn infer_identifier_value(
     }
 }
 
-fn infer_rot_point_builtin(
+fn infer_rot_builtin(
     callee: &Expr,
     args: &[Expr],
     env: &Env<'_>,
@@ -1402,23 +1421,21 @@ fn infer_rot_point_builtin(
     if !matches!(callee, Expr::Ident(name) if name == "rot") {
         return Ok(None);
     }
-    if args.len() != 4 {
+    if args.len() != 3 {
         return Ok(None);
     }
 
-    let point = infer_value_expr(&args[0], env, lift_param)?;
-    let binormal = infer_value_expr(&args[1], env, lift_param)?;
-    let anchor = infer_value_expr(&args[2], env, lift_param)?;
-    let angle = infer_value_expr(&args[3], env, lift_param)?;
-    ensure_type(&point.ty(), &Type::Vec3, "rot point")?;
+    let binormal = infer_value_expr_for_type(&args[0], &Type::Vec3, env, lift_param)?;
+    let anchor = infer_value_expr_for_type(&args[1], &Type::Vec3, env, lift_param)?;
+    let angle = infer_value_expr(&args[2], env, lift_param)?;
     ensure_type(&binormal.ty(), &Type::Vec3, "rot binormal")?;
     ensure_type(&anchor.ty(), &Type::Vec3, "rot anchor")?;
     ensure_type(&angle.ty(), &Type::Float, "rot angle")?;
 
     Ok(Some(ValueExpr::Call {
-        func: "rot_point".to_string(),
-        args: vec![point, binormal, anchor, angle],
-        ty: Type::Vec3,
+        func: "rot".to_string(),
+        args: vec![binormal, anchor, angle],
+        ty: Type::E3,
     }))
 }
 
@@ -1441,6 +1458,10 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
 
     if left == &Type::Float && has_category(right, AlgebraicCategory::AlgR) {
         return Ok(right.clone());
+    }
+
+    if op == BinOp::Mul && left == &Type::E3 && right == &Type::Vec3 {
+        return Ok(Type::Vec3);
     }
 
     if matches!(op, BinOp::Mul | BinOp::Div)

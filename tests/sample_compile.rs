@@ -108,7 +108,9 @@ fn compiles_example1_orbit_scene_to_glsl() {
     let source = fs::read_to_string("example1.lane").unwrap();
     let glsl = compile_program(&source).unwrap();
 
-    assert!(glsl.contains("vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle)"));
-    assert!(glsl.contains("vec3 p = rot_point(p1, cross(c, p1), c, (time * v2));"));
+    assert!(glsl.contains("struct E3"));
+    assert!(glsl.contains("E3 rot(vec3 binormal, vec3 anchor, float angle)"));
+    assert!(glsl.contains("E3 r2 = rot(cross(c, p1), c, (time * v2));"));
+    assert!(glsl.contains("vec3 p = act_E3(r2, p1);"));
     assert!(glsl.contains("float scene_sdf(vec3 p_"));
 }

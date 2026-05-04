@@ -23,9 +23,16 @@ module.exports = grammar({
         comment: () => token(seq('//', /.*/)),
 
         _declaration: ($) => choice(
+            $.provided_category_declaration,
             $.input_declaration,
             $.output_declaration,
             $.binding_declaration,
+        ),
+
+        provided_category_declaration: ($) => seq(
+            'provided',
+            field('category', $.category_identifier),
+            field('name', $.identifier),
         ),
 
         input_declaration: ($) => seq(
@@ -101,6 +108,16 @@ module.exports = grammar({
             '(',
             field('element', $._type),
             ')',
+        ),
+
+        category_identifier: () => choice(
+            'Ab',
+            'Mon',
+            'Grp',
+            'Ring',
+            'Field',
+            'VectR',
+            'AlgR',
         ),
 
         _expression: ($) => choice(
