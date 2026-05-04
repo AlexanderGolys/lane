@@ -37,10 +37,31 @@ Object planar_twist = Xor(Xor(planar_hole, poly), quad)
 Object smooth_pair = SmoothUnion(pulse(time))(ball, Union(crate, torus))
 Object smooth_cut = SmoothDifference(ripple(time))(smooth_pair, cut)
 Object smooth_mix = SmoothIntersection(.25 + pulse(time))(smooth_cut, simplex)
+
+R3 p1 = (0, 0, 0)
+R3 p2 = (2, 1, .3)
+R3 p3 = (3, -3, -.4)
+R3 p4 = (5, 1, .1)
+
+Object b1 = Ball3D(r=.1)
+Object b2 = Ball3D(.4)
+Object b3 = Ball3D(.3)
+Object b4 = Ball3D(.2)
+
+Object v12 = Segment3D(p1, p2)
+Object v23 = Segment3D(p2, p3)
+Object v34 = Segment3D(p3, p4)
+
+
+construct Object v = Union(b1, b2, b3, b4)
+construct Object e = Union(v12, v23, v34)
+
+Object graph = SmoothUnion(.5)(v, e)
+
 Object framed = SmoothUnion(.2)(face, panel)
 Object guide = SmoothUnion(.15)(rail, plane)
 Object formed = SmoothUnion(.1)(lathe, slab)
 Object smooth_x = SmoothXor(.2 + ripple(time))(SmoothUnion(.15)(SmoothUnion(.1)(smooth_mix, framed), formed), orbit)
-Object final = SmoothUnion(.3)(SmoothUnion(.15)(smooth_x, guide), spin(time) * planar_twist)
+Object final = SmoothUnion(.3)(SmoothUnion(.15)(SmoothUnion(.15)(smooth_x, guide), graph), spin(time) * planar_twist)
 
 generate final

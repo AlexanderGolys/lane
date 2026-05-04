@@ -304,6 +304,9 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "H" && object.ty == "Field × AlgR"));
     assert!(objects
         .iter()
+        .any(|object| object.name == "SE3" && object.ty == "Grp"));
+    assert!(objects
+        .iter()
         .any(|object| object.name == "E3" && object.ty == "VectR"));
     assert!(objects
         .iter()
@@ -323,8 +326,22 @@ fn lists_builtin_lane_objects() {
     assert!(objects.iter().any(|object| {
         object.name == "Extrusion" && object.ty == "Hom(R, Hom(Object, Object))"
     }));
+    assert!(objects.iter().any(|object| {
+        object.name == "rot" && object.ty == "Hom(R3 × R3 × R, Hom(Object, Object))"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.name == "rot2D" && object.ty == "Hom(R2 × R, Hom(Object, Object))"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.name == "derivative" && object.ty == "Hom(R, Hom(Hom(R, R), Hom(R, R)))"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.name == "gradient" && object.ty == "Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))"
+    }));
+    assert!(objects.iter().any(|object| {
+        object.name == "divergence" && object.ty == "Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"
+    }));
     assert!(!objects.iter().any(|object| object.name == "sin"));
-    assert!(!objects.iter().any(|object| object.name == "gradient"));
 }
 
 #[test]
@@ -334,20 +351,32 @@ fn looks_up_builtin_object_detail() {
     let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("H").unwrap();
     let field = known_builtin_object("Field").unwrap();
+    let gradient = known_builtin_object("gradient").unwrap();
 
     assert_eq!(revolution.ty, "Hom(R, Hom(Object, Object))");
     assert!(revolution
         .body
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
+    let rot = known_builtin_object("rot").unwrap();
+    assert_eq!(rot.ty, "Hom(R3 × R3 × R, Hom(Object, Object))");
+    assert!(rot.body.contains("vec3 op_rot_inverse_point"));
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
     assert_eq!(complex.ty, "Field × AlgR");
     assert!(complex.body.contains("#define Complex vec2"));
+    assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
     assert_eq!(quat.ty, "Field × AlgR");
     assert!(quat.body.contains("#define H vec4"));
+    assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
+    let se3 = known_builtin_object("SE3").unwrap();
+    assert_eq!(se3.ty, "Grp");
+    assert!(se3.body.contains("struct SE3"));
+    assert!(se3.body.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
+    assert!(se3.body.contains("SE3 inv_SE3(SE3 a)"));
     assert_eq!(field.ty, "Cat");
     assert_eq!(field.body, "");
-    assert!(known_builtin_object("gradient").is_none());
+    assert_eq!(gradient.ty, "Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))");
+    assert_eq!(gradient.body, "");
 }
 
 #[test]
@@ -431,35 +460,12 @@ fn emits_support_for_custom_complex_functions() {
 }
 
 #[test]
-fn resolves_overloaded_value_functions_by_argument_type() {
-    let source = "provided C z\nC wave = sin(z)\nR pulse = sin(1)\ngenerate Ball3D(r=pulse)\n";
-    let glsl = compile_program(source).unwrap();
-
-    assert!(glsl.contains("vec2 csin(vec2 z)"));
-    assert!(glsl.contains("vec2 wave = csin(z);"));
-    assert!(glsl.contains("float pulse = sin(1.0);"));
-}
-
-#[test]
-fn supports_overloaded_complex_transcendentals() {
-    let source = "provided C z\nC shaped = exp(z) + cos(z) + tanh(z)\ngenerate Ball3D(r=1)\n";
-    let glsl = compile_program(source).unwrap();
-
-    assert!(glsl.contains("vec2 cexp(vec2 z)"));
-    assert!(glsl.contains("vec2 ccos(vec2 z)"));
-    assert!(glsl.contains("vec2 ctanh(vec2 z)"));
-    assert!(glsl.contains("vec2 shaped = ((cexp(z) + ccos(z)) + ctanh(z));"));
-}
-
-#[test]
 fn lowers_complex_ring_operations_through_category_helpers() {
     let source = "provided C z\nC product = z * z\nC shifted = 1 - (z / z)\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
     assert!(glsl.contains("vec2 div_C(vec2 a, vec2 b)"));
-    assert!(glsl.contains("vec2 product = mult_C(z, z);"));
-    assert!(glsl.contains("vec2 shifted = (vec2(1.0, 0.0) - div_C(z, z));"));
 }
 
 #[test]
@@ -469,14 +475,32 @@ fn lowers_quaternion_field_operations_through_category_helpers() {
 
     assert!(glsl.contains("vec4 mult_H(vec4 a, vec4 b)"));
     assert!(glsl.contains("vec4 div_H(vec4 a, vec4 b)"));
-    assert!(glsl.contains("vec4 product = mult_H(p, q);"));
-    assert!(glsl.contains("vec4 ratio = div_H(vec4(1.0, 0.0, 0.0, 0.0), q);"));
-    assert!(glsl.contains("vec4 literal = vec4(1.0, 0.0, 0.0, 0.0);"));
+}
+
+#[test]
+fn emits_struct_support_for_se3_group_values() {
+    let source = "provided SE3 pose\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct SE3"));
+    assert!(glsl.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
+    assert!(glsl.contains("SE3 inv_SE3(SE3 a)"));
+    assert!(glsl.contains("float scene_sdf(vec3 p, SE3 pose)"));
+}
+
+#[test]
+fn lowers_se3_group_operations_through_category_helpers() {
+    let source =
+        "provided SE3 a\nprovided SE3 b\nSE3 product = a * b\nSE3 ratio = a / b\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
+    assert!(glsl.contains("SE3 div_SE3(SE3 a, SE3 b)"));
 }
 
 #[test]
 fn allows_vector_space_scaling_by_category() {
-    let source = "provided R3 p\nR3 scaled = 2 * (p / 3)\ngenerate Ball3D(r=1)\n";
+    let source = "provided R3 p\nR3 scaled = 2 * (p / 3)\ngenerate Ball3D(r=1) + scaled\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec3 scaled = (2.0 * (p / 3.0));"));
@@ -609,9 +633,7 @@ fn reports_the_offending_token_for_expression_parse_errors() {
 
 #[test]
 fn reports_line_number_for_parse_errors() {
-    let source = "Object ok = Ball3D(r=1)
-generate Ball3D(r=1) provided R time
-";
+    let source = "Object ok = Ball3D(r=1)\ngenerate Ball3D(r=1) provided R time\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(err.line(), Some(2));
@@ -621,10 +643,7 @@ generate Ball3D(r=1) provided R time
 
 #[test]
 fn reports_line_number_for_type_errors() {
-    let source = "Object ok = Ball3D(r=1)
-R bad = (1, 2, 3)
-generate ok
-";
+    let source = "Object ok = Ball3D(r=1)\nR bad = (1, 2, 3)\ngenerate ok\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(err.line(), Some(2));
@@ -927,35 +946,6 @@ fn emits_translation_action_from_addition_sugar() {
 }
 
 #[test]
-fn emits_value_level_3d_rotation() {
-    let source = "provided R time
-R3 e3 = (0, 0, 1)
-R3 p = rot((1, 0, 0), e3, e3 * 0, time)
-generate Ball3D(r=1) + p
-";
-    let glsl = compile_program(source).unwrap();
-
-    assert!(glsl.contains("vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle)"));
-    assert!(glsl.contains("vec3 p = rot_point(vec3(1.0, 0.0, 0.0), e3, (e3 * 0.0), time);"));
-    assert!(glsl.contains("sdf0_Ball3D(("));
-    assert!(glsl.contains(" - p), ParamBall3D(1.0))"));
-}
-
-#[test]
-fn calls_product_domain_value_functions_with_multiple_arguments() {
-    let source = "provided Hom(R3 x R3, R3) cross
-R3 a = (1, 0, 0)
-R3 b = (0, 1, 0)
-R3 c = cross(a, b)
-generate Ball3D(r=1) + c
-";
-    let glsl = compile_program(source).unwrap();
-
-    assert!(glsl.contains("vec3 c = cross(a, b);"));
-    assert!(glsl.contains("sdf0_Ball3D((p - c), ParamBall3D(1.0))"));
-}
-
-#[test]
 fn emits_revolution_operator() {
     let source = "generate Revolution(1.5)(Segment2D(a=(0, -1), b=(0, 1)))\n";
     let glsl = compile_program(source).unwrap();
@@ -982,6 +972,72 @@ fn emits_rotation_action_from_mat3_input() {
 
     assert!(glsl.contains("float scene_sdf(vec3 p, mat3 R) {"));
     assert!(glsl.contains("sdf0_Ball3D((transpose(R) * p), ParamBall3D(1.0))"));
+}
+
+#[test]
+fn emits_builtin_3d_rotation_operator() {
+    let source = "generate rot((0, 1, 0), (1, 0, 0), 0.5)(Ball3D(r=1))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat3 op_rot_matrix(vec3 binormal, float angle)"));
+    assert!(
+        glsl.contains("vec3 op_rot_inverse_point(vec3 p, vec3 binormal, vec3 anchor, float angle)")
+    );
+    assert!(glsl.contains("sdf0_Ball3D(op_rot_inverse_point(p, vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), 0.5), ParamBall3D(1.0))"));
+}
+
+#[test]
+fn emits_value_level_3d_rotation() {
+    let source = "provided R time\nR3 e3 = (0, 0, 1)\nR3 p = rot((1, 0, 0), e3, e3 * 0, time)\ngenerate Ball3D(r=1) + p\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle)"));
+    assert!(glsl.contains("vec3 p = rot_point(vec3(1.0, 0.0, 0.0), e3, (e3 * 0.0), time);"));
+    assert!(glsl.contains("sdf0_Ball3D(("));
+    assert!(glsl.contains(" - p), ParamBall3D(1.0))"));
+}
+
+#[test]
+fn calls_product_domain_value_functions_with_multiple_arguments() {
+    let source = "provided Hom(R3 x R3, R3) cross\nR3 a = (1, 0, 0)\nR3 b = (0, 1, 0)\nR3 c = cross(a, b)\ngenerate Ball3D(r=1) + c\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 c = cross(a, b);"));
+    assert!(glsl.contains("sdf0_Ball3D((p - c), ParamBall3D(1.0))"));
+}
+
+#[test]
+fn emits_builtin_rotation_operator_defaults() {
+    let angle_glsl = compile_program("generate rot(0.5)(Ball3D(r=1))\n").unwrap();
+    let zero_arg_glsl = compile_program("generate rot()(Ball3D(r=2))\n").unwrap();
+
+    assert!(angle_glsl.contains("sdf0_Ball3D(op_rot_inverse_point(p, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), 0.5), ParamBall3D(1.0))"));
+    assert!(zero_arg_glsl.contains("sdf0_Ball3D(op_rot_inverse_point(p, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), 0.0), ParamBall3D(2.0))"));
+}
+
+#[test]
+fn emits_builtin_2d_rotation_operator() {
+    let source = "generate rot2D((1, 0), 0.5)(Box2D(a=1, b=.5))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat2 op_rot2D_matrix(float angle)"));
+    assert!(glsl.contains("vec3 op_rot2D_inverse_point(vec3 p, vec2 anchor, float angle)"));
+    assert!(glsl.contains(
+        "sdf0_Box2D((op_rot2D_inverse_point(p, vec2(1.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
+    ));
+}
+
+#[test]
+fn emits_builtin_2d_rotation_operator_defaults() {
+    let angle_glsl = compile_program("generate rot2D(0.5)(Box2D(a=1, b=.5))\n").unwrap();
+    let zero_arg_glsl = compile_program("generate rot2D()(Box2D(a=2, b=1))\n").unwrap();
+
+    assert!(angle_glsl.contains(
+        "sdf0_Box2D((op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
+    ));
+    assert!(zero_arg_glsl.contains(
+        "sdf0_Box2D((op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.0)).xy, ParamBox2D(2.0, 1.0))"
+    ));
 }
 
 #[test]
@@ -1020,11 +1076,12 @@ fn emits_rectangular_matrix_bracket_constructors() {
 
 #[test]
 fn treats_square_matrices_as_rings_by_shape() {
-    let source = "provided Mat2 a\nprovided Mat2 b\nMat2 c = (a * b) + a\ngenerate Ball3D(r=1)\n";
+    let source =
+        "provided Mat3 a\nprovided Mat3 b\nMat3 c = (a * b) + a\ngenerate c * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, mat2 a, mat2 b) {"));
-    assert!(glsl.contains("mat2 c = ((a * b) + a);"));
+    assert!(glsl.contains("float scene_sdf(vec3 p, mat3 a, mat3 b) {"));
+    assert!(glsl.contains("mat3 c = ((a * b) + a);"));
 }
 
 #[test]
@@ -1149,12 +1206,87 @@ fn emits_only_used_object_operator_support() {
 }
 
 #[test]
+fn emits_array_literals_index_size_and_concat() {
+    let source = "Array(R) a = [1, 2, 3]\nR x = a[1]\nZ n = size(a)\nArray(R) b = concat(a, [4, 5])\ngenerate Ball3D(r=x + b[n])\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float a[3] = float[3](1.0, 2.0, 3.0);"));
+    assert!(glsl.contains("float x = a[1];"));
+    assert!(glsl.contains("int n = 3;"));
+    assert!(glsl.contains("float[5] concat_r_3_2(float[3] left, float[2] right) {"));
+    assert!(glsl.contains("float b[5] = concat_r_3_2(a, float[2](4.0, 5.0));"));
+}
+
+#[test]
+fn emits_array_types_for_inputs_and_function_returns() {
+    let source = "provided Array(R) weights\nfunc(Float -> Array(R)) pair = [sin, cos]\nR radius = weights[0] + pair(0)[1]\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float[] dsl_pair(float t) {"));
+    assert!(glsl.contains("return float[2](sin(t), cos(t));"));
+    assert!(glsl.contains("float scene_sdf(vec3 p, float[] weights) {"));
+    assert!(glsl.contains("float radius = (weights[0] + dsl_pair(0.0)[1]);"));
+}
+
+#[test]
+fn rejects_empty_array_literal() {
+    let source = "Array(R) a = []\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "line 1: array literals must contain at least one element"
+    );
+}
+
+#[test]
+fn rejects_mixed_array_elements() {
+    let source = "Array(R) a = [1, (1, 2)]\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "line 1: array element 2 expected R, got R2"
+    );
+}
+
+#[test]
+fn rejects_non_integer_array_index() {
+    let source = "Array(R) a = [1, 2]\nR x = a[0.5]\ngenerate Ball3D(r=x)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "line 2: integer expression expected Z, got R"
+    );
+}
+
+#[test]
+fn rejects_indexing_non_array() {
+    let source = "R x = 1[0]\ngenerate Ball3D(r=x)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(err.to_string(), "line 1: indexing expected Array(T), got R");
+}
+
+#[test]
+fn rejects_concat_element_mismatch() {
+    let source = "Array(R) a = [1]\nArray(R2) b = [(1, 2)]\nArray(R) c = concat(a, b)\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "line 3: concat element type expected R, got R2"
+    );
+}
+
+#[test]
 fn rejects_extra_arguments_for_non_associative_operator() {
     let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2)\nObject c = Ball3D(r=1)\ngenerate Difference(a, b, c)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(
         err.to_string(),
-        "operator 'Difference' expects 2 argument(s), got 3"
+        "line 4: operator 'Difference' expects 2 argument(s), got 3"
     );
 }

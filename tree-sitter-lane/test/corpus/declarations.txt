@@ -99,3 +99,36 @@ gen Ball3D(r=1)
         (named_argument
           (identifier)
           (number))))))
+
+==================
+Array Declarations
+==================
+
+provided Array(R) weights
+Array(R) a = [1, 2, 3]
+Func(Float, Array(R)) pair = [sin, cos]
+
+---
+
+(source_file
+  (input_declaration
+    (array_type
+      (type_identifier))
+    (identifier))
+  (binding_declaration
+    (array_type
+      (type_identifier))
+    (identifier)
+    (array_expression
+      (number)
+      (number)
+      (number)))
+  (binding_declaration
+    (function_type
+      (type_identifier)
+      (array_type
+        (type_identifier)))
+    (identifier)
+    (array_expression
+      (identifier)
+      (identifier))))

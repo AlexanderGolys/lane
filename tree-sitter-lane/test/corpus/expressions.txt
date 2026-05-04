@@ -70,3 +70,28 @@ generate Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)
         (number)
         (number)
         (number)))))
+
+==================
+Arrays
+==================
+
+generate concat(a, [4, 5])[size(a) - 1]
+
+---
+
+(source_file
+  (output_declaration
+    (index_expression
+      (call_expression
+        (identifier)
+        (argument_list
+          (identifier)
+          (array_expression
+            (number)
+            (number))))
+      (binary_expression
+        (call_expression
+          (identifier)
+          (argument_list
+            (identifier)))
+        (number)))))

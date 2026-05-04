@@ -6,6 +6,8 @@ enum Token {
     Number(String),
     LParen,
     RParen,
+    LBracket,
+    RBracket,
     Colon,
     Comma,
     Equal,
@@ -229,12 +231,26 @@ impl ExprParser {
 
     fn parse_postfix(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_unary()?;
-        while matches!(self.peek(), Some(Token::LParen)) {
-            let args = self.parse_positional_args()?;
-            expr = Expr::Call {
-                callee: Box::new(expr),
-                args,
-            };
+        loop {
+            match self.peek() {
+                Some(Token::LParen) => {
+                    let args = self.parse_positional_args()?;
+                    expr = Expr::Call {
+                        callee: Box::new(expr),
+                        args,
+                    };
+                }
+                Some(Token::LBracket) => {
+                    self.index += 1;
+                    let index = self.parse_add_sub()?;
+                    self.expect(Token::RBracket)?;
+                    expr = Expr::Index {
+                        array: Box::new(expr),
+                        index: Box::new(index),
+                    };
+                }
+                _ => break,
+            }
         }
         Ok(expr)
     }
@@ -263,6 +279,7 @@ impl ExprParser {
                 Ok(Expr::Ident(name))
             }
             Some(Token::LParen) => self.parse_paren_or_tuple(),
+            Some(Token::LBracket) => self.parse_array_literal(),
             _ => Err(Error::new(format!(
                 "unexpected token {} in expression",
                 self.describe_previous_token()
@@ -284,6 +301,27 @@ impl ExprParser {
         }
         self.expect(Token::RParen)?;
         Ok(Expr::Tuple(items))
+    }
+
+    fn parse_array_literal(&mut self) -> Result<Expr, Error> {
+        if matches!(self.peek(), Some(Token::RBracket)) {
+            self.index += 1;
+            return Ok(Expr::Array(Vec::new()));
+        }
+
+        let mut items = Vec::new();
+        loop {
+            items.push(self.parse_add_sub()?);
+            match self.peek() {
+                Some(Token::Comma) => self.index += 1,
+                Some(Token::RBracket) => {
+                    self.index += 1;
+                    break;
+                }
+                _ => return Err(Error::new("expected ',' or ']' in array literal")),
+            }
+        }
+        Ok(Expr::Array(items))
     }
 
     fn parse_positional_args(&mut self) -> Result<Vec<Expr>, Error> {
@@ -377,6 +415,8 @@ impl ExprParser {
             Token::Number(value) => format!("number '{}'", value),
             Token::LParen => "'('".to_string(),
             Token::RParen => "')'".to_string(),
+            Token::LBracket => "'['".to_string(),
+            Token::RBracket => "']'".to_string(),
             Token::Colon => "':'".to_string(),
             Token::Comma => "','".to_string(),
             Token::Equal => "'='".to_string(),
@@ -461,6 +501,8 @@ fn tokenize(source: &str) -> Vec<Token> {
         let token = match ch {
             '(' => Token::LParen,
             ')' => Token::RParen,
+            '[' => Token::LBracket,
+            ']' => Token::RBracket,
             ':' => Token::Colon,
             ',' => Token::Comma,
             '=' => Token::Equal,
@@ -496,6 +538,9 @@ fn parse_type(source: &str) -> Result<Type, Error> {
     if let Some(inner) = strip_type_head(source, "End") {
         let ty = parse_type(inner)?;
         return Ok(Type::func(ty.clone(), ty));
+    }
+    if let Some(inner) = strip_type_head(source, "Array") {
+        return Ok(Type::Array(Box::new(parse_type(inner)?)));
     }
     if let Some(parts) = split_top_level_product(source) {
         let mut parsed = Vec::new();

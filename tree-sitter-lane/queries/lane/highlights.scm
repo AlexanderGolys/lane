@@ -1,10 +1,10 @@
-["provided" "generate" "gen" "construct" "const" "Func" "Hom" "End"] @keyword
+["provided" "generate" "gen" "construct" "const" "Func" "Hom" "End" "Array"] @keyword
 
 (gen_modifier) @keyword.modifier
 
 ["+" "-" "*" "/" "@" "=" "×" "x"] @operator
 
-["(" ")"] @punctuation.bracket
+["(" ")" "[" "]"] @punctuation.bracket
 [","] @punctuation.delimiter
 
 (comment) @comment
@@ -24,12 +24,14 @@
     (end_type)
     (function_type)
     (hom_type)
+    (array_type)
   ]
   name: (identifier) @function)
 
 (binding_declaration
   type: [
     (type_identifier)
+    (array_type)
     (product_type)
     (parenthesized_type)
   ]
@@ -38,6 +40,10 @@
 (call_expression
   function: (identifier) @constructor
   (#match? @constructor "^[A-Z]"))
+
+(call_expression
+  function: (identifier) @function.builtin
+  (#any-of? @function.builtin "size" "concat"))
 
 (call_expression
   function: (identifier) @function.call)

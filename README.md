@@ -64,8 +64,6 @@ use `lane -h` or `lane --help` for help.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes GLSL to `TARGET` and also prints it to
   stdout.
-- Compiler errors include the 1-based source line when Lane can associate the
-  error with a declaration.
 - `lane -l` or `lane --list` lists all primitive constructors and their GLSL
   parameter structs.
 - `lane -l NAME` or `lane --list NAME` shows one primitive's visible parameter
@@ -149,6 +147,7 @@ representations.
 | `Vec2` | `R2`, `E2` | `vec2` |
 | `Vec3` | `R3`, `E3` | `vec3` |
 | `Vec4` | `R4` | `vec4` |
+| `SE3` | | `SE3` struct |
 | `Mat2` | | `mat2` |
 | `Mat3` | | `mat3` |
 | `Mat4` | | `mat4` |
@@ -188,13 +187,14 @@ Operators:
 - `f @ g` for unary function composition.
 - `f(x)` for value function calls.
 - `rot(p, axis, anchor, angle)` rotates an `R3` point around `axis` and
-  `anchor`.
+  `anchor`. The object form remains `rot(axis, anchor, angle)(object)`.
 
 Arithmetic is typechecked through built-in algebraic categories instead of one
 rule per concrete type. Current categories include additive groups, monoids,
 rings, fields, real vector spaces, and real algebras. For example, `C` and `H`
 support field-style multiplication and division through generated helper
-functions, while `R2`/`R3`/matrices share real vector-space scaling rules.
+functions, `SE3` emits its GLSL struct plus group multiplication and inverse
+helpers, and `R2`/`R3`/matrices share real vector-space scaling rules.
 
 User-defined function bodies currently support `R` inputs. Inside a
 `Func(R, T)` binding, bare unary function identifiers are implicitly applied to
@@ -378,6 +378,7 @@ scene using most registered primitives and operators.
 | `E2` | `VectR` |
 | `E3` | `VectR` |
 | `H` | `Field × AlgR` |
+| `SE3` | `Grp` |
 | `pow2` | `Hom(R, R)` |
 | `ccos` | `Hom(C, C)` |
 | `ccosh` | `Hom(C, C)` |
@@ -390,26 +391,32 @@ scene using most registered primitives and operators.
 | `ctan` | `Hom(C, C)` |
 | `ctanh` | `Hom(C, C)` |
 
-Value calls can be overloaded by argument type. `sin`, `cos`, `exp`, `log`,
-`sqrt`, `tan`, `sinh`, `cosh`, and `tanh` use raw GLSL for `R` arguments and
-lower to the corresponding complex helper (`csin`, `ccos`, `cexp`, etc.) for
-`C` arguments. The raw GLSL overloads are not listed by `lane --list-objects`
-because they do not require custom support code.
+`lane --list-objects C`, `lane --list-objects H`, and
+`lane --list-objects SE3` show the operation support required by those types,
+such as complex and quaternion multiplication or the `SE3` struct,
+multiplication, inverse, and division helpers. These structural operations are
+attached to the type definitions, not listed as separate arbitrary value
+functions.
+
+Raw GLSL `sin` and `cos` are also available as `Hom(R, R)` value functions, but
+they are not listed by `lane --list-objects` because they do not require custom
+support code.
 
 ### Differential Builtins
 
-These are available in value expressions but are omitted from `--list-objects`
-because they lower directly during emission:
+These are available in value expressions and listed by `lane --list-objects`.
+They lower directly during emission, so `lane --list-objects NAME` prints their
+type without a GLSL support body.
 
-| Object | Shape |
-| --- | --- |
-| `derivative(eps)(f)(x)` | Central derivative for `Hom(R, R)`. |
-| `partialX(eps)(f)(p)` | X partial derivative for `Hom(R3, R)`. |
-| `partialY(eps)(f)(p)` | Y partial derivative for `Hom(R3, R)`. |
-| `partialZ(eps)(f)(p)` | Z partial derivative for `Hom(R3, R)`. |
-| `directionalDerivative(eps)(dir)(f)(p)` | Directional derivative for `Hom(R3, R)`. |
-| `gradient(eps)(f)(p)` | Gradient of `Hom(R3, R)`, returns `R3`. |
-| `divergence(eps)(f)(p)` | Divergence of `Hom(R3, R3)`, returns `R`. |
+| Object | Type | Shape |
+| --- | --- | --- |
+| `derivative` | `Hom(R, Hom(Hom(R, R), Hom(R, R)))` | `derivative(eps)(f)(x)` central derivative for `Hom(R, R)`. |
+| `partialX` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R)))` | `partialX(eps)(f)(p)` X partial derivative for `Hom(R3, R)`. |
+| `partialY` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R)))` | `partialY(eps)(f)(p)` Y partial derivative for `Hom(R3, R)`. |
+| `partialZ` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R)))` | `partialZ(eps)(f)(p)` Z partial derivative for `Hom(R3, R)`. |
+| `directionalDerivative` | `Hom(R, Hom(R3, Hom(Hom(R3, R), Hom(R3, R))))` | `directionalDerivative(eps)(dir)(f)(p)` directional derivative for `Hom(R3, R)`. |
+| `gradient` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))` | `gradient(eps)(f)(p)` gradient of `Hom(R3, R)`. |
+| `divergence` | `Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))` | `divergence(eps)(f)(p)` divergence of `Hom(R3, R3)`. |
 
 Use the CLI for the authoritative generated GLSL definitions:
 
@@ -417,3 +424,12 @@ Use the CLI for the authoritative generated GLSL definitions:
 lane --list Ball3D
 lane --list-objects Revolution
 ```
+
+### Const zoo
+
+- *f(x)* - function you don't know how to compute - but with the power of teamwork the success take care of itself, so that you still 
+can use it, as since your mate did also need it you can assume it is probably somewhere on git already written. 
+- 
+
+> #great-things-are-never-done-by-a-single-person 
+>  (unless maybe when you are the goat, but also kind of an dieck - but then you don't really have much of a choice, so it doesn't count)

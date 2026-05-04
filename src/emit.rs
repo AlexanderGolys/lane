@@ -10,6 +10,11 @@ impl TypedProgram {
             lines.push(String::new());
         }
 
+        for helper in self.concat_helpers() {
+            lines.extend(emit_concat_helper(&helper).lines().map(str::to_string));
+            lines.push(String::new());
+        }
+
         let global_value_names = self.global_value_binding_names();
         for line in self.emit_global_value_binding_lines(&global_value_names, &self.func_names()) {
             lines.push(line);
@@ -126,10 +131,12 @@ impl TypedProgram {
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
+                | Type::SE3
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat(_, _) => {
+                | Type::Mat(_, _)
+                | Type::Array(_) => {
                     signature.push(format!("{} {}", input.ty.glsl_name(), input.name))
                 }
                 Type::Object | Type::Product(_) | Type::Func(_, _) => {}
@@ -146,10 +153,12 @@ impl TypedProgram {
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
+                | Type::SE3
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat(_, _) => Some(input.name.clone()),
+                | Type::Mat(_, _)
+                | Type::Array(_) => Some(input.name.clone()),
                 Type::Object | Type::Product(_) | Type::Func(_, _) => None,
             })
             .collect()
@@ -169,9 +178,8 @@ impl TypedProgram {
             })
             .map(|binding| {
                 format!(
-                    "    {} {} = {};",
-                    binding.ty.glsl_name(),
-                    binding.name,
+                    "    {} = {};",
+                    emit_value_binding_type(&binding.ty, &binding.name, binding.expr.array_len()),
                     emit_plain_value_expr(&binding.expr, helper_names)
                 )
             })
@@ -188,9 +196,8 @@ impl TypedProgram {
             .filter(|binding| global_value_names.contains(&binding.name))
             .map(|binding| {
                 format!(
-                    "const {} {} = {};",
-                    binding.ty.glsl_name(),
-                    binding.name,
+                    "const {} = {};",
+                    emit_value_binding_type(&binding.ty, &binding.name, binding.expr.array_len()),
                     emit_plain_value_expr(&binding.expr, helper_names)
                 )
             })
@@ -200,7 +207,9 @@ impl TypedProgram {
     fn global_value_binding_names(&self) -> BTreeSet<String> {
         let mut names = BTreeSet::new();
         for binding in &self.value_bindings {
-            if is_global_const_value_expr(&binding.expr, &names) {
+            if is_global_const_value_expr(&binding.expr, &names)
+                && !matches!(binding.ty, Type::Array(_))
+            {
                 names.insert(binding.name.clone());
             }
         }
@@ -352,10 +361,12 @@ impl TypedProgram {
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
+                | Type::SE3
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat(_, _) => {
+                | Type::Mat(_, _)
+                | Type::Array(_) => {
                     forbidden.insert(input.name.clone());
                 }
                 Type::Object | Type::Product(_) | Type::Func(_, _) => {}
@@ -389,10 +400,15 @@ impl TypedProgram {
 
     fn support_blocks(&self, registry: &Registry) -> Vec<&'static str> {
         let mut names = BTreeSet::new();
+        for input in &self.inputs {
+            collect_type_support(&input.ty, &mut names);
+        }
         for func in &self.funcs {
+            collect_type_support(&func.output, &mut names);
             collect_value_support(&func.expr, &mut names);
         }
         for binding in &self.value_bindings {
+            collect_type_support(&binding.ty, &mut names);
             collect_value_support(&binding.expr, &mut names);
         }
         for binding in &self.bindings {
@@ -408,6 +424,9 @@ impl TypedProgram {
             }
             if let Some(op) = registry.object_ops.get(name.as_str()) {
                 blocks.push(op.support_glsl);
+            }
+            if let Some(support_glsl) = builtin_type_support_glsl(name.as_str()) {
+                blocks.push(support_glsl);
                 continue;
             }
             if let Some(func) = registry.value_funcs.get(name.as_str()) {
@@ -425,19 +444,160 @@ impl TypedProgram {
             .map(|func| (func.name.clone(), helper_name(&func.name)))
             .collect()
     }
+
+    fn concat_helpers(&self) -> Vec<ConcatHelper> {
+        let mut helpers = BTreeMap::new();
+        for func in &self.funcs {
+            collect_concat_helpers(&func.expr, &mut helpers);
+        }
+        for binding in &self.value_bindings {
+            collect_concat_helpers(&binding.expr, &mut helpers);
+        }
+        for binding in &self.bindings {
+            collect_object_concat_helpers(&binding.expr, &mut helpers);
+        }
+        collect_object_concat_helpers(&self.output, &mut helpers);
+        helpers.into_values().collect()
+    }
 }
 
-fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
+fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
+    match ty {
+        Type::SE3 => {
+            names.insert("SE3".to_string());
+        }
+        Type::Array(element) => collect_type_support(element, names),
+        Type::Product(parts) => {
+            for part in parts {
+                collect_type_support(part, names);
+            }
+        }
+        Type::Func(input, output) => {
+            collect_type_support(input, names);
+            collect_type_support(output, names);
+        }
+        Type::Float
+        | Type::Int
+        | Type::Complex
+        | Type::Quat
+        | Type::Vec2
+        | Type::Vec3
+        | Type::Vec4
+        | Type::Mat(_, _)
+        | Type::Object => {}
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ConcatHelper {
+    element_ty: Type,
+    left_len: usize,
+    right_len: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ObjectBinding {
+    expr: ObjectExpr,
+    generated: bool,
+}
+
+impl ConcatHelper {
+    fn from_expr(expr: &ValueExpr) -> Option<Self> {
+        match expr {
+            ValueExpr::Concat {
+                element_ty,
+                left,
+                right,
+            } => Some(Self {
+                element_ty: element_ty.clone(),
+                left_len: left.array_len()?,
+                right_len: right.array_len()?,
+            }),
+            _ => None,
+        }
+    }
+}
+
+fn emit_value_binding_type(ty: &Type, name: &str, array_len: Option<usize>) -> String {
+    match ty {
+        Type::Array(element_ty) => match array_len {
+            Some(len) => format!("{} {}[{len}]", element_ty.glsl_name(), name),
+            None => format!("{} {}", ty.glsl_name(), name),
+        },
+        _ => format!("{} {}", ty.glsl_name(), name),
+    }
+}
+
+fn emit_array_constructor(
+    element_ty: &Type,
+    elements: &[ValueExpr],
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
+    let rendered = elements
+        .iter()
+        .map(|element| emit_value_expr(element, helper_names, value_names))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{}[{}]({})",
+        element_ty.glsl_name(),
+        elements.len(),
+        rendered
+    )
+}
+
+fn emit_concat_helper(helper: &ConcatHelper) -> String {
+    let result_len = helper.left_len + helper.right_len;
+    format!(
+        "{} {}({} left, {} right) {{\n    {} result;\n    for (int i = 0; i < {}; i++) {{\n        result[i] = left[i];\n    }}\n    for (int i = 0; i < {}; i++) {{\n        result[i + {}] = right[i];\n    }}\n    return result;\n}}",
+        glsl_sized_array_type(&helper.element_ty, result_len),
+        concat_helper_name(helper),
+        glsl_sized_array_type(&helper.element_ty, helper.left_len),
+        glsl_sized_array_type(&helper.element_ty, helper.right_len),
+        glsl_sized_array_type(&helper.element_ty, result_len),
+        helper.left_len,
+        helper.right_len,
+        helper.left_len
+    )
+}
+
+fn glsl_sized_array_type(element_ty: &Type, len: usize) -> String {
+    format!("{}[{len}]", element_ty.glsl_name())
+}
+
+fn concat_helper_name(helper: &ConcatHelper) -> String {
+    format!(
+        "concat_{}_{}_{}",
+        sanitize_glsl_identifier(&helper.element_ty.type_name()),
+        helper.left_len,
+        helper.right_len
+    )
+}
+
+fn sanitize_glsl_identifier(source: &str) -> String {
+    source
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn collect_object_concat_helpers(expr: &ObjectExpr, helpers: &mut BTreeMap<String, ConcatHelper>) {
     match expr {
         ObjectExpr::Var(_) => {}
-        ObjectExpr::Primitive { name, fields, .. } => {
-            names.insert(name.clone());
+        ObjectExpr::Primitive { fields, .. } => {
             for (_, value) in fields {
                 match value {
-                    PrimitiveArgExpr::Value(value) => collect_value_support(value, names),
+                    PrimitiveArgExpr::Value(value) => collect_concat_helpers(value, helpers),
                     PrimitiveArgExpr::Vec2List(vertices) => {
                         for vertex in vertices {
-                            collect_value_support(vertex, names);
+                            collect_concat_helpers(vertex, helpers);
                         }
                     }
                 }
@@ -448,103 +608,101 @@ fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
             translation,
             linear,
         } => {
-            collect_value_support(translation, names);
-            collect_value_support(linear, names);
-            collect_object_support(object, names);
+            collect_concat_helpers(translation, helpers);
+            collect_concat_helpers(linear, helpers);
+            collect_object_concat_helpers(object, helpers);
         }
         ObjectExpr::RegisteredOp {
-            name,
             value_args,
             object_args,
             ..
         } => {
-            names.insert(name.clone());
             for arg in value_args {
-                collect_value_support(arg, names);
+                collect_concat_helpers(arg, helpers);
             }
             for arg in object_args {
-                collect_object_support(arg, names);
+                collect_object_concat_helpers(arg, helpers);
             }
         }
     }
 }
 
-fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
+fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, ConcatHelper>) {
+    if let Some(helper) = ConcatHelper::from_expr(expr) {
+        helpers.insert(concat_helper_name(&helper), helper);
+    }
+
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Var(_, _) => {}
-        ValueExpr::Call { func, args, .. } => {
-            names.insert(func.clone());
+        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Var { .. } => {}
+        ValueExpr::Call { args, .. } => {
             for arg in args {
-                collect_value_support(arg, names);
+                collect_concat_helpers(arg, helpers);
             }
         }
-        ValueExpr::Binary {
-            op, left, right, ..
-        } => {
-            if let Some(name) = binary_support_name(*op, &left.ty(), &right.ty()) {
-                names.insert(name.to_string());
+        ValueExpr::Array { elements, .. } => {
+            for element in elements {
+                collect_concat_helpers(element, helpers);
             }
-            collect_value_support(left, names);
-            collect_value_support(right, names);
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_concat_helpers(array, helpers);
+            collect_concat_helpers(index, helpers);
+        }
+        ValueExpr::Concat { left, right, .. } => {
+            collect_concat_helpers(left, helpers);
+            collect_concat_helpers(right, helpers);
+        }
+        ValueExpr::Binary { left, right, .. } => {
+            collect_concat_helpers(left, helpers);
+            collect_concat_helpers(right, helpers);
         }
         ValueExpr::Vec2(x, y) => {
-            collect_value_support(x, names);
-            collect_value_support(y, names);
+            collect_concat_helpers(x, helpers);
+            collect_concat_helpers(y, helpers);
         }
         ValueExpr::Vec3(x, y, z) => {
-            collect_value_support(x, names);
-            collect_value_support(y, names);
-            collect_value_support(z, names);
+            collect_concat_helpers(x, helpers);
+            collect_concat_helpers(y, helpers);
+            collect_concat_helpers(z, helpers);
         }
         ValueExpr::Vec4(x, y, z, w) => {
-            collect_value_support(x, names);
-            collect_value_support(y, names);
-            collect_value_support(z, names);
-            collect_value_support(w, names);
+            collect_concat_helpers(x, helpers);
+            collect_concat_helpers(y, helpers);
+            collect_concat_helpers(z, helpers);
+            collect_concat_helpers(w, helpers);
         }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
-                collect_value_support(row, names);
+                collect_concat_helpers(row, helpers);
             }
         }
-        ValueExpr::Derivative { epsilon, func, at }
-        | ValueExpr::Gradient { epsilon, func, at }
-        | ValueExpr::Divergence { epsilon, func, at } => {
-            collect_value_support(epsilon, names);
-            collect_function_support(func, names);
-            collect_value_support(at, names);
+        ValueExpr::Derivative { epsilon, at, .. }
+        | ValueExpr::Gradient { epsilon, at, .. }
+        | ValueExpr::Divergence { epsilon, at, .. } => {
+            collect_concat_helpers(epsilon, helpers);
+            collect_concat_helpers(at, helpers);
         }
-        ValueExpr::Partial {
-            epsilon, func, at, ..
-        } => {
-            collect_value_support(epsilon, names);
-            collect_function_support(func, names);
-            collect_value_support(at, names);
+        ValueExpr::Partial { epsilon, at, .. } => {
+            collect_concat_helpers(epsilon, helpers);
+            collect_concat_helpers(at, helpers);
         }
         ValueExpr::DirectionalDerivative {
             epsilon,
             direction,
-            func,
             at,
+            ..
         } => {
-            collect_value_support(epsilon, names);
-            collect_value_support(direction, names);
-            collect_function_support(func, names);
-            collect_value_support(at, names);
+            collect_concat_helpers(epsilon, helpers);
+            collect_concat_helpers(direction, helpers);
+            collect_concat_helpers(at, helpers);
         }
     }
 }
 
-#[derive(Clone, Debug)]
-struct ObjectBinding {
-    expr: ObjectExpr,
-    generated: bool,
-}
-
 fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> bool {
     match expr {
-        ValueExpr::Float(_) => true,
-        ValueExpr::Var(name, _) => names.contains(name),
+        ValueExpr::Float(_) | ValueExpr::Int(_) => true,
+        ValueExpr::Var { name, .. } => names.contains(name),
         ValueExpr::Vec2(x, y) => {
             is_global_const_value_expr(x, names) && is_global_const_value_expr(y, names)
         }
@@ -565,7 +723,10 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         ValueExpr::Binary { left, right, .. } => {
             is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
         }
-        ValueExpr::Call { .. }
+        ValueExpr::Array { .. }
+        | ValueExpr::Index { .. }
+        | ValueExpr::Concat { .. }
+        | ValueExpr::Call { .. }
         | ValueExpr::Derivative { .. }
         | ValueExpr::Partial { .. }
         | ValueExpr::DirectionalDerivative { .. }
@@ -625,14 +786,27 @@ fn collect_object_value_refs(
 
 fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
-        ValueExpr::Float(_) => {}
-        ValueExpr::Var(name, _) => {
+        ValueExpr::Float(_) | ValueExpr::Int(_) => {}
+        ValueExpr::Var { name, .. } => {
             names.insert(name.clone());
         }
         ValueExpr::Call { args, .. } => {
             for arg in args {
                 collect_value_refs(arg, names);
             }
+        }
+        ValueExpr::Array { elements, .. } => {
+            for element in elements {
+                collect_value_refs(element, names);
+            }
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_value_refs(array, names);
+            collect_value_refs(index, names);
+        }
+        ValueExpr::Concat { left, right, .. } => {
+            collect_value_refs(left, names);
+            collect_value_refs(right, names);
         }
         ValueExpr::Binary { left, right, .. } => {
             collect_value_refs(left, names);
@@ -681,6 +855,127 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     }
 }
 
+fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
+    match expr {
+        ObjectExpr::Var(_) => {}
+        ObjectExpr::Primitive { name, fields, .. } => {
+            names.insert(name.clone());
+            for (_, value) in fields {
+                match value {
+                    PrimitiveArgExpr::Value(value) => collect_value_support(value, names),
+                    PrimitiveArgExpr::Vec2List(vertices) => {
+                        for vertex in vertices {
+                            collect_value_support(vertex, names);
+                        }
+                    }
+                }
+            }
+        }
+        ObjectExpr::AmbientTransform {
+            object,
+            translation,
+            linear,
+        } => {
+            collect_value_support(translation, names);
+            collect_value_support(linear, names);
+            collect_object_support(object, names);
+        }
+        ObjectExpr::RegisteredOp {
+            name,
+            value_args,
+            object_args,
+            ..
+        } => {
+            names.insert(name.clone());
+            for arg in value_args {
+                collect_value_support(arg, names);
+            }
+            for arg in object_args {
+                collect_object_support(arg, names);
+            }
+        }
+    }
+}
+
+fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
+    match expr {
+        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Var { .. } => {}
+        ValueExpr::Call { func, args, .. } => {
+            names.insert(func.clone());
+            for arg in args {
+                collect_value_support(arg, names);
+            }
+        }
+        ValueExpr::Array { elements, .. } => {
+            for element in elements {
+                collect_value_support(element, names);
+            }
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_value_support(array, names);
+            collect_value_support(index, names);
+        }
+        ValueExpr::Concat { left, right, .. } => {
+            collect_value_support(left, names);
+            collect_value_support(right, names);
+        }
+        ValueExpr::Binary {
+            op, left, right, ..
+        } => {
+            if let Some(name) = binary_support_name(*op, &left.ty(), &right.ty()) {
+                names.insert(name.to_string());
+            }
+            collect_value_support(left, names);
+            collect_value_support(right, names);
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_value_support(x, names);
+            collect_value_support(y, names);
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_value_support(x, names);
+            collect_value_support(y, names);
+            collect_value_support(z, names);
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_value_support(x, names);
+            collect_value_support(y, names);
+            collect_value_support(z, names);
+            collect_value_support(w, names);
+        }
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_value_support(row, names);
+            }
+        }
+        ValueExpr::Derivative { epsilon, func, at }
+        | ValueExpr::Gradient { epsilon, func, at }
+        | ValueExpr::Divergence { epsilon, func, at } => {
+            collect_value_support(epsilon, names);
+            collect_function_support(func, names);
+            collect_value_support(at, names);
+        }
+        ValueExpr::Partial {
+            epsilon, func, at, ..
+        } => {
+            collect_value_support(epsilon, names);
+            collect_function_support(func, names);
+            collect_value_support(at, names);
+        }
+        ValueExpr::DirectionalDerivative {
+            epsilon,
+            direction,
+            func,
+            at,
+        } => {
+            collect_value_support(epsilon, names);
+            collect_value_support(direction, names);
+            collect_function_support(func, names);
+            collect_value_support(at, names);
+        }
+    }
+}
+
 fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
     match &func.kind {
         FunctionExprKind::Named(name) => {
@@ -699,7 +994,8 @@ fn emit_value_expr(
 ) -> String {
     match expr {
         ValueExpr::Float(value) => format_float(*value),
-        ValueExpr::Var(name, _) => value_names
+        ValueExpr::Int(value) => value.to_string(),
+        ValueExpr::Var { name, .. } => value_names
             .get(name)
             .cloned()
             .unwrap_or_else(|| name.clone()),
@@ -715,6 +1011,25 @@ fn emit_value_expr(
                 rendered_args
             )
         }
+        ValueExpr::Array {
+            element_ty,
+            elements,
+        } => emit_array_constructor(element_ty, elements, helper_names, value_names),
+        ValueExpr::Index { array, index, .. } => format!(
+            "{}[{}]",
+            emit_value_expr(array, helper_names, value_names),
+            emit_value_expr(index, helper_names, value_names)
+        ),
+        ValueExpr::Concat {
+            element_ty: _,
+            left,
+            right,
+        } => format!(
+            "{}({}, {})",
+            concat_helper_name(&ConcatHelper::from_expr(expr).unwrap()),
+            emit_value_expr(left, helper_names, value_names),
+            emit_value_expr(right, helper_names, value_names)
+        ),
         ValueExpr::Binary {
             op, left, right, ..
         } => {
@@ -807,6 +1122,8 @@ fn emit_binary_expr(
         (BinOp::Div, Type::Complex, Type::Complex) => format!("div_C({}, {})", left, right),
         (BinOp::Mul, Type::Quat, Type::Quat) => format!("mult_H({}, {})", left, right),
         (BinOp::Div, Type::Quat, Type::Quat) => format!("div_H({}, {})", left, right),
+        (BinOp::Mul, Type::SE3, Type::SE3) => format!("mult_SE3({}, {})", left, right),
+        (BinOp::Div, Type::SE3, Type::SE3) => format!("div_SE3({}, {})", left, right),
         (BinOp::Div, Type::Float, Type::Complex) => {
             format!("div_C({}, {})", scalar_to_algebra(&right_ty, &left), right)
         }
@@ -844,9 +1161,10 @@ fn scalar_to_algebra(ty: &Type, value: &str) -> String {
 fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<&'static str> {
     match (op, left, right) {
         (BinOp::Mul | BinOp::Div, Type::Complex, Type::Complex)
-        | (BinOp::Div, Type::Float, Type::Complex) => Some("ops_C"),
+        | (BinOp::Div, Type::Float, Type::Complex) => Some("C"),
         (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
-        | (BinOp::Div, Type::Float, Type::Quat) => Some("ops_H"),
+        | (BinOp::Div, Type::Float, Type::Quat) => Some("H"),
+        (BinOp::Mul | BinOp::Div, Type::SE3, Type::SE3) => Some("SE3"),
         _ => None,
     }
 }
@@ -1172,6 +1490,37 @@ fn emit_object_expr(
                 return format!(
                     "op_extrusion({}, ({}).z, {})",
                     base_distance, point_expr, height
+                );
+            }
+            if glsl_name == "op_rot" {
+                let binormal = emit_plain_value_expr(&value_args[0], helper_names);
+                let anchor = emit_plain_value_expr(&value_args[1], helper_names);
+                let angle = emit_plain_value_expr(&value_args[2], helper_names);
+                let rotated_point = format!(
+                    "op_rot_inverse_point({}, {}, {}, {})",
+                    point_expr, binormal, anchor, angle
+                );
+                return emit_object_expr(
+                    &object_args[0],
+                    &rotated_point,
+                    object_bindings,
+                    helper_names,
+                    scene_input_names,
+                );
+            }
+            if glsl_name == "op_rot2D" {
+                let anchor = emit_plain_value_expr(&value_args[0], helper_names);
+                let angle = emit_plain_value_expr(&value_args[1], helper_names);
+                let rotated_point = format!(
+                    "op_rot2D_inverse_point({}, {}, {})",
+                    point_expr, anchor, angle
+                );
+                return emit_object_expr(
+                    &object_args[0],
+                    &rotated_point,
+                    object_bindings,
+                    helper_names,
+                    scene_input_names,
                 );
             }
             let mut args = object_args

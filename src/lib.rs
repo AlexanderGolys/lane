@@ -228,12 +228,19 @@ pub fn is_known_category_name(name: &str) -> bool {
     category_by_name(name).is_some()
 }
 
-const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
+const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
     ("C", "#define Complex vec2"),
     ("E2", "#define E2 vec2"),
     ("E3", "#define E3 vec3"),
     ("H", "#define H vec4"),
+    ("SE3", ""),
 ];
+
+const COMPLEX_FIELD_SUPPORT_GLSL: &str = "vec2 mult_C(vec2 a, vec2 b) {\n    return vec2((a.x * b.x) - (a.y * b.y), (a.x * b.y) + (a.y * b.x));\n}\n\nvec2 div_C(vec2 a, vec2 b) {\n    return mult_C(a, vec2(b.x, -b.y) / dot(b, b));\n}";
+
+const QUAT_FIELD_SUPPORT_GLSL: &str = "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}";
+
+const SE3_GROUP_SUPPORT_GLSL: &str = "struct SE3 {\n    vec4 q;\n    vec3 t;\n};\n\nvec4 se3_mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 se3_inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec3 act_SE3(SE3 tf, vec3 p) {\n    vec4 rotated = se3_mult_H(se3_mult_H(tf.q, vec4(0.0, p)), vec4(tf.q.x, -tf.q.y, -tf.q.z, -tf.q.w));\n    return rotated.yzw + tf.t;\n}\n\nSE3 mult_SE3(SE3 a, SE3 b) {\n    return SE3(se3_mult_H(a.q, b.q), act_SE3(a, b.t));\n}\n\nSE3 inv_SE3(SE3 a) {\n    vec4 q_inv = se3_inv_H(a.q);\n    vec4 rotated = se3_mult_H(se3_mult_H(q_inv, vec4(0.0, -a.t)), vec4(q_inv.x, -q_inv.y, -q_inv.z, -q_inv.w));\n    return SE3(q_inv, rotated.yzw);\n}\n\nSE3 div_SE3(SE3 a, SE3 b) {\n    return mult_SE3(a, inv_SE3(b));\n}";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AlgebraicCategory {
@@ -347,6 +354,7 @@ struct BuiltinTypeDef {
     ty: Type,
     aliases: &'static [&'static str],
     display_name: &'static str,
+    support_glsl: Option<&'static str>,
     categories: &'static [AlgebraicCategory],
 }
 
@@ -354,11 +362,12 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 8] = [
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 9] = [
     BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
         display_name: "R",
+        support_glsl: None,
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
@@ -370,12 +379,14 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 8] = [
         ty: Type::Int,
         aliases: &["Int", "Z"],
         display_name: "Z",
+        support_glsl: None,
         categories: &[AlgebraicCategory::Ring],
     },
     BuiltinTypeDef {
         ty: Type::Complex,
         aliases: &["Complex", "C"],
         display_name: "C",
+        support_glsl: Some(COMPLEX_FIELD_SUPPORT_GLSL),
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
@@ -387,24 +398,28 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 8] = [
         ty: Type::Vec2,
         aliases: &["Vec2", "R2", "E2"],
         display_name: "R2",
+        support_glsl: None,
         categories: &[AlgebraicCategory::VectR],
     },
     BuiltinTypeDef {
         ty: Type::Vec3,
         aliases: &["Vec3", "R3", "E3"],
         display_name: "R3",
+        support_glsl: None,
         categories: &[AlgebraicCategory::VectR],
     },
     BuiltinTypeDef {
         ty: Type::Vec4,
         aliases: &["Vec4", "R4"],
         display_name: "R4",
+        support_glsl: None,
         categories: &[AlgebraicCategory::VectR],
     },
     BuiltinTypeDef {
         ty: Type::Quat,
         aliases: &["H"],
         display_name: "H",
+        support_glsl: Some(QUAT_FIELD_SUPPORT_GLSL),
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
@@ -416,9 +431,24 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 8] = [
         ty: Type::Object,
         aliases: &["Object", "Object3D"],
         display_name: "Object",
+        support_glsl: None,
         categories: &[],
     },
+    BuiltinTypeDef {
+        ty: Type::SE3,
+        aliases: &["SE3"],
+        display_name: "SE3",
+        support_glsl: Some(SE3_GROUP_SUPPORT_GLSL),
+        categories: &[AlgebraicCategory::Grp],
+    },
 ];
+
+fn builtin_type_support_glsl(name: &str) -> Option<&'static str> {
+    BUILTIN_TYPE_DEFS
+        .iter()
+        .find(|def| def.aliases.contains(&name))
+        .and_then(|def| def.support_glsl)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PreregisteredObjectKind {
@@ -439,10 +469,12 @@ enum Type {
     Int,
     Complex,
     Quat,
+    SE3,
     Vec2,
     Vec3,
     Vec4,
     Mat(usize, usize),
+    Array(Box<Type>),
     Object,
     Product(Vec<Type>),
     Func(Box<Type>, Box<Type>),
@@ -459,10 +491,12 @@ impl Type {
             Self::Int => "int".to_string(),
             Self::Complex => "vec2".to_string(),
             Self::Quat => "vec4".to_string(),
+            Self::SE3 => "SE3".to_string(),
             Self::Vec2 => "vec2".to_string(),
             Self::Vec3 => "vec3".to_string(),
             Self::Vec4 => "vec4".to_string(),
             Self::Mat(rows, columns) => matrix_glsl_type(*rows, *columns),
+            Self::Array(element) => format!("{}[]", element.glsl_name()),
             Self::Object | Self::Product(_) | Self::Func(_, _) => "".to_string(),
         }
     }
@@ -478,6 +512,7 @@ impl Type {
             .unwrap_or_else(|| match self {
                 Self::Product(_) => "Product".to_string(),
                 Self::Func(_, _) => "Func".to_string(),
+                Self::Array(element) => format!("Array({})", format_type(element)),
                 _ => unreachable!(),
             })
     }
@@ -632,9 +667,14 @@ enum Expr {
     Number(f64),
     Ident(String),
     Tuple(Vec<Expr>),
+    Array(Vec<Expr>),
     Call {
         callee: Box<Expr>,
         args: Vec<Expr>,
+    },
+    Index {
+        array: Box<Expr>,
+        index: Box<Expr>,
     },
     Binary {
         op: BinOp,
@@ -665,11 +705,30 @@ enum BinOp {
 #[derive(Clone, Debug)]
 enum ValueExpr {
     Float(f64),
-    Var(String, Type),
+    Int(i64),
+    Var {
+        name: String,
+        ty: Type,
+        array_len: Option<usize>,
+    },
     Call {
         func: String,
         args: Vec<ValueExpr>,
         ty: Type,
+    },
+    Array {
+        element_ty: Type,
+        elements: Vec<ValueExpr>,
+    },
+    Index {
+        array: Box<ValueExpr>,
+        index: Box<ValueExpr>,
+        ty: Type,
+    },
+    Concat {
+        element_ty: Type,
+        left: Box<ValueExpr>,
+        right: Box<ValueExpr>,
     },
     Binary {
         op: BinOp,
@@ -722,8 +781,12 @@ impl ValueExpr {
     fn ty(&self) -> Type {
         match self {
             Self::Float(_) => Type::Float,
-            Self::Var(_, ty) => ty.clone(),
+            Self::Int(_) => Type::Int,
+            Self::Var { ty, .. } => ty.clone(),
             Self::Call { ty, .. } => ty.clone(),
+            Self::Array { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
+            Self::Index { ty, .. } => ty.clone(),
+            Self::Concat { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
             Self::Binary { ty, .. } => ty.clone(),
             Self::Vec2(_, _) => Type::Vec2,
             Self::Vec3(_, _, _) => Type::Vec3,
@@ -734,6 +797,15 @@ impl ValueExpr {
             Self::DirectionalDerivative { .. } => Type::Float,
             Self::Gradient { at, .. } => at.ty(),
             Self::Divergence { .. } => Type::Float,
+        }
+    }
+
+    fn array_len(&self) -> Option<usize> {
+        match self {
+            Self::Var { array_len, .. } => *array_len,
+            Self::Array { elements, .. } => Some(elements.len()),
+            Self::Concat { left, right, .. } => Some(left.array_len()? + right.array_len()?),
+            _ => None,
         }
     }
 }
@@ -875,17 +947,10 @@ struct ValueFuncDef {
 }
 
 #[derive(Clone, Debug)]
-struct ValueFuncOverloadDef {
-    glsl_name: &'static str,
-    ty: Type,
-}
-
-#[derive(Clone, Debug)]
 struct Registry {
     primitives: HashMap<&'static str, PrimitiveDef>,
     object_ops: HashMap<&'static str, ObjectOpDef>,
     value_funcs: HashMap<&'static str, ValueFuncDef>,
-    value_func_overloads: HashMap<&'static str, Vec<ValueFuncOverloadDef>>,
 }
 
 fn object_op_type(op: &ObjectOpDef) -> Type {
@@ -894,16 +959,20 @@ fn object_op_type(op: &ObjectOpDef) -> Type {
     } else {
         Type::Product(vec![Type::Object; op.object_arg_count])
     };
-    let mut ty = Type::func(object_domain, Type::Object);
-    for value_arg in op.value_arg_types.iter().rev() {
-        ty = Type::func(value_arg.clone(), ty);
+    let output = Type::func(object_domain, Type::Object);
+    match op.value_arg_types.as_slice() {
+        [] => output,
+        [value_arg] => Type::func(value_arg.clone(), output),
+        value_args => Type::func(Type::Product(value_args.to_vec()), output),
     }
-    ty
 }
 
 fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Error> {
     if actual == expected {
         return Ok(());
+    }
+    if let (Type::Array(actual), Type::Array(expected)) = (actual, expected) {
+        return ensure_type(actual, expected, context);
     }
     if matches!(
         (actual, expected),
@@ -924,6 +993,7 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
 
 fn format_type(ty: &Type) -> String {
     match ty {
+        Type::Array(element) => format!("Array({})", format_type(element)),
         Type::Product(parts) => parts
             .iter()
             .map(format_type)
@@ -1003,6 +1073,9 @@ fn flatten_call<'a>(expr: &'a Expr) -> Result<(String, Vec<&'a Expr>), Error> {
                     return Err(Error::new("unsupported callable object expression"))
                 }
             },
+            Expr::Index { .. } | Expr::Array(_) => {
+                return Err(Error::new("unsupported callable object expression"))
+            }
             _ => return Err(Error::new("unsupported callable object expression")),
         }
     }

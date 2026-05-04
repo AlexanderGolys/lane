@@ -5,8 +5,8 @@ use std::process;
 
 const COLOR_FUNCTION: &str = "34";
 const COLOR_TYPE: &str = "33";
-const COLOR_CATEGORY: &str = "93";
-const COLOR_CAT_METATYPE: &str = "97";
+const COLOR_CATEGORY: &str = "92";
+const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 
 const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL.";
 
@@ -516,8 +516,8 @@ mod tests {
             highlight_builtin_object_line("H", "Field × AlgR", lane::KnownBuiltinObjectKind::Type);
 
         assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
-        assert!(highlighted.contains("\x1b[93mField\x1b[0m"));
-        assert!(highlighted.contains("\x1b[93mAlgR\x1b[0m"));
+        assert!(highlighted.contains("\x1b[92mField\x1b[0m"));
+        assert!(highlighted.contains("\x1b[92mAlgR\x1b[0m"));
         assert!(!highlighted.contains("\x1b[33mField\x1b[0m"));
         assert!(!highlighted.contains("\x1b[33mAlgR\x1b[0m"));
     }
@@ -527,10 +527,10 @@ mod tests {
         let highlighted =
             highlight_builtin_object_line("Field", "Cat", lane::KnownBuiltinObjectKind::Category);
 
-        assert!(highlighted.contains("\x1b[93mField\x1b[0m"));
-        assert!(highlighted.contains("\x1b[97mCat\x1b[0m"));
+        assert!(highlighted.contains("\x1b[92mField\x1b[0m"));
+        assert!(highlighted.contains("\x1b[38;2;255;255;255mCat\x1b[0m"));
         assert!(!highlighted.contains("\x1b[33mField\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[93mCat\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[92mCat\x1b[0m"));
     }
 
     #[test]
@@ -540,6 +540,6 @@ mod tests {
 
         assert!(highlighted.contains("\x1b[33mObject\x1b[0m"));
         assert!(highlighted.contains("\x1b[33mType\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[93mType\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[92mType\x1b[0m"));
     }
 }

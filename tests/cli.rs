@@ -184,6 +184,11 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("SmoothUnion: Hom(R, Hom(Object × Object, Object))"));
     assert!(stdout.contains("Revolution: Hom(R, Hom(Object, Object))"));
     assert!(stdout.contains("Extrusion: Hom(R, Hom(Object, Object))"));
+    assert!(stdout.contains("rot: Hom(R3 × R3 × R, Hom(Object, Object))"));
+    assert!(stdout.contains("rot2D: Hom(R2 × R, Hom(Object, Object))"));
+    assert!(stdout.contains("derivative: Hom(R, Hom(Hom(R, R), Hom(R, R)))"));
+    assert!(stdout.contains("gradient: Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))"));
+    assert!(stdout.contains("divergence: Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"));
     assert!(!stdout.contains(" sin"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
@@ -199,6 +204,7 @@ fn lists_known_builtin_objects_from_short_flag() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("ctanh: Hom(C, C)"));
+    assert!(stdout.contains("partialX: Hom(R, Hom(Hom(R3, R), Hom(R3, R)))"));
     assert!(stdout.contains("E3: VectR"));
     assert!(stdout.contains("AlgR: Cat"));
 }
@@ -229,6 +235,7 @@ fn shows_builtin_type_detail_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("H: Field × AlgR"));
     assert!(stdout.contains("#define H vec4"));
+    assert!(stdout.contains("vec4 mult_H(vec4 a, vec4 b)"));
 }
 
 #[test]
@@ -245,16 +252,16 @@ fn shows_builtin_category_detail_from_cli() {
 }
 
 #[test]
-fn rejects_unknown_builtin_object_detail_from_cli() {
+fn shows_differential_builtin_object_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .args(["--list-objects", "gradient"])
         .output()
         .unwrap();
 
-    assert!(!output.status.success());
+    assert!(output.status.success());
 
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("unknown builtin object 'gradient'"));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout, "gradient: Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))\n");
 }
 
 #[test]

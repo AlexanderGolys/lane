@@ -5,16 +5,19 @@ impl TypedProgram {
         let mut env = Env::new(registry);
 
         for input in &program.inputs {
+            validate_user_type(&input.ty).map_err(|err| err.with_line(input.line))?;
             env.insert(input.name.clone(), input.ty.clone())
                 .map_err(|err| err.with_line(input.line))?;
         }
 
         for func in &program.funcs {
+            validate_user_type(&func.ty).map_err(|err| err.with_line(func.line))?;
             env.insert(func.name.clone(), func.ty.clone())
                 .map_err(|err| err.with_line(func.line))?;
         }
 
         for binding in &program.value_bindings {
+            validate_user_type(&binding.ty).map_err(|err| err.with_line(binding.line))?;
             env.insert(binding.name.clone(), binding.ty.clone())
                 .map_err(|err| err.with_line(binding.line))?;
         }
@@ -50,19 +53,21 @@ impl TypedProgram {
                     | Type::Int
                     | Type::Complex
                     | Type::Quat
+                    | Type::SE3
                     | Type::Vec2
                     | Type::Vec3
                     | Type::Vec4
                     | Type::Mat(_, _)
+                    | Type::Array(_)
             ) {
                 return Err(Error::new(format!(
-                    "function '{}' currently only supports scalar, vector, or matrix outputs",
+                    "function '{}' currently only supports scalar, vector, matrix, or array outputs",
                     func.name
                 ))
                 .with_line(func.line));
             }
 
-            let expr = infer_value_expr(&func.expr, &env, Some("t"))
+            let expr = infer_value_expr_for_type(&func.expr, &output_ty, &env, Some("t"))
                 .map_err(|err| err.with_line(func.line))?;
             ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
                 .map_err(|err| err.with_line(func.line))?;
@@ -75,7 +80,7 @@ impl TypedProgram {
 
         let mut typed_value_bindings = Vec::new();
         for binding in &program.value_bindings {
-            let expr = infer_value_expr(&binding.expr, &env, None)
+            let expr = infer_value_expr_for_type(&binding.expr, &binding.ty, &env, None)
                 .map_err(|err| err.with_line(binding.line))?;
             ensure_type(
                 &expr.ty(),
@@ -83,6 +88,7 @@ impl TypedProgram {
                 &format!("binding '{}'", binding.name),
             )
             .map_err(|err| err.with_line(binding.line))?;
+            env.update_array_len(&binding.name, expr.array_len());
             typed_value_bindings.push(TypedValueBinding {
                 name: binding.name.clone(),
                 ty: binding.ty.clone(),
@@ -123,31 +129,65 @@ impl TypedProgram {
 #[derive(Clone)]
 struct Env<'a> {
     registry: &'a Registry,
-    types: HashMap<String, Type>,
+    values: HashMap<String, ValueInfo>,
+}
+
+#[derive(Clone)]
+struct ValueInfo {
+    ty: Type,
+    array_len: Option<usize>,
 }
 
 impl<'a> Env<'a> {
     fn new(registry: &'a Registry) -> Self {
-        let mut types = HashMap::new();
+        let mut values = HashMap::new();
         for (name, func) in &registry.value_funcs {
-            types.insert((*name).to_string(), func.ty.clone());
+            values.insert(
+                (*name).to_string(),
+                ValueInfo {
+                    ty: func.ty.clone(),
+                    array_len: None,
+                },
+            );
         }
         for op in registry.object_ops.values() {
-            types.insert(op.name.to_string(), object_op_type(op));
+            values.insert(
+                op.name.to_string(),
+                ValueInfo {
+                    ty: object_op_type(op),
+                    array_len: None,
+                },
+            );
         }
-        Self { registry, types }
+        Self { registry, values }
     }
 
     fn insert(&mut self, name: String, ty: Type) -> Result<(), Error> {
-        if self.types.contains_key(&name) {
+        if self.values.contains_key(&name) {
             return Err(Error::new(format!("duplicate declaration for '{}'", name)));
         }
-        self.types.insert(name, ty);
+        self.values.insert(
+            name,
+            ValueInfo {
+                ty,
+                array_len: None,
+            },
+        );
         Ok(())
     }
 
     fn get(&self, name: &str) -> Option<&Type> {
-        self.types.get(name)
+        self.values.get(name).map(|info| &info.ty)
+    }
+
+    fn get_value(&self, name: &str) -> Option<&ValueInfo> {
+        self.values.get(name)
+    }
+
+    fn update_array_len(&mut self, name: &str, array_len: Option<usize>) {
+        if let Some(info) = self.values.get_mut(name) {
+            info.array_len = array_len;
+        }
     }
 }
 
@@ -281,7 +321,9 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             })
         }
         Expr::Call { .. } => infer_object_call(expr, env),
-        Expr::Number(_) | Expr::Tuple(_) => Err(Error::new("expected an Object expression")),
+        Expr::Number(_) | Expr::Tuple(_) | Expr::Array(_) | Expr::Index { .. } => {
+            Err(Error::new("expected an Object expression"))
+        }
         Expr::Binary { .. } => Err(Error::new("unsupported object expression")),
     }
 }
@@ -356,6 +398,9 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         .object_ops
         .get(name.as_str())
         .ok_or_else(|| Error::new(format!("unknown object operator '{}'", name)))?;
+    if matches!(name.as_str(), "rot" | "rot2D") {
+        return infer_rotation_object_call(&name, &args, op, env);
+    }
     let min_total_args = op.value_arg_types.len() + op.object_arg_count;
     if op.associative_binary {
         if args.len() < min_total_args {
@@ -408,6 +453,100 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     }
 }
 
+fn infer_rotation_object_call(
+    name: &str,
+    args: &[&Expr],
+    op: &ObjectOpDef,
+    env: &Env<'_>,
+) -> Result<ObjectExpr, Error> {
+    let value_arg_count = rotation_value_arg_count(name, args)?;
+    if args.len() != value_arg_count + op.object_arg_count {
+        return Err(Error::new(format!(
+            "operator '{}' expects {} object argument(s)",
+            name, op.object_arg_count
+        )));
+    }
+
+    let value_args = match name {
+        "rot" => infer_rot_value_args(&args[..value_arg_count], env)?,
+        "rot2D" => infer_rot2d_value_args(&args[..value_arg_count], env)?,
+        _ => unreachable!(),
+    };
+    let object_args = args[value_arg_count..]
+        .iter()
+        .map(|arg| infer_object_expr(arg, env))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(ObjectExpr::RegisteredOp {
+        name: op.name.to_string(),
+        glsl_name: op.glsl_name.to_string(),
+        value_args,
+        object_args,
+    })
+}
+
+fn rotation_value_arg_count(name: &str, args: &[&Expr]) -> Result<usize, Error> {
+    let max_value_args = match name {
+        "rot" => 3,
+        "rot2D" => 2,
+        _ => unreachable!(),
+    };
+    if args.is_empty() {
+        return Err(Error::new(format!(
+            "operator '{}' expects an object argument",
+            name
+        )));
+    }
+    if args.len() > max_value_args + 1 {
+        return Err(Error::new(format!(
+            "operator '{}' expects at most {} value argument(s)",
+            name, max_value_args
+        )));
+    }
+    Ok(args.len() - 1)
+}
+
+fn infer_rot_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr>, Error> {
+    let (binormal, anchor, angle) = match args {
+        [] => (unit_z_vec3(), zero_vec3(), ValueExpr::Float(0.0)),
+        [angle] => (
+            unit_z_vec3(),
+            zero_vec3(),
+            infer_value_expr(angle, env, None)?,
+        ),
+        [binormal, angle] => (
+            infer_value_expr(binormal, env, None)?,
+            zero_vec3(),
+            infer_value_expr(angle, env, None)?,
+        ),
+        [binormal, anchor, angle] => (
+            infer_value_expr(binormal, env, None)?,
+            infer_value_expr(anchor, env, None)?,
+            infer_value_expr(angle, env, None)?,
+        ),
+        _ => unreachable!(),
+    };
+    ensure_type(&binormal.ty(), &Type::Vec3, "rot binormal")?;
+    ensure_type(&anchor.ty(), &Type::Vec3, "rot anchor")?;
+    ensure_type(&angle.ty(), &Type::Float, "rot angle")?;
+    Ok(vec![binormal, anchor, angle])
+}
+
+fn infer_rot2d_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr>, Error> {
+    let (anchor, angle) = match args {
+        [] => (zero_vec2(), ValueExpr::Float(0.0)),
+        [angle] => (zero_vec2(), infer_value_expr(angle, env, None)?),
+        [anchor, angle] => (
+            infer_value_expr(anchor, env, None)?,
+            infer_value_expr(angle, env, None)?,
+        ),
+        _ => unreachable!(),
+    };
+    ensure_type(&anchor.ty(), &Type::Vec2, "rot2D anchor")?;
+    ensure_type(&angle.ty(), &Type::Float, "rot2D angle")?;
+    Ok(vec![anchor, angle])
+}
+
 fn fold_associative_registered_op(
     name: &str,
     glsl_name: &str,
@@ -453,7 +592,12 @@ fn infer_value_expr(
         Expr::Number(value) => Ok(ValueExpr::Float(*value)),
         Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
         Expr::Tuple(items) => infer_tuple_value_expr(items, env, lift_param),
+        Expr::Array(items) => infer_array_literal(items, env, lift_param, None),
+        Expr::Index { array, index } => infer_index_expr(array, index, env, lift_param),
         Expr::Call { callee, args } => {
+            if let Some(result) = infer_array_builtin(expr, env, lift_param)? {
+                return Ok(result);
+            }
             if let Some(result) = infer_rot_point_builtin(callee, args, env, lift_param)? {
                 return Ok(result);
             }
@@ -464,7 +608,79 @@ fn infer_value_expr(
                 Expr::Ident(name) => name,
                 _ => return Err(Error::new("only named value functions are supported")),
             };
-            infer_named_value_call(name, args, env, lift_param)
+            let mut current_ty = env
+                .get(name)
+                .cloned()
+                .ok_or_else(|| Error::new(format!("unknown function '{}'", name)))?;
+            let mut typed_args = Vec::new();
+            let mut index = 0;
+            while index < args.len() {
+                let (input_ty, output_ty) = match current_ty {
+                    Type::Func(input, output) => (*input, *output),
+                    _ => {
+                        return Err(Error::new(format!(
+                            "'{}' is not callable with more arguments",
+                            name
+                        )))
+                    }
+                };
+                match input_ty {
+                    Type::Product(items) => {
+                        if args.len() - index < items.len() {
+                            return Err(Error::new(format!(
+                                "call '{}(...)' expected {} argument(s), got {}",
+                                name,
+                                items.len(),
+                                args.len() - index
+                            )));
+                        }
+                        for expected_ty in items {
+                            let typed_arg = infer_value_expr_for_type(
+                                &args[index],
+                                &expected_ty,
+                                env,
+                                lift_param,
+                            )?;
+                            ensure_type(
+                                &typed_arg.ty(),
+                                &expected_ty,
+                                &format!("call '{}(...)'", name),
+                            )?;
+                            typed_args.push(typed_arg);
+                            index += 1;
+                        }
+                    }
+                    input_ty => {
+                        let typed_arg =
+                            infer_value_expr_for_type(&args[index], &input_ty, env, lift_param)?;
+                        ensure_type(&typed_arg.ty(), &input_ty, &format!("call '{}(...)'", name))?;
+                        typed_args.push(typed_arg);
+                        index += 1;
+                    }
+                }
+                current_ty = output_ty;
+            }
+
+            match current_ty {
+                Type::Float
+                | Type::Int
+                | Type::Complex
+                | Type::Quat
+                | Type::SE3
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat(_, _)
+                | Type::Array(_) => Ok(ValueExpr::Call {
+                    func: name.clone(),
+                    args: typed_args,
+                    ty: current_ty,
+                }),
+                Type::Object | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
+                    "value expression '{}' does not return a value type",
+                    name
+                ))),
+            }
         }
         Expr::Binary {
             op: BinOp::Compose,
@@ -498,110 +714,167 @@ fn infer_value_expr(
     }
 }
 
-fn infer_named_value_call(
-    name: &str,
-    args: &[Expr],
+fn infer_value_expr_for_type(
+    expr: &Expr,
+    expected_ty: &Type,
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
-    if let Some(overloads) = env.registry.value_func_overloads.get(name) {
-        let mut mismatch = None;
-        for overload in overloads {
-            match infer_value_call_with_type(
-                name,
-                overload.glsl_name,
-                &overload.ty,
-                args,
-                env,
-                lift_param,
-            ) {
-                Ok(value) => return Ok(value),
-                Err(err) => mismatch = Some(err),
-            }
+    match (expected_ty, expr) {
+        (Type::Int, _) => infer_int_expr(expr, env, lift_param),
+        (Type::Array(element_ty), Expr::Array(items)) => {
+            infer_array_literal(items, env, lift_param, Some(element_ty))
         }
-        return Err(mismatch.unwrap_or_else(|| Error::new(format!("unknown function '{}'", name))));
+        _ => infer_value_expr(expr, env, lift_param),
     }
-
-    let ty = env
-        .get(name)
-        .cloned()
-        .ok_or_else(|| Error::new(format!("unknown function '{}'", name)))?;
-    infer_value_call_with_type(name, name, &ty, args, env, lift_param)
 }
 
-fn infer_value_call_with_type(
-    lane_name: &str,
-    glsl_name: &str,
-    ty: &Type,
-    args: &[Expr],
+fn infer_int_expr(
+    expr: &Expr,
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
-    let mut current_ty = ty.clone();
-    let mut typed_args = Vec::new();
-    let mut index = 0;
-    while index < args.len() {
-        let (input_ty, output_ty) = match current_ty {
-            Type::Func(input, output) => (*input, *output),
-            _ => {
-                return Err(Error::new(format!(
-                    "'{}' is not callable with more arguments",
-                    lane_name
-                )))
-            }
-        };
-        match input_ty {
-            Type::Product(items) => {
-                if args.len() - index < items.len() {
-                    return Err(Error::new(format!(
-                        "call '{}(...)' expected {} argument(s), got {}",
-                        lane_name,
-                        items.len(),
-                        args.len() - index
-                    )));
-                }
-                for expected_ty in items {
-                    let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
-                    ensure_type(
-                        &typed_arg.ty(),
-                        &expected_ty,
-                        &format!("call '{}(...)'", lane_name),
-                    )?;
-                    typed_args.push(typed_arg);
-                    index += 1;
-                }
-            }
-            input_ty => {
-                let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
-                ensure_type(
-                    &typed_arg.ty(),
-                    &input_ty,
-                    &format!("call '{}(...)'", lane_name),
-                )?;
-                typed_args.push(typed_arg);
-                index += 1;
-            }
+    if let Expr::Number(value) = expr {
+        let rounded = value.round();
+        if (value - rounded).abs() < f64::EPSILON {
+            return Ok(ValueExpr::Int(rounded as i64));
         }
-        current_ty = output_ty;
     }
 
-    match current_ty {
-        Type::Float
-        | Type::Int
-        | Type::Complex
-        | Type::Quat
-        | Type::Vec2
-        | Type::Vec3
-        | Type::Vec4
-        | Type::Mat(_, _) => Ok(ValueExpr::Call {
-            func: glsl_name.to_string(),
-            args: typed_args,
-            ty: current_ty,
-        }),
-        Type::Object | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
-            "value expression '{}' does not return a value type",
-            lane_name
-        ))),
+    let value = infer_value_expr(expr, env, lift_param)?;
+    ensure_type(&value.ty(), &Type::Int, "integer expression")?;
+    Ok(value)
+}
+
+fn infer_array_literal(
+    items: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+    expected_element_ty: Option<&Type>,
+) -> Result<ValueExpr, Error> {
+    if items.is_empty() {
+        return Err(Error::new(
+            "array literals must contain at least one element",
+        ));
+    }
+
+    let element_ty = if let Some(expected) = expected_element_ty {
+        expected.clone()
+    } else {
+        infer_value_expr(&items[0], env, lift_param)?.ty()
+    };
+    if !is_array_element_type(&element_ty) {
+        return Err(Error::new(format!(
+            "arrays of {} are not supported",
+            format_type(&element_ty)
+        )));
+    }
+
+    let mut elements = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        let value = infer_value_expr_for_type(item, &element_ty, env, lift_param)?;
+        ensure_type(
+            &value.ty(),
+            &element_ty,
+            &format!("array element {}", index + 1),
+        )?;
+        elements.push(value);
+    }
+
+    Ok(ValueExpr::Array {
+        element_ty,
+        elements,
+    })
+}
+
+fn infer_index_expr(
+    array: &Expr,
+    index: &Expr,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    let array = infer_value_expr(array, env, lift_param)?;
+    let element_ty = match array.ty() {
+        Type::Array(element_ty) => *element_ty,
+        other => {
+            return Err(Error::new(format!(
+                "indexing expected Array(T), got {}",
+                format_type(&other)
+            )))
+        }
+    };
+    let index = infer_int_expr(index, env, lift_param)?;
+    Ok(ValueExpr::Index {
+        array: Box::new(array),
+        index: Box::new(index),
+        ty: element_ty,
+    })
+}
+
+fn infer_array_builtin(
+    expr: &Expr,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<Option<ValueExpr>, Error> {
+    let (name, args) = match flatten_call(expr) {
+        Ok(parts) => parts,
+        Err(_) => return Ok(None),
+    };
+
+    match name.as_str() {
+        "size" => {
+            if args.len() != 1 {
+                return Err(Error::new("size expects one array argument"));
+            }
+            let array = infer_value_expr(args[0], env, lift_param)?;
+            if !matches!(array.ty(), Type::Array(_)) {
+                return Err(Error::new(format!(
+                    "size expected Array(T), got {}",
+                    format_type(&array.ty())
+                )));
+            }
+            let len = array
+                .array_len()
+                .ok_or_else(|| Error::new("size requires a statically known array length"))?;
+            Ok(Some(ValueExpr::Int(len as i64)))
+        }
+        "concat" => {
+            if args.len() != 2 {
+                return Err(Error::new("concat expects two array arguments"));
+            }
+            let left = infer_value_expr(args[0], env, lift_param)?;
+            let right = infer_value_expr(args[1], env, lift_param)?;
+            let left_element_ty = match left.ty() {
+                Type::Array(element_ty) => *element_ty,
+                other => {
+                    return Err(Error::new(format!(
+                        "concat left argument expected Array(T), got {}",
+                        format_type(&other)
+                    )))
+                }
+            };
+            let right_element_ty = match right.ty() {
+                Type::Array(element_ty) => *element_ty,
+                other => {
+                    return Err(Error::new(format!(
+                        "concat right argument expected Array(T), got {}",
+                        format_type(&other)
+                    )))
+                }
+            };
+            ensure_type(&right_element_ty, &left_element_ty, "concat element type")?;
+            if left.array_len().is_none() || right.array_len().is_none() {
+                return Err(Error::new(
+                    "concat requires statically known lengths for both arrays",
+                ));
+            }
+            Ok(Some(ValueExpr::Concat {
+                element_ty: left_element_ty,
+                left: Box::new(left),
+                right: Box::new(right),
+            }))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -681,6 +954,46 @@ fn vector_type(dimension: usize) -> Type {
     }
 }
 
+fn validate_user_type(ty: &Type) -> Result<(), Error> {
+    match ty {
+        Type::Array(element_ty) => {
+            if !is_array_element_type(element_ty) {
+                return Err(Error::new(format!(
+                    "arrays of {} are not supported",
+                    format_type(element_ty)
+                )));
+            }
+            Ok(())
+        }
+        Type::Func(input, output) => {
+            validate_user_type(input)?;
+            validate_user_type(output)
+        }
+        Type::Product(parts) => {
+            for part in parts {
+                validate_user_type(part)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn is_array_element_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Float
+            | Type::Int
+            | Type::Complex
+            | Type::Quat
+            | Type::SE3
+            | Type::Vec2
+            | Type::Vec3
+            | Type::Vec4
+            | Type::Mat(_, _)
+    )
+}
+
 fn infer_differential_builtin(
     expr: &Expr,
     env: &Env<'_>,
@@ -726,7 +1039,11 @@ fn infer_derivative_builtin(
         ensure_type(&at.ty(), &Type::Float, "derivative evaluation point")?;
         at
     } else {
-        ValueExpr::Var(lift_param.unwrap().to_string(), Type::Float)
+        ValueExpr::Var {
+            name: lift_param.unwrap().to_string(),
+            ty: Type::Float,
+            array_len: None,
+        }
     };
     Ok(ValueExpr::Derivative {
         epsilon: Box::new(epsilon),
@@ -938,7 +1255,11 @@ fn infer_composed_value_expr(
     }
     Ok(apply_function_expr(
         &composed,
-        ValueExpr::Var(param_name.to_string(), Type::Float),
+        ValueExpr::Var {
+            name: param_name.to_string(),
+            ty: Type::Float,
+            array_len: None,
+        },
     ))
 }
 
@@ -959,10 +1280,12 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
+                | Type::SE3
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
-                | Type::Mat(_, _) => {
+                | Type::Mat(_, _)
+                | Type::Array(_) => {
                     Err(Error::new(format!("'{}' is a value, not a function", name)))
                 }
                 Type::Object | Type::Product(_) => Err(Error::new(format!(
@@ -1020,19 +1343,25 @@ fn infer_identifier_value(
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
-    let ty = env
-        .get(name)
+    let info = env
+        .get_value(name)
         .cloned()
         .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
-    match ty {
+    match info.ty {
         Type::Float
         | Type::Int
         | Type::Complex
         | Type::Quat
+        | Type::SE3
         | Type::Vec2
         | Type::Vec3
         | Type::Vec4
-        | Type::Mat(_, _) => Ok(ValueExpr::Var(name.to_string(), ty)),
+        | Type::Mat(_, _)
+        | Type::Array(_) => Ok(ValueExpr::Var {
+            name: name.to_string(),
+            ty: info.ty,
+            array_len: info.array_len,
+        }),
         Type::Func(input, output) => {
             if lift_param.is_none() {
                 return Err(Error::new(format!(
@@ -1049,7 +1378,11 @@ fn infer_identifier_value(
             let param_name = lift_param.unwrap().to_string();
             Ok(ValueExpr::Call {
                 func: name.to_string(),
-                args: vec![ValueExpr::Var(param_name, Type::Float)],
+                args: vec![ValueExpr::Var {
+                    name: param_name,
+                    ty: Type::Float,
+                    array_len: None,
+                }],
                 ty: (*output).clone(),
             })
         }
@@ -1094,7 +1427,7 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         let category = match op {
             BinOp::Add | BinOp::Sub => AlgebraicCategory::Ab,
             BinOp::Mul => AlgebraicCategory::Mon,
-            BinOp::Div => AlgebraicCategory::Field,
+            BinOp::Div => AlgebraicCategory::Grp,
             BinOp::Compose => unreachable!(),
         };
         if has_category(left, category) {
@@ -1128,11 +1461,27 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         format_type(right)
     )))
 }
+
+fn zero_vec2() -> ValueExpr {
+    ValueExpr::Vec2(
+        Box::new(ValueExpr::Float(0.0)),
+        Box::new(ValueExpr::Float(0.0)),
+    )
+}
+
 fn zero_vec3() -> ValueExpr {
     ValueExpr::Vec3(
         Box::new(ValueExpr::Float(0.0)),
         Box::new(ValueExpr::Float(0.0)),
         Box::new(ValueExpr::Float(0.0)),
+    )
+}
+
+fn unit_z_vec3() -> ValueExpr {
+    ValueExpr::Vec3(
+        Box::new(ValueExpr::Float(0.0)),
+        Box::new(ValueExpr::Float(0.0)),
+        Box::new(ValueExpr::Float(1.0)),
     )
 }
 

@@ -2,6 +2,54 @@
 
 Tree-sitter grammar for the Lane DSL.
 
+## Neovim
+
+Add this directory as a Neovim plugin so the `.lane` filetype, highlight query,
+and nvim-treesitter parser install metadata are registered before parser
+installation:
+
+```lua
+{
+    dir = "/home/flux/sdf-compiler/tree-sitter-lane",
+    name = "tree-sitter-lane",
+    dependencies = { "nvim-treesitter/nvim-treesitter" },
+    config = function()
+        require("lane").setup()
+    end,
+}
+```
+
+Then install the parser with nvim-treesitter:
+
+```lua
+require("nvim-treesitter").install({ "lane" }):wait()
+```
+
+From command mode, `:TSInstall lane` works too after the plugin has loaded.
+
+If you do not use nvim-treesitter, compile the parser and register it directly:
+
+```sh
+cc -fPIC -shared -I src src/parser.c -o lane.so
+```
+
+```lua
+require("lane").setup({
+    parser_path = "/home/flux/sdf-compiler/tree-sitter-lane/lane.so",
+})
+```
+
+Start highlighting for Lane buffers with Neovim's current tree-sitter API:
+
+```lua
+vim.api.nvim_create_autocmd("FileType", {
+    pattern = "lane",
+    callback = function()
+        vim.treesitter.start()
+    end,
+})
+```
+
 The grammar includes highlight queries for both the tree-sitter CLI and Neovim:
 
 - `queries/highlights.scm` is used by the tree-sitter CLI.

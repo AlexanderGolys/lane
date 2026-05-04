@@ -58,6 +58,7 @@ module.exports = grammar({
             $.function_type,
             $.hom_type,
             $.end_type,
+            $.array_type,
             $.parenthesized_type,
             alias($.identifier, $.type_identifier),
         ),
@@ -95,12 +96,21 @@ module.exports = grammar({
             ')',
         ),
 
+        array_type: ($) => seq(
+            'Array',
+            '(',
+            field('element', $._type),
+            ')',
+        ),
+
         _expression: ($) => choice(
             $.binary_expression,
             $.call_expression,
+            $.index_expression,
             $.unary_expression,
             $.parenthesized_expression,
             $.tuple_expression,
+            $.array_expression,
             $.identifier,
             $.number,
         ),
@@ -108,13 +118,31 @@ module.exports = grammar({
         call_expression: ($) => prec.left(PREC.call, seq(
             field('function', choice(
                 $.call_expression,
+                $.index_expression,
                 $.unary_expression,
                 $.parenthesized_expression,
                 $.tuple_expression,
+                $.array_expression,
                 $.identifier,
                 $.number,
             )),
             field('arguments', $.argument_list),
+        )),
+
+        index_expression: ($) => prec.left(PREC.call, seq(
+            field('array', choice(
+                $.call_expression,
+                $.index_expression,
+                $.unary_expression,
+                $.parenthesized_expression,
+                $.tuple_expression,
+                $.array_expression,
+                $.identifier,
+                $.number,
+            )),
+            '[',
+            field('index', $._expression),
+            ']',
         )),
 
         argument_list: ($) => seq(
@@ -158,6 +186,12 @@ module.exports = grammar({
             field('second', $._expression),
             repeat(seq(',', field('rest', $._expression))),
             ')',
+        ),
+
+        array_expression: ($) => seq(
+            '[',
+            optional(commaSep1($._expression)),
+            ']',
         ),
 
         identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,

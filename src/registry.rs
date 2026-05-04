@@ -417,29 +417,31 @@ impl Default for Registry {
                     support_glsl: "float op_extrusion(float base_distance, float z, float height) {\n    vec2 w = vec2(base_distance, abs(z) - height);\n    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));\n}",
                 },
             ),
+            (
+                "rot",
+                ObjectOpDef {
+                    name: "rot",
+                    value_arg_types: vec![Type::Vec3, Type::Vec3, Type::Float],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "op_rot",
+                    support_glsl: "mat3 op_rot_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nvec3 op_rot_inverse_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {\n    mat3 r = op_rot_matrix(binormal, angle);\n    return anchor + (transpose(r) * (p - anchor));\n}",
+                },
+            ),
+            (
+                "rot2D",
+                ObjectOpDef {
+                    name: "rot2D",
+                    value_arg_types: vec![Type::Vec2, Type::Float],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "op_rot2D",
+                    support_glsl: "mat2 op_rot2D_matrix(float angle) {\n    float c = cos(angle);\n    float s = sin(angle);\n    return mat2(vec2(c, s), vec2(-s, c));\n}\n\nvec3 op_rot2D_inverse_point(vec3 p, vec2 anchor, float angle) {\n    mat2 r = op_rot2D_matrix(angle);\n    return vec3(anchor + (transpose(r) * (p.xy - anchor)), p.z);\n}",
+                },
+            ),
         ]);
 
         let value_funcs = HashMap::from([
-            (
-                "ops_C",
-                ValueFuncDef {
-                    ty: Type::Func(Box::new(Type::Complex), Box::new(Type::Complex)),
-                    support_glsl: Some(
-                        "vec2 mult_C(vec2 a, vec2 b) {\n    return vec2((a.x * b.x) - (a.y * b.y), (a.x * b.y) + (a.y * b.x));\n}\n\nvec2 div_C(vec2 a, vec2 b) {\n    return mult_C(a, vec2(b.x, -b.y) / dot(b, b));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "ops_H",
-                ValueFuncDef {
-                    ty: Type::Func(Box::new(Type::Quat), Box::new(Type::Quat)),
-                    support_glsl: Some(
-                        "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
             (
                 "sin",
                 ValueFuncDef {
@@ -467,62 +469,6 @@ impl Default for Registry {
                 },
             ),
             (
-                "exp",
-                ValueFuncDef {
-                    ty: Type::func(Type::Float, Type::Float),
-                    support_glsl: None,
-                    listed: false,
-                },
-            ),
-            (
-                "log",
-                ValueFuncDef {
-                    ty: Type::func(Type::Float, Type::Float),
-                    support_glsl: None,
-                    listed: false,
-                },
-            ),
-            (
-                "sqrt",
-                ValueFuncDef {
-                    ty: Type::func(Type::Float, Type::Float),
-                    support_glsl: None,
-                    listed: false,
-                },
-            ),
-            (
-                "tan",
-                ValueFuncDef {
-                    ty: Type::func(Type::Float, Type::Float),
-                    support_glsl: None,
-                    listed: false,
-                },
-            ),
-            (
-                "sinh",
-                ValueFuncDef {
-                    ty: Type::func(Type::Float, Type::Float),
-                    support_glsl: None,
-                    listed: false,
-                },
-            ),
-            (
-                "cosh",
-                ValueFuncDef {
-                    ty: Type::func(Type::Float, Type::Float),
-                    support_glsl: None,
-                    listed: false,
-                },
-            ),
-            (
-                "tanh",
-                ValueFuncDef {
-                    ty: Type::func(Type::Float, Type::Float),
-                    support_glsl: None,
-                    listed: false,
-                },
-            ),
-            (
                 "rot_point",
                 ValueFuncDef {
                     ty: Type::func(
@@ -533,22 +479,7 @@ impl Default for Registry {
                         ),
                     ),
                     support_glsl: Some(
-                        "mat3 value_rot_matrix(vec3 binormal, float angle) {
-    vec3 axis = normalize(binormal);
-    float c = cos(angle);
-    float s = sin(angle);
-    float oc = 1.0 - c;
-    return mat3(
-        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),
-        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),
-        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)
-    );
-}
-
-vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
-    mat3 r = value_rot_matrix(binormal, angle);
-    return anchor + (r * (p - anchor));
-}",
+                        "mat3 value_rot_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nvec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {\n    mat3 r = value_rot_matrix(binormal, angle);\n    return anchor + (r * (p - anchor));\n}",
                     ),
                     listed: false,
                 },
@@ -664,7 +595,7 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
                         ),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
@@ -678,7 +609,7 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
                         ),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
@@ -692,7 +623,7 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
                         ),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
@@ -706,7 +637,7 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
                         ),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
@@ -723,7 +654,7 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
                         ),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
@@ -737,7 +668,7 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
                         ),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
@@ -751,128 +682,8 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
                         ),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
-            ),
-        ]);
-
-        let value_func_overloads = HashMap::from([
-            (
-                "sin",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "sin",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "csin",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "cos",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "cos",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "ccos",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "exp",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "exp",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "cexp",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "log",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "log",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "clog",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "sqrt",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "sqrt",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "csqrt",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "tan",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "tan",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "ctan",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "sinh",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "sinh",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "csinh",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "cosh",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "cosh",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "ccosh",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
-            ),
-            (
-                "tanh",
-                vec![
-                    ValueFuncOverloadDef {
-                        glsl_name: "tanh",
-                        ty: Type::func(Type::Float, Type::Float),
-                    },
-                    ValueFuncOverloadDef {
-                        glsl_name: "ctanh",
-                        ty: Type::func(Type::Complex, Type::Complex),
-                    },
-                ],
             ),
         ]);
 
@@ -880,7 +691,6 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
             primitives,
             object_ops,
             value_funcs,
-            value_func_overloads,
         }
     }
 }
@@ -976,25 +786,28 @@ impl Registry {
             .iter()
             .find(|(candidate, _)| *candidate == name)
         {
+            let body = match (body.is_empty(), builtin_type_support_glsl(name)) {
+                (true, Some(support_glsl)) => support_glsl.to_string(),
+                (false, Some(support_glsl)) => format!("{body}\n\n{support_glsl}"),
+                (_, None) => (*body).to_string(),
+            };
             return Some(KnownBuiltinObjectDetail {
                 name: (*name).to_string(),
                 ty: type_category_signature(name).unwrap_or_else(|| TYPE_METATYPE_NAME.to_string()),
                 kind: KnownBuiltinObjectKind::Type,
-                body: suffix_glsl_float_literals(body),
+                body: suffix_glsl_float_literals(&body),
             });
         }
 
         if let Some(func) = self.value_funcs.get(name) {
-            if !func.listed {
-                return None;
+            if func.listed {
+                return Some(KnownBuiltinObjectDetail {
+                    name: name.to_string(),
+                    ty: format_object_type(&func.ty),
+                    kind: KnownBuiltinObjectKind::Function,
+                    body: suffix_glsl_float_literals(func.support_glsl.unwrap_or_default()),
+                });
             }
-            let body = func.support_glsl?;
-            return Some(KnownBuiltinObjectDetail {
-                name: name.to_string(),
-                ty: format_object_type(&func.ty),
-                kind: KnownBuiltinObjectKind::Function,
-                body: suffix_glsl_float_literals(body),
-            });
         }
 
         let op = self.object_ops.get(name)?;
@@ -1036,6 +849,14 @@ impl Registry {
                 name: name.to_string(),
                 kind: PreregisteredObjectKind::Function,
                 body: suffix_glsl_float_literals(self.value_funcs[name].support_glsl.unwrap()),
+            });
+        }
+
+        for name in ["C", "H", "SE3"] {
+            objects.push(PreregisteredObject {
+                name: name.to_string(),
+                kind: PreregisteredObjectKind::Type,
+                body: suffix_glsl_float_literals(builtin_type_support_glsl(name).unwrap()),
             });
         }
 
@@ -1085,7 +906,7 @@ impl PrimitiveDef {
                 .split_once("\n\n")
                 .map(|(_, function_body)| suffix_glsl_float_literals(function_body))
                 .unwrap_or_else(|| format!("float sdf0_{name}(...) {{}}")),
-            PrimitiveKind::Polygon2D => suffix_glsl_float_literals(self.support_glsl),
+            PrimitiveKind::Polygon2D => self.support_glsl.to_string(),
         }
     }
 
