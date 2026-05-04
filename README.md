@@ -61,6 +61,8 @@ use `lane -h` or `lane --help` for help.
   `SOURCE` is omitted, Lane reads source from stdin.
 - `lane SOURCE TARGET` compiles `SOURCE` and writes GLSL to `TARGET` instead of
   stdout.
+- Compiler errors include the 1-based source line when Lane can associate the
+  error with a declaration.
 - `lane -l` or `lane --list` lists all primitive constructors and their GLSL
   parameter structs.
 - `lane -l NAME` or `lane --list NAME` shows one primitive's visible parameter

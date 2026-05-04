@@ -5,19 +5,23 @@ impl TypedProgram {
         let mut env = Env::new(registry);
 
         for input in &program.inputs {
-            env.insert(input.name.clone(), input.ty.clone())?;
+            env.insert(input.name.clone(), input.ty.clone())
+                .map_err(|err| err.with_line(input.line))?;
         }
 
         for func in &program.funcs {
-            env.insert(func.name.clone(), func.ty.clone())?;
+            env.insert(func.name.clone(), func.ty.clone())
+                .map_err(|err| err.with_line(func.line))?;
         }
 
         for binding in &program.value_bindings {
-            env.insert(binding.name.clone(), binding.ty.clone())?;
+            env.insert(binding.name.clone(), binding.ty.clone())
+                .map_err(|err| err.with_line(binding.line))?;
         }
 
         for binding in &program.bindings {
-            env.insert(binding.name.clone(), binding.ty.clone())?;
+            env.insert(binding.name.clone(), binding.ty.clone())
+                .map_err(|err| err.with_line(binding.line))?;
         }
 
         let mut typed_funcs = Vec::new();
@@ -29,14 +33,16 @@ impl TypedProgram {
                         "function '{}' must have a function type, got {}",
                         func.name,
                         format_type(other)
-                    )))
+                    ))
+                    .with_line(func.line))
                 }
             };
             if input_ty != Type::Float {
                 return Err(Error::new(format!(
                     "function '{}' currently only supports float inputs",
                     func.name
-                )));
+                ))
+                .with_line(func.line));
             }
             if !matches!(
                 output_ty,
@@ -52,11 +58,14 @@ impl TypedProgram {
                 return Err(Error::new(format!(
                     "function '{}' currently only supports scalar, vector, or matrix outputs",
                     func.name
-                )));
+                ))
+                .with_line(func.line));
             }
 
-            let expr = infer_value_expr(&func.expr, &env, Some("t"))?;
-            ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))?;
+            let expr = infer_value_expr(&func.expr, &env, Some("t"))
+                .map_err(|err| err.with_line(func.line))?;
+            ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
+                .map_err(|err| err.with_line(func.line))?;
             typed_funcs.push(TypedFunc {
                 name: func.name.clone(),
                 output: output_ty,
@@ -66,12 +75,14 @@ impl TypedProgram {
 
         let mut typed_value_bindings = Vec::new();
         for binding in &program.value_bindings {
-            let expr = infer_value_expr(&binding.expr, &env, None)?;
+            let expr = infer_value_expr(&binding.expr, &env, None)
+                .map_err(|err| err.with_line(binding.line))?;
             ensure_type(
                 &expr.ty(),
                 &binding.ty,
                 &format!("binding '{}'", binding.name),
-            )?;
+            )
+            .map_err(|err| err.with_line(binding.line))?;
             typed_value_bindings.push(TypedValueBinding {
                 name: binding.name.clone(),
                 ty: binding.ty.clone(),
@@ -85,8 +96,10 @@ impl TypedProgram {
                 &binding.ty,
                 &Type::Object,
                 &format!("binding '{}'", binding.name),
-            )?;
-            let expr = infer_object_expr(&binding.expr, &env)?;
+            )
+            .map_err(|err| err.with_line(binding.line))?;
+            let expr = infer_object_expr(&binding.expr, &env)
+                .map_err(|err| err.with_line(binding.line))?;
             typed_bindings.push(TypedBinding {
                 name: binding.name.clone(),
                 expr,
@@ -94,7 +107,8 @@ impl TypedProgram {
             });
         }
 
-        let output = infer_object_expr(&program.output.expr, &env)?;
+        let output = infer_object_expr(&program.output.expr, &env)
+            .map_err(|err| err.with_line(program.output.line))?;
 
         Ok(Self {
             inputs: program.inputs.clone(),

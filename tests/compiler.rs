@@ -524,6 +524,31 @@ fn reports_the_offending_token_for_expression_parse_errors() {
 }
 
 #[test]
+fn reports_line_number_for_parse_errors() {
+    let source = "Object ok = Ball3D(r=1)
+generate Ball3D(r=1) provided R time
+";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(err.line(), Some(2));
+    assert!(err.to_string().contains("line 2:"));
+    assert!(err.to_string().contains("identifier 'provided'"));
+}
+
+#[test]
+fn reports_line_number_for_type_errors() {
+    let source = "Object ok = Ball3D(r=1)
+R bad = (1, 2, 3)
+generate ok
+";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(err.line(), Some(2));
+    assert!(err.to_string().contains("line 2:"));
+    assert!(err.to_string().contains("binding 'bad'"));
+}
+
+#[test]
 fn emits_only_used_support_code() {
     let source = "Object A = Ball3D(r=3)\ngenerate A\n";
     let glsl = compile_program(source).unwrap();

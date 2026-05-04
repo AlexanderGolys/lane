@@ -53,19 +53,36 @@ pub fn preregistered_object(name: &str) -> Option<PreregisteredObject> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     message: String,
+    line: Option<usize>,
 }
 
 impl Error {
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            line: None,
         }
+    }
+
+    fn with_line(mut self, line: usize) -> Self {
+        if self.line.is_none() {
+            self.line = Some(line);
+        }
+        self
+    }
+
+    pub fn line(&self) -> Option<usize> {
+        self.line
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
+        if let Some(line) = self.line {
+            write!(f, "line {line}: {}", self.message)
+        } else {
+            f.write_str(&self.message)
+        }
     }
 }
 
@@ -495,6 +512,7 @@ fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> boo
 struct InputDecl {
     name: String,
     ty: Type,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -502,6 +520,7 @@ struct FuncDecl {
     name: String,
     ty: Type,
     expr: Expr,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -510,6 +529,7 @@ struct BindingDecl {
     ty: Type,
     expr: Expr,
     generated: bool,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -517,11 +537,13 @@ struct ValueBindingDecl {
     name: String,
     ty: Type,
     expr: Expr,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]
 struct OutputDecl {
     expr: Expr,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]

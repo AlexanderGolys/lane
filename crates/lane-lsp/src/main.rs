@@ -34,12 +34,15 @@ impl Backend {
     async fn publish_diagnostics(&self, uri: Url, text: String) {
         let diagnostics = match lane::compile_program(&text) {
             Ok(_) => Vec::new(),
-            Err(error) => vec![Diagnostic {
-                range: Range::new(Position::new(0, 0), Position::new(0, 1)),
-                severity: Some(DiagnosticSeverity::ERROR),
-                message: error.to_string(),
-                ..Diagnostic::default()
-            }],
+            Err(error) => {
+                let line = error.line().unwrap_or(1).saturating_sub(1) as u32;
+                vec![Diagnostic {
+                    range: Range::new(Position::new(line, 0), Position::new(line, 1)),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    message: error.to_string(),
+                    ..Diagnostic::default()
+                }]
+            }
         };
         self.client
             .publish_diagnostics(uri, diagnostics, None)

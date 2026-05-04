@@ -33,13 +33,17 @@ impl<'a> Parser<'a> {
         let mut bindings = Vec::new();
         let mut output = None;
 
-        for raw_line in self.source.lines() {
+        for (line_index, raw_line) in self.source.lines().enumerate() {
+            let line_number = line_index + 1;
             let line = strip_line_comment(raw_line).trim();
             if line.is_empty() {
                 continue;
             }
 
-            match self.parse_decl(line)? {
+            match self
+                .parse_decl(line, line_number)
+                .map_err(|err| err.with_line(line_number))?
+            {
                 Decl::Input(input) => inputs.push(input),
                 Decl::Func(func) => funcs.push(func),
                 Decl::ValueBinding(binding) => value_bindings.push(binding),
@@ -64,12 +68,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_decl(&self, line: &str) -> Result<Decl, Error> {
+    fn parse_decl(&self, line: &str, line_number: usize) -> Result<Decl, Error> {
         if let Some(rest) = line.strip_prefix("provided ") {
             let (ty, name) = split_type_name(rest.trim())?;
             return Ok(Decl::Input(InputDecl {
                 name: name.to_string(),
                 ty: parse_type(ty)?,
+                line: line_number,
             }));
         }
 
@@ -86,7 +91,10 @@ impl<'a> Parser<'a> {
                 }
             }
             let expr = ExprParser::new(expr_source).parse()?;
-            return Ok(Decl::Output(OutputDecl { expr }));
+            return Ok(Decl::Output(OutputDecl {
+                expr,
+                line: line_number,
+            }));
         }
 
         let generated = line.starts_with("construct ") || line.starts_with("const ");
@@ -113,6 +121,7 @@ impl<'a> Parser<'a> {
                 name: name.to_string(),
                 ty,
                 expr,
+                line: line_number,
             }));
         }
         if !matches!(ty, Type::Object) {
@@ -125,6 +134,7 @@ impl<'a> Parser<'a> {
                 name: name.to_string(),
                 ty,
                 expr,
+                line: line_number,
             }));
         }
         Ok(Decl::Binding(BindingDecl {
@@ -132,6 +142,7 @@ impl<'a> Parser<'a> {
             ty,
             expr,
             generated,
+            line: line_number,
         }))
     }
 }
