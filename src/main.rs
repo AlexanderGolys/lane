@@ -8,7 +8,7 @@ const COLOR_TYPE: &str = "33";
 const COLOR_CATEGORY: &str = "93";
 const COLOR_CAT_METATYPE: &str = "97";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -141,45 +141,7 @@ fn print_compiled_program(source: &str) -> Result<(), Box<dyn std::error::Error>
 }
 
 fn compile_program_output(source: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let glsl = lane::compile_program(source)?;
-    Ok(match fragment_shader_version(source) {
-        Some(version) => wrap_fragment_shader(&glsl, version)?,
-        None => glsl,
-    })
-}
-
-fn fragment_shader_version(source: &str) -> Option<&str> {
-    source.lines().find_map(|line| {
-        line.trim()
-            .strip_prefix("// fragment-shader:")
-            .map(str::trim)
-            .filter(|version| !version.is_empty())
-    })
-}
-
-fn wrap_fragment_shader(glsl: &str, version: &str) -> Result<String, Box<dyn std::error::Error>> {
-    if !scene_sdf_accepts_only_point(glsl) {
-        return Err(
-            "fragment shader wrapper currently requires `scene_sdf(vec3 ...)` without extra inputs"
-                .into(),
-        );
-    }
-
-    Ok(format!(
-        "{version}\n\nout vec4 fragColor;\nuniform vec2 resolution;\n\n{glsl}\n\nvoid main() {{\n    vec2 uv = ((2.0 * gl_FragCoord.xy) - resolution) / min(resolution.x, resolution.y);\n    float d = scene_sdf(vec3(uv, 0.0));\n    fragColor = d <= 0.0 ? vec4(vec3(1.0), 1.0) : vec4(vec3(0.0), 1.0);\n}}"
-    ))
-}
-
-fn scene_sdf_accepts_only_point(glsl: &str) -> bool {
-    glsl.lines().any(|line| {
-        let Some(signature) = line.trim().strip_prefix("float scene_sdf(") else {
-            return false;
-        };
-        let Some((args, _)) = signature.split_once(')') else {
-            return false;
-        };
-        args.starts_with("vec3 ") && !args.contains(',')
-    })
+    Ok(lane::compile_program(source)?)
 }
 
 fn print_help() {
@@ -479,10 +441,7 @@ fn color<'a>(code: &'a str, text: &'a str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        fragment_shader_version, highlight_builtin_object_line, highlight_glsl,
-        scene_sdf_accepts_only_point, wrap_fragment_shader,
-    };
+    use super::{highlight_builtin_object_line, highlight_glsl};
 
     #[test]
     fn highlights_glsl_keywords_types_and_numbers() {
@@ -542,33 +501,5 @@ mod tests {
         assert!(highlighted.contains("\x1b[33mObject\x1b[0m"));
         assert!(highlighted.contains("\x1b[33mType\x1b[0m"));
         assert!(!highlighted.contains("\x1b[93mType\x1b[0m"));
-    }
-
-    #[test]
-    fn detects_fragment_shader_directive() {
-        let source = "// fragment-shader: #version 330 core\ngenerate Ball3D(r=1)\n";
-
-        assert_eq!(fragment_shader_version(source), Some("#version 330 core"));
-    }
-
-    #[test]
-    fn wraps_minimal_fragment_shader() {
-        let wrapped = wrap_fragment_shader(
-            "float scene_sdf(vec3 p) { return length(p); }",
-            "#version 330 core",
-        )
-        .unwrap();
-
-        assert!(wrapped.starts_with("#version 330 core"));
-        assert!(wrapped.contains("uniform vec2 resolution;"));
-        assert!(wrapped.contains("float d = scene_sdf(vec3(uv, 0.0));"));
-        assert!(wrapped.contains("fragColor = d <= 0.0"));
-    }
-
-    #[test]
-    fn rejects_fragment_wrapper_for_extra_scene_inputs() {
-        assert!(!scene_sdf_accepts_only_point(
-            "float scene_sdf(vec3 p, float time) { return time; }"
-        ));
     }
 }

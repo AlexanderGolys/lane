@@ -407,7 +407,7 @@ fn writes_compiled_output_to_target_path() {
 }
 
 #[test]
-fn wraps_output_in_fragment_shader_when_directive_is_present() {
+fn treats_fragment_shader_directive_as_a_comment() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -426,33 +426,9 @@ fn wraps_output_in_fragment_shader_when_directive_is_present() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.starts_with("#version 330 core"));
-    assert!(stdout.contains("uniform vec2 resolution;"));
-    assert!(stdout.contains("float d = scene_sdf(vec3(uv, 0.0));"));
-}
-
-#[test]
-fn rejects_fragment_shader_wrapper_for_lane_inputs() {
-    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
-            use std::io::Write;
-            child
-                .stdin
-                .as_mut()
-                .unwrap()
-                .write_all(b"// fragment-shader: #version 330 core\nprovided Float time\ngenerate Ball3D(r=time)\n")?;
-            child.wait_with_output()
-        })
-        .unwrap();
-
-    assert!(!output.status.success());
-
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("fragment shader wrapper currently requires"));
+    assert!(!stdout.starts_with("#version 330 core"));
+    assert!(!stdout.contains("uniform vec2 resolution;"));
+    assert!(stdout.contains("float scene_sdf(vec3 p)"));
 }
 
 fn unique_temp_dir(name: &str) -> std::path::PathBuf {

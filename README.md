@@ -80,16 +80,6 @@ use `lane -h` or `lane --help` for help.
   code for `bash`, `zsh`, or `fish`; primitive and builtin object candidates
   are generated from the compiler registry.
 
-Add this directive comment to request a minimal fullscreen fragment shader
-wrapper instead of a bare GLSL SDF snippet:
-
-```lane
-// fragment-shader: #version 330 core
-generate Ball3D(r=1)
-```
-
-The wrapper currently requires `scene_sdf(vec3 p)` with no extra Lane inputs.
-
 ## LSP
 
 The LSP server provides full-document sync and compile diagnostics by re-running
