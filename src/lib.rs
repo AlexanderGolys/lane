@@ -812,10 +812,17 @@ struct ValueFuncDef {
 }
 
 #[derive(Clone, Debug)]
+struct ValueFuncOverloadDef {
+    glsl_name: &'static str,
+    ty: Type,
+}
+
+#[derive(Clone, Debug)]
 struct Registry {
     primitives: HashMap<&'static str, PrimitiveDef>,
     object_ops: HashMap<&'static str, ObjectOpDef>,
     value_funcs: HashMap<&'static str, ValueFuncDef>,
+    value_func_overloads: HashMap<&'static str, Vec<ValueFuncOverloadDef>>,
 }
 
 fn object_op_type(op: &ObjectOpDef) -> Type {

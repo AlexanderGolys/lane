@@ -467,6 +467,62 @@ impl Default for Registry {
                 },
             ),
             (
+                "exp",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "log",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "sqrt",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "tan",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "sinh",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "cosh",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
+                "tanh",
+                ValueFuncDef {
+                    ty: Type::func(Type::Float, Type::Float),
+                    support_glsl: None,
+                    listed: false,
+                },
+            ),
+            (
                 "rot_point",
                 ValueFuncDef {
                     ty: Type::func(
@@ -700,10 +756,131 @@ vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
             ),
         ]);
 
+        let value_func_overloads = HashMap::from([
+            (
+                "sin",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "sin",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "csin",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "cos",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "cos",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "ccos",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "exp",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "exp",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "cexp",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "log",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "log",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "clog",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "sqrt",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "sqrt",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "csqrt",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "tan",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "tan",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "ctan",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "sinh",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "sinh",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "csinh",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "cosh",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "cosh",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "ccosh",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+            (
+                "tanh",
+                vec![
+                    ValueFuncOverloadDef {
+                        glsl_name: "tanh",
+                        ty: Type::func(Type::Float, Type::Float),
+                    },
+                    ValueFuncOverloadDef {
+                        glsl_name: "ctanh",
+                        ty: Type::func(Type::Complex, Type::Complex),
+                    },
+                ],
+            ),
+        ]);
+
         Self {
             primitives,
             object_ops,
             value_funcs,
+            value_func_overloads,
         }
     }
 }

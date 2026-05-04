@@ -378,9 +378,11 @@ larger scene using most registered primitives and operators.
 | `ctan` | `Hom(C, C)` |
 | `ctanh` | `Hom(C, C)` |
 
-Raw GLSL `sin` and `cos` are also available as `Hom(R, R)` value functions, but
-they are not listed by `lane --list-objects` because they do not require custom
-support code.
+Value calls can be overloaded by argument type. `sin`, `cos`, `exp`, `log`,
+`sqrt`, `tan`, `sinh`, `cosh`, and `tanh` use raw GLSL for `R` arguments and
+lower to the corresponding complex helper (`csin`, `ccos`, `cexp`, etc.) for
+`C` arguments. The raw GLSL overloads are not listed by `lane --list-objects`
+because they do not require custom support code.
 
 ### Differential Builtins
 

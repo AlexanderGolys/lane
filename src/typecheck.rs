@@ -464,71 +464,7 @@ fn infer_value_expr(
                 Expr::Ident(name) => name,
                 _ => return Err(Error::new("only named value functions are supported")),
             };
-            let mut current_ty = env
-                .get(name)
-                .cloned()
-                .ok_or_else(|| Error::new(format!("unknown function '{}'", name)))?;
-            let mut typed_args = Vec::new();
-            let mut index = 0;
-            while index < args.len() {
-                let (input_ty, output_ty) = match current_ty {
-                    Type::Func(input, output) => (*input, *output),
-                    _ => {
-                        return Err(Error::new(format!(
-                            "'{}' is not callable with more arguments",
-                            name
-                        )))
-                    }
-                };
-                match input_ty {
-                    Type::Product(items) => {
-                        if args.len() - index < items.len() {
-                            return Err(Error::new(format!(
-                                "call '{}(...)' expected {} argument(s), got {}",
-                                name,
-                                items.len(),
-                                args.len() - index
-                            )));
-                        }
-                        for expected_ty in items {
-                            let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
-                            ensure_type(
-                                &typed_arg.ty(),
-                                &expected_ty,
-                                &format!("call '{}(...)'", name),
-                            )?;
-                            typed_args.push(typed_arg);
-                            index += 1;
-                        }
-                    }
-                    input_ty => {
-                        let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
-                        ensure_type(&typed_arg.ty(), &input_ty, &format!("call '{}(...)'", name))?;
-                        typed_args.push(typed_arg);
-                        index += 1;
-                    }
-                }
-                current_ty = output_ty;
-            }
-
-            match current_ty {
-                Type::Float
-                | Type::Int
-                | Type::Complex
-                | Type::Quat
-                | Type::Vec2
-                | Type::Vec3
-                | Type::Vec4
-                | Type::Mat(_, _) => Ok(ValueExpr::Call {
-                    func: name.clone(),
-                    args: typed_args,
-                    ty: current_ty,
-                }),
-                Type::Object | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
-                    "value expression '{}' does not return a value type",
-                    name
-                ))),
-            }
+            infer_named_value_call(name, args, env, lift_param)
         }
         Expr::Binary {
             op: BinOp::Compose,
@@ -559,6 +495,113 @@ fn infer_value_expr(
                 Err(Error::new("primitive constructors are object expressions"))
             }
         },
+    }
+}
+
+fn infer_named_value_call(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    if let Some(overloads) = env.registry.value_func_overloads.get(name) {
+        let mut mismatch = None;
+        for overload in overloads {
+            match infer_value_call_with_type(
+                name,
+                overload.glsl_name,
+                &overload.ty,
+                args,
+                env,
+                lift_param,
+            ) {
+                Ok(value) => return Ok(value),
+                Err(err) => mismatch = Some(err),
+            }
+        }
+        return Err(mismatch.unwrap_or_else(|| Error::new(format!("unknown function '{}'", name))));
+    }
+
+    let ty = env
+        .get(name)
+        .cloned()
+        .ok_or_else(|| Error::new(format!("unknown function '{}'", name)))?;
+    infer_value_call_with_type(name, name, &ty, args, env, lift_param)
+}
+
+fn infer_value_call_with_type(
+    lane_name: &str,
+    glsl_name: &str,
+    ty: &Type,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    let mut current_ty = ty.clone();
+    let mut typed_args = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let (input_ty, output_ty) = match current_ty {
+            Type::Func(input, output) => (*input, *output),
+            _ => {
+                return Err(Error::new(format!(
+                    "'{}' is not callable with more arguments",
+                    lane_name
+                )))
+            }
+        };
+        match input_ty {
+            Type::Product(items) => {
+                if args.len() - index < items.len() {
+                    return Err(Error::new(format!(
+                        "call '{}(...)' expected {} argument(s), got {}",
+                        lane_name,
+                        items.len(),
+                        args.len() - index
+                    )));
+                }
+                for expected_ty in items {
+                    let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
+                    ensure_type(
+                        &typed_arg.ty(),
+                        &expected_ty,
+                        &format!("call '{}(...)'", lane_name),
+                    )?;
+                    typed_args.push(typed_arg);
+                    index += 1;
+                }
+            }
+            input_ty => {
+                let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
+                ensure_type(
+                    &typed_arg.ty(),
+                    &input_ty,
+                    &format!("call '{}(...)'", lane_name),
+                )?;
+                typed_args.push(typed_arg);
+                index += 1;
+            }
+        }
+        current_ty = output_ty;
+    }
+
+    match current_ty {
+        Type::Float
+        | Type::Int
+        | Type::Complex
+        | Type::Quat
+        | Type::Vec2
+        | Type::Vec3
+        | Type::Vec4
+        | Type::Mat(_, _) => Ok(ValueExpr::Call {
+            func: glsl_name.to_string(),
+            args: typed_args,
+            ty: current_ty,
+        }),
+        Type::Object | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
+            "value expression '{}' does not return a value type",
+            lane_name
+        ))),
     }
 }
 

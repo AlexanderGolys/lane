@@ -392,6 +392,27 @@ fn emits_support_for_custom_complex_functions() {
 }
 
 #[test]
+fn resolves_overloaded_value_functions_by_argument_type() {
+    let source = "provided C z\nC wave = sin(z)\nR pulse = sin(1)\ngenerate Ball3D(r=pulse)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 csin(vec2 z)"));
+    assert!(glsl.contains("vec2 wave = csin(z);"));
+    assert!(glsl.contains("float pulse = sin(1.0);"));
+}
+
+#[test]
+fn supports_overloaded_complex_transcendentals() {
+    let source = "provided C z\nC shaped = exp(z) + cos(z) + tanh(z)\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 cexp(vec2 z)"));
+    assert!(glsl.contains("vec2 ccos(vec2 z)"));
+    assert!(glsl.contains("vec2 ctanh(vec2 z)"));
+    assert!(glsl.contains("vec2 shaped = ((cexp(z) + ccos(z)) + ctanh(z));"));
+}
+
+#[test]
 fn lowers_complex_ring_operations_through_category_helpers() {
     let source = "provided C z\nC product = z * z\nC shifted = 1 - (z / z)\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
