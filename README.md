@@ -304,8 +304,9 @@ Object slab = Extrusion(.2)(Box2D(1, .5)) + (0, 0, 1)
 generate Union(lathe, slab)
 ```
 
-The repository includes `test.lane` as a compact sample and `showcase.lane` as a
-larger scene using most registered primitives and operators.
+The repository includes `test.lane` as a compact sample, `example1.lane` as an
+orbiting 3D scene using value-level `rot(...)`, and `showcase.lane` as a larger
+scene using most registered primitives and operators.
 
 ## Registered Objects
 

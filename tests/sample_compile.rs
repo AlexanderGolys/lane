@@ -76,3 +76,13 @@ fn compiles_showcase_program_to_glsl() {
     assert!(glsl.contains("float scene_sdf(vec3 p, float time, mat3 frame) {"));
     assert!(glsl.contains("vec3 scene_grad(vec3 p, float time, mat3 frame) {"));
 }
+
+#[test]
+fn compiles_example1_orbit_scene_to_glsl() {
+    let source = fs::read_to_string("example1.lane").unwrap();
+    let glsl = compile_program(&source).unwrap();
+
+    assert!(glsl.contains("vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle)"));
+    assert!(glsl.contains("vec3 p = rot_point(p1, cross(c, p1), c, (time * v2));"));
+    assert!(glsl.contains("float scene_sdf(vec3 p_"));
+}
