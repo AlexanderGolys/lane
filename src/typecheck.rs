@@ -440,6 +440,9 @@ fn infer_value_expr(
         Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
         Expr::Tuple(items) => infer_tuple_value_expr(items, env, lift_param),
         Expr::Call { callee, args } => {
+            if let Some(result) = infer_rot_point_builtin(callee, args, env, lift_param)? {
+                return Ok(result);
+            }
             if let Some(result) = infer_differential_builtin(expr, env, lift_param)? {
                 return Ok(result);
             }
@@ -452,7 +455,8 @@ fn infer_value_expr(
                 .cloned()
                 .ok_or_else(|| Error::new(format!("unknown function '{}'", name)))?;
             let mut typed_args = Vec::new();
-            for arg in args {
+            let mut index = 0;
+            while index < args.len() {
                 let (input_ty, output_ty) = match current_ty {
                     Type::Func(input, output) => (*input, *output),
                     _ => {
@@ -462,9 +466,34 @@ fn infer_value_expr(
                         )))
                     }
                 };
-                let typed_arg = infer_value_expr(arg, env, lift_param)?;
-                ensure_type(&typed_arg.ty(), &input_ty, &format!("call '{}(...)'", name))?;
-                typed_args.push(typed_arg);
+                match input_ty {
+                    Type::Product(items) => {
+                        if args.len() - index < items.len() {
+                            return Err(Error::new(format!(
+                                "call '{}(...)' expected {} argument(s), got {}",
+                                name,
+                                items.len(),
+                                args.len() - index
+                            )));
+                        }
+                        for expected_ty in items {
+                            let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
+                            ensure_type(
+                                &typed_arg.ty(),
+                                &expected_ty,
+                                &format!("call '{}(...)'", name),
+                            )?;
+                            typed_args.push(typed_arg);
+                            index += 1;
+                        }
+                    }
+                    input_ty => {
+                        let typed_arg = infer_value_expr(&args[index], env, lift_param)?;
+                        ensure_type(&typed_arg.ty(), &input_ty, &format!("call '{}(...)'", name))?;
+                        typed_args.push(typed_arg);
+                        index += 1;
+                    }
+                }
                 current_ty = output_ty;
             }
 
@@ -972,6 +1001,35 @@ fn infer_identifier_value(
             name
         ))),
     }
+}
+
+fn infer_rot_point_builtin(
+    callee: &Expr,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<Option<ValueExpr>, Error> {
+    if !matches!(callee, Expr::Ident(name) if name == "rot") {
+        return Ok(None);
+    }
+    if args.len() != 4 {
+        return Ok(None);
+    }
+
+    let point = infer_value_expr(&args[0], env, lift_param)?;
+    let binormal = infer_value_expr(&args[1], env, lift_param)?;
+    let anchor = infer_value_expr(&args[2], env, lift_param)?;
+    let angle = infer_value_expr(&args[3], env, lift_param)?;
+    ensure_type(&point.ty(), &Type::Vec3, "rot point")?;
+    ensure_type(&binormal.ty(), &Type::Vec3, "rot binormal")?;
+    ensure_type(&anchor.ty(), &Type::Vec3, "rot anchor")?;
+    ensure_type(&angle.ty(), &Type::Float, "rot angle")?;
+
+    Ok(Some(ValueExpr::Call {
+        func: "rot_point".to_string(),
+        args: vec![point, binormal, anchor, angle],
+        ty: Type::Vec3,
+    }))
 }
 
 fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error> {

@@ -467,6 +467,37 @@ impl Default for Registry {
                 },
             ),
             (
+                "rot_point",
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Vec3,
+                        Type::func(
+                            Type::Vec3,
+                            Type::func(Type::Vec3, Type::func(Type::Float, Type::Vec3)),
+                        ),
+                    ),
+                    support_glsl: Some(
+                        "mat3 value_rot_matrix(vec3 binormal, float angle) {
+    vec3 axis = normalize(binormal);
+    float c = cos(angle);
+    float s = sin(angle);
+    float oc = 1.0 - c;
+    return mat3(
+        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),
+        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),
+        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)
+    );
+}
+
+vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {
+    mat3 r = value_rot_matrix(binormal, angle);
+    return anchor + (r * (p - anchor));
+}",
+                    ),
+                    listed: false,
+                },
+            ),
+            (
                 "cinv",
                 ValueFuncDef {
                     ty: Type::func(Type::Complex, Type::Complex),

@@ -1,0 +1,18 @@
+provided R time
+provided Hom(R3 x R3, R3) cross
+
+R3 e3 = (0, 0, 1)
+R3 p0 = (3, 0, 1.7) 
+R3 c0 = (3, 0, 0)
+R v1 = 1
+R v2 = 2
+
+const Object T2 = Torus3D(major=3, minor=1)
+
+R3 c = rot(c0, e3, e3*0, time*v1)
+R3 p1 = rot(p0, e3, e3*0, time*v1)
+R3 p = rot(p1, cross(c, p1), c, time*v2)
+
+const Object B = Ball3D(r=1) + p
+
+generate Union(T2, B)  

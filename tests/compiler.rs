@@ -818,6 +818,35 @@ fn emits_translation_action_from_addition_sugar() {
 }
 
 #[test]
+fn emits_value_level_3d_rotation() {
+    let source = "provided R time
+R3 e3 = (0, 0, 1)
+R3 p = rot((1, 0, 0), e3, e3 * 0, time)
+generate Ball3D(r=1) + p
+";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 rot_point(vec3 p, vec3 binormal, vec3 anchor, float angle)"));
+    assert!(glsl.contains("vec3 p = rot_point(vec3(1.0, 0.0, 0.0), e3, (e3 * 0.0), time);"));
+    assert!(glsl.contains("sdf0_Ball3D(("));
+    assert!(glsl.contains(" - p), ParamBall3D(1.0))"));
+}
+
+#[test]
+fn calls_product_domain_value_functions_with_multiple_arguments() {
+    let source = "provided Hom(R3 x R3, R3) cross
+R3 a = (1, 0, 0)
+R3 b = (0, 1, 0)
+R3 c = cross(a, b)
+generate Ball3D(r=1) + c
+";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 c = cross(a, b);"));
+    assert!(glsl.contains("sdf0_Ball3D((p - c), ParamBall3D(1.0))"));
+}
+
+#[test]
 fn emits_revolution_operator() {
     let source = "generate Revolution(1.5)(Segment2D(a=(0, -1), b=(0, 1)))\n";
     let glsl = compile_program(source).unwrap();

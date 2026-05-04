@@ -191,6 +191,8 @@ Operators:
   combinations.
 - `f @ g` for unary function composition.
 - `f(x)` for value function calls.
+- `rot(p, axis, anchor, angle)` rotates an `R3` point around `axis` and
+  `anchor`.
 
 Arithmetic is typechecked through built-in algebraic categories instead of one
 rule per concrete type. Current categories include additive groups, monoids,
