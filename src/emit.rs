@@ -93,7 +93,7 @@ impl TypedProgram {
         ));
         lines.push("}".to_string());
 
-        lines.join("\n")
+        suffix_glsl_float_literals(&lines.join("\n"))
     }
 
     fn scene_signature(&self, point_name: &str) -> Vec<String> {

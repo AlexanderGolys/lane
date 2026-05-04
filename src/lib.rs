@@ -13,6 +13,69 @@ pub fn compile_program(source: &str) -> Result<String, Error> {
     Ok(typed.emit_glsl(&registry))
 }
 
+pub(crate) fn suffix_glsl_float_literals(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let chars = source.chars().collect::<Vec<_>>();
+    let mut index = 0;
+
+    while index < chars.len() {
+        let ch = chars[index];
+        if ch.is_ascii_digit()
+            && (index == 0
+                || !(chars[index - 1].is_ascii_alphanumeric()
+                    || matches!(chars[index - 1], '_' | '.')))
+        {
+            let start = index;
+            while index < chars.len() && chars[index].is_ascii_digit() {
+                index += 1;
+            }
+
+            let mut is_float = false;
+            if index < chars.len()
+                && chars[index] == '.'
+                && index + 1 < chars.len()
+                && chars[index + 1].is_ascii_digit()
+            {
+                is_float = true;
+                index += 1;
+                while index < chars.len() && chars[index].is_ascii_digit() {
+                    index += 1;
+                }
+            }
+
+            if index < chars.len() && matches!(chars[index], 'e' | 'E') {
+                let exponent_index = index;
+                let mut scan = index + 1;
+                if scan < chars.len() && matches!(chars[scan], '+' | '-') {
+                    scan += 1;
+                }
+                let digits_start = scan;
+                while scan < chars.len() && chars[scan].is_ascii_digit() {
+                    scan += 1;
+                }
+                if scan > digits_start {
+                    is_float = true;
+                    index = scan;
+                } else {
+                    index = exponent_index;
+                }
+            }
+
+            let literal = chars[start..index].iter().collect::<String>();
+            out.push_str(&literal);
+            if is_float && !matches!(chars.get(index), Some('f' | 'F')) {
+                out.push('f');
+            }
+            continue;
+        }
+
+        out.push(ch);
+        index += 1;
+    }
+
+    out
+}
+
 pub fn known_primitives() -> Vec<KnownPrimitive> {
     let registry = Registry::default();
     registry.known_primitives()

@@ -253,6 +253,10 @@ Every compilation emits:
 - `float scene_sdf(vec3 p, ...)`;
 - `vec3 scene_grad(vec3 p, ...)`, computed by finite differences.
 
+Generated GLSL writes decimal and exponent float literals with an `f` suffix
+such as `1.0f` and `0.0005f` for shader compilers that require explicit float
+literals.
+
 Generated local names are renamed when they would collide with user names such
 as `p`, `eps`, `dx`, `dy`, or `dz`.
 

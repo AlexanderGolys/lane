@@ -1,8 +1,35 @@
 use lane::{
-    compile_program, known_builtin_object, known_builtin_objects, known_preregistered_objects,
-    known_primitive, known_primitives, known_primitives_by_dimension, preregistered_object,
-    PreregisteredObjectKind, ShapeDimension,
+    compile_program as compile_program_with_float_suffixes, known_builtin_object,
+    known_builtin_objects, known_preregistered_objects, known_primitive, known_primitives,
+    known_primitives_by_dimension, preregistered_object, Error, PreregisteredObjectKind,
+    ShapeDimension,
 };
+
+fn compile_program(source: &str) -> Result<String, Error> {
+    compile_program_with_float_suffixes(source).map(|glsl| strip_glsl_float_suffixes(&glsl))
+}
+
+fn strip_glsl_float_suffixes(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let chars = source.chars().collect::<Vec<_>>();
+    let mut index = 0;
+
+    while index < chars.len() {
+        if index > 0
+            && chars[index] == 'f'
+            && chars[index - 1].is_ascii_digit()
+            && (index + 1 == chars.len()
+                || !(chars[index + 1].is_ascii_alphanumeric() || chars[index + 1] == '_'))
+        {
+            index += 1;
+            continue;
+        }
+        out.push(chars[index]);
+        index += 1;
+    }
+
+    out
+}
 
 #[test]
 fn lists_known_primitives_with_lane_types() {
@@ -368,6 +395,18 @@ fn composes_unary_functions_in_function_bodies() {
 
     assert!(glsl.contains("float dsl_wobble(float t) {"));
     assert!(glsl.contains("return sin(sin(t));"));
+}
+
+#[test]
+fn emits_glsl_float_literals_with_f_suffixes() {
+    let source = "R radius = .5\ngenerate SmoothUnion(0.25)(Ball3D(r=radius), Ball3D(r=1))\n";
+    let glsl = compile_program_with_float_suffixes(source).unwrap();
+
+    assert!(glsl.contains("k *= 1.0f / (1.0f - sqrt(0.5f));"));
+    assert!(glsl.contains("float radius = 0.5f;"));
+    assert!(glsl.contains("ParamBall3D(1.0f)"));
+    assert!(!glsl.contains("1.0 /"));
+    assert!(!glsl.contains("0.5);"));
 }
 
 #[test]

@@ -980,7 +980,7 @@ impl Registry {
                 name: (*name).to_string(),
                 ty: type_category_signature(name).unwrap_or_else(|| TYPE_METATYPE_NAME.to_string()),
                 kind: KnownBuiltinObjectKind::Type,
-                body: (*body).to_string(),
+                body: suffix_glsl_float_literals(body),
             });
         }
 
@@ -993,7 +993,7 @@ impl Registry {
                 name: name.to_string(),
                 ty: format_object_type(&func.ty),
                 kind: KnownBuiltinObjectKind::Function,
-                body: body.to_string(),
+                body: suffix_glsl_float_literals(body),
             });
         }
 
@@ -1002,7 +1002,7 @@ impl Registry {
             name: op.name.to_string(),
             ty: format_object_type(&object_op_type(op)),
             kind: KnownBuiltinObjectKind::Function,
-            body: op.support_glsl.to_string(),
+            body: suffix_glsl_float_literals(op.support_glsl),
         })
     }
 
@@ -1021,7 +1021,7 @@ impl Registry {
             objects.push(PreregisteredObject {
                 name: op.glsl_name.to_string(),
                 kind: PreregisteredObjectKind::Function,
-                body: op.support_glsl.to_string(),
+                body: suffix_glsl_float_literals(op.support_glsl),
             });
         }
 
@@ -1035,7 +1035,7 @@ impl Registry {
             objects.push(PreregisteredObject {
                 name: name.to_string(),
                 kind: PreregisteredObjectKind::Function,
-                body: self.value_funcs[name].support_glsl.unwrap().to_string(),
+                body: suffix_glsl_float_literals(self.value_funcs[name].support_glsl.unwrap()),
             });
         }
 
@@ -1083,9 +1083,9 @@ impl PrimitiveDef {
             PrimitiveKind::ParamStruct(_) => self
                 .support_glsl
                 .split_once("\n\n")
-                .map(|(_, function_body)| function_body.to_string())
+                .map(|(_, function_body)| suffix_glsl_float_literals(function_body))
                 .unwrap_or_else(|| format!("float sdf0_{name}(...) {{}}")),
-            PrimitiveKind::Polygon2D => self.support_glsl.to_string(),
+            PrimitiveKind::Polygon2D => suffix_glsl_float_literals(self.support_glsl),
         }
     }
 
@@ -1111,7 +1111,7 @@ impl PrimitiveDef {
                     objects.push(PreregisteredObject {
                         name: format!("sdf0_{name}"),
                         kind: PreregisteredObjectKind::Function,
-                        body: function_body.to_string(),
+                        body: suffix_glsl_float_literals(function_body),
                     });
                 }
             }
@@ -1119,7 +1119,7 @@ impl PrimitiveDef {
                 objects.push(PreregisteredObject {
                     name: "sdf0_Polygon2D".to_string(),
                     kind: PreregisteredObjectKind::Function,
-                    body: self.support_glsl.to_string(),
+                    body: suffix_glsl_float_literals(self.support_glsl),
                 });
             }
         }

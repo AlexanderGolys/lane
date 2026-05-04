@@ -401,7 +401,7 @@ fn writes_compiled_output_to_target_path() {
 
     let glsl = std::fs::read_to_string(&target_path).unwrap();
     assert!(glsl.contains("float scene_sdf(vec3 p)"));
-    assert!(glsl.contains("sdf0_Ball3D(p, ParamBall3D(1.0))"));
+    assert!(glsl.contains("sdf0_Ball3D(p, ParamBall3D(1.0f))"));
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }

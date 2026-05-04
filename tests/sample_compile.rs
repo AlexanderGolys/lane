@@ -1,5 +1,31 @@
-use lane::compile_program;
+use lane::{compile_program as compile_program_with_float_suffixes, Error};
 use std::fs;
+
+fn compile_program(source: &str) -> Result<String, Error> {
+    compile_program_with_float_suffixes(source).map(|glsl| strip_glsl_float_suffixes(&glsl))
+}
+
+fn strip_glsl_float_suffixes(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let chars = source.chars().collect::<Vec<_>>();
+    let mut index = 0;
+
+    while index < chars.len() {
+        if index > 0
+            && chars[index] == 'f'
+            && chars[index - 1].is_ascii_digit()
+            && (index + 1 == chars.len()
+                || !(chars[index + 1].is_ascii_alphanumeric() || chars[index + 1] == '_'))
+        {
+            index += 1;
+            continue;
+        }
+        out.push(chars[index]);
+        index += 1;
+    }
+
+    out
+}
 
 #[test]
 fn compiles_sample_program_to_glsl() {
