@@ -371,15 +371,7 @@ fn highlight_glsl(source: &str) -> String {
         }
         if ch.is_ascii_digit() {
             let start = i;
-            i += 1;
-            while i < bytes.len() {
-                let next = bytes[i] as char;
-                if next.is_ascii_alphanumeric() || matches!(next, '.' | '_' | '+' | '-') {
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
+            i = scan_glsl_number(bytes, i);
             out.push_str(&color("36", &source[start..i]));
             continue;
         }
@@ -402,6 +394,36 @@ fn highlight_glsl(source: &str) -> String {
         i += 1;
     }
     out
+}
+
+fn scan_glsl_number(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+        i += 1;
+    }
+    if i < bytes.len() && bytes[i] == b'.' {
+        i += 1;
+        while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+            i += 1;
+        }
+    }
+    if i < bytes.len() && matches!(bytes[i], b'e' | b'E') {
+        let exponent = i;
+        i += 1;
+        if i < bytes.len() && matches!(bytes[i], b'+' | b'-') {
+            i += 1;
+        }
+        let digits = i;
+        while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+            i += 1;
+        }
+        if i == digits {
+            i = exponent;
+        }
+    }
+    if i < bytes.len() && matches!(bytes[i], b'f' | b'F') {
+        i += 1;
+    }
+    i
 }
 
 fn highlight_ident(token: &str) -> String {
@@ -445,12 +467,12 @@ mod tests {
 
     #[test]
     fn highlights_glsl_keywords_types_and_numbers() {
-        let highlighted = highlight_glsl("float scene_sdf(vec3 p) { return 1.0; }");
+        let highlighted = highlight_glsl("float scene_sdf(vec3 p) { return 1.0f-2e-3f; }");
 
         assert!(highlighted.contains("\x1b[35mfloat\x1b[0m"));
         assert!(highlighted.contains("\x1b[34mvec3\x1b[0m"));
         assert!(highlighted.contains("\x1b[33mscene_sdf\x1b[0m"));
-        assert!(highlighted.contains("\x1b[36m1.0\x1b[0m"));
+        assert!(highlighted.contains("\x1b[36m1.0f\x1b[0m-\x1b[36m2e-3f\x1b[0m"));
     }
 
     #[test]
