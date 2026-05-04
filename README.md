@@ -128,8 +128,9 @@ gen object_expression
 value binding, a value function, or an `Object` binding depending on its type.
 `construct` and `const` are only valid for `Object` bindings and export
 stable helper functions named `sdf_name` and `grad_sdf_name` in the generated
-GLSL. A program must contain exactly one final output declaration using
-`generate` or `gen`.
+GLSL. Later object expressions reuse those generated helpers instead of
+inlining the object body again. A program must contain exactly one final output
+declaration using `generate` or `gen`.
 
 ### Types
 
@@ -256,6 +257,9 @@ Every compilation emits:
 Generated GLSL writes decimal and exponent float literals with an `f` suffix
 such as `1.0f` and `0.0005f` for shader compilers that require explicit float
 literals.
+
+Scene-invariant value bindings are emitted once as global `const` values.
+Function-local value bindings are emitted only in helpers that reference them.
 
 Generated local names are renamed when they would collide with user names such
 as `p`, `eps`, `dx`, `dy`, or `dz`.

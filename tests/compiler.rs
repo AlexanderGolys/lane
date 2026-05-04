@@ -555,6 +555,30 @@ fn generated_helpers_capture_scene_inputs_in_their_signatures() {
 }
 
 #[test]
+fn scene_sdf_reuses_generated_object_helpers() {
+    let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2) + (1, 0, 0)\ngenerate Union(a, b)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sdf_a(vec3 p) {"));
+    assert!(glsl.contains("float sdf_b(vec3 p) {"));
+    assert!(glsl.contains("return op_union(sdf_a(p), sdf_b(p));"));
+    assert!(!glsl.contains("return op_union(sdf0_Ball3D"));
+}
+
+#[test]
+fn hoists_scene_invariant_value_bindings_to_global_consts() {
+    let source = "provided R time\nR3 axis = (0, 0, 1)\nR3 start = (1, 0, 0)\nR3 p = rot(start, axis, axis * 0, time)\nconst Object b = Ball3D(r=1) + p\ngenerate b\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("const vec3 axis = vec3(0.0, 0.0, 1.0);"));
+    assert!(glsl.contains("const vec3 start = vec3(1.0, 0.0, 0.0);"));
+    assert!(glsl.contains("float sdf_b(vec3 p_"));
+    assert!(glsl.contains("vec3 p = rot_point(start, axis, (axis * 0.0), time);"));
+    assert!(glsl.contains("float scene_sdf(vec3 p_"));
+    assert!(glsl.contains("return sdf_b(p_"));
+}
+
+#[test]
 fn renames_generated_locals_on_name_conflicts() {
     let source = "provided Float p\nprovided Float eps\ngenerate Ball3D(r=eps) + (p, 0, 0)\n";
     let glsl = compile_program(source).unwrap();

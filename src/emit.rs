@@ -10,6 +10,14 @@ impl TypedProgram {
             lines.push(String::new());
         }
 
+        let global_value_names = self.global_value_binding_names();
+        for line in self.emit_global_value_binding_lines(&global_value_names, &self.func_names()) {
+            lines.push(line);
+        }
+        if !global_value_names.is_empty() {
+            lines.push(String::new());
+        }
+
         for func in &self.funcs {
             let func_var_names = HashMap::from([("t".to_string(), locals.func_param.clone())]);
             lines.push(format!(
@@ -39,13 +47,27 @@ impl TypedProgram {
                 binding,
                 &object_bindings,
                 &helper_names,
+                &scene_input_names,
+                &global_value_names,
                 &locals,
             ));
         }
 
         lines.push(format!("float scene_sdf({}) {{", signature.join(", ")));
-        lines.extend(self.emit_value_binding_lines(&helper_names));
-        let output = emit_object_expr(&self.output, &locals.point, &object_bindings, &helper_names);
+        let scene_value_names =
+            self.needed_value_binding_names(&self.output, &object_bindings, &global_value_names);
+        lines.extend(self.emit_value_binding_lines(
+            &helper_names,
+            &global_value_names,
+            &scene_value_names,
+        ));
+        let output = emit_object_expr(
+            &self.output,
+            &locals.point,
+            &object_bindings,
+            &helper_names,
+            &scene_input_names,
+        );
         lines.push(format!("    return {};", output));
         lines.push("}".to_string());
 
@@ -133,9 +155,18 @@ impl TypedProgram {
             .collect()
     }
 
-    fn emit_value_binding_lines(&self, helper_names: &HashMap<String, String>) -> Vec<String> {
+    fn emit_value_binding_lines(
+        &self,
+        helper_names: &HashMap<String, String>,
+        global_value_names: &BTreeSet<String>,
+        needed_value_names: &BTreeSet<String>,
+    ) -> Vec<String> {
         self.value_bindings
             .iter()
+            .filter(|binding| {
+                !global_value_names.contains(&binding.name)
+                    && needed_value_names.contains(&binding.name)
+            })
             .map(|binding| {
                 format!(
                     "    {} {} = {};",
@@ -147,22 +178,87 @@ impl TypedProgram {
             .collect()
     }
 
-    fn object_bindings(&self) -> BTreeMap<String, ObjectExpr> {
+    fn emit_global_value_binding_lines(
+        &self,
+        global_value_names: &BTreeSet<String>,
+        helper_names: &HashMap<String, String>,
+    ) -> Vec<String> {
+        self.value_bindings
+            .iter()
+            .filter(|binding| global_value_names.contains(&binding.name))
+            .map(|binding| {
+                format!(
+                    "const {} {} = {};",
+                    binding.ty.glsl_name(),
+                    binding.name,
+                    emit_plain_value_expr(&binding.expr, helper_names)
+                )
+            })
+            .collect()
+    }
+
+    fn global_value_binding_names(&self) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        for binding in &self.value_bindings {
+            if is_global_const_value_expr(&binding.expr, &names) {
+                names.insert(binding.name.clone());
+            }
+        }
+        names
+    }
+
+    fn needed_value_binding_names(
+        &self,
+        expr: &ObjectExpr,
+        object_bindings: &BTreeMap<String, ObjectBinding>,
+        global_value_names: &BTreeSet<String>,
+    ) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        collect_object_value_refs(expr, object_bindings, &mut names);
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for binding in &self.value_bindings {
+                if names.contains(&binding.name) {
+                    let before = names.len();
+                    collect_value_refs(&binding.expr, &mut names);
+                    changed |= names.len() != before;
+                }
+            }
+        }
+
+        for name in global_value_names {
+            names.remove(name);
+        }
+        names
+    }
+
+    fn object_bindings(&self) -> BTreeMap<String, ObjectBinding> {
         self.bindings
             .iter()
-            .map(|binding| (binding.name.clone(), binding.expr.clone()))
+            .map(|binding| {
+                (
+                    binding.name.clone(),
+                    ObjectBinding {
+                        expr: binding.expr.clone(),
+                        generated: binding.generated,
+                    },
+                )
+            })
             .collect()
     }
 
     fn emit_generated_binding(
         &self,
         binding: &TypedBinding,
-        object_bindings: &BTreeMap<String, ObjectExpr>,
+        object_bindings: &BTreeMap<String, ObjectBinding>,
         helper_names: &HashMap<String, String>,
+        scene_input_names: &[String],
+        global_value_names: &BTreeSet<String>,
         locals: &EmitLocals,
     ) -> Vec<String> {
         let signature = self.scene_signature(&locals.point);
-        let scene_input_names = self.scene_input_names();
         let mut lines = Vec::new();
 
         lines.push(format!(
@@ -170,10 +266,22 @@ impl TypedProgram {
             binding.name,
             signature.join(", ")
         ));
-        lines.extend(self.emit_value_binding_lines(helper_names));
+        let needed_value_names =
+            self.needed_value_binding_names(&binding.expr, object_bindings, global_value_names);
+        lines.extend(self.emit_value_binding_lines(
+            helper_names,
+            global_value_names,
+            &needed_value_names,
+        ));
         lines.push(format!(
             "    return {};",
-            emit_object_expr(&binding.expr, &locals.point, object_bindings, helper_names)
+            emit_object_expr(
+                &binding.expr,
+                &locals.point,
+                object_bindings,
+                helper_names,
+                scene_input_names,
+            )
         ));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -423,6 +531,152 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_support(direction, names);
             collect_function_support(func, names);
             collect_value_support(at, names);
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ObjectBinding {
+    expr: ObjectExpr,
+    generated: bool,
+}
+
+fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> bool {
+    match expr {
+        ValueExpr::Float(_) => true,
+        ValueExpr::Var(name, _) => names.contains(name),
+        ValueExpr::Vec2(x, y) => {
+            is_global_const_value_expr(x, names) && is_global_const_value_expr(y, names)
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            is_global_const_value_expr(x, names)
+                && is_global_const_value_expr(y, names)
+                && is_global_const_value_expr(z, names)
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            is_global_const_value_expr(x, names)
+                && is_global_const_value_expr(y, names)
+                && is_global_const_value_expr(z, names)
+                && is_global_const_value_expr(w, names)
+        }
+        ValueExpr::Matrix { rows, .. } => rows
+            .iter()
+            .all(|row| is_global_const_value_expr(row, names)),
+        ValueExpr::Binary { left, right, .. } => {
+            is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
+        }
+        ValueExpr::Call { .. }
+        | ValueExpr::Derivative { .. }
+        | ValueExpr::Partial { .. }
+        | ValueExpr::DirectionalDerivative { .. }
+        | ValueExpr::Gradient { .. }
+        | ValueExpr::Divergence { .. } => false,
+    }
+}
+
+fn collect_object_value_refs(
+    expr: &ObjectExpr,
+    object_bindings: &BTreeMap<String, ObjectBinding>,
+    names: &mut BTreeSet<String>,
+) {
+    match expr {
+        ObjectExpr::Var(name) => {
+            if let Some(binding) = object_bindings.get(name) {
+                if !binding.generated {
+                    collect_object_value_refs(&binding.expr, object_bindings, names);
+                }
+            }
+        }
+        ObjectExpr::Primitive { fields, .. } => {
+            for (_, value) in fields {
+                match value {
+                    PrimitiveArgExpr::Value(value) => collect_value_refs(value, names),
+                    PrimitiveArgExpr::Vec2List(vertices) => {
+                        for vertex in vertices {
+                            collect_value_refs(vertex, names);
+                        }
+                    }
+                }
+            }
+        }
+        ObjectExpr::AmbientTransform {
+            object,
+            translation,
+            linear,
+        } => {
+            collect_value_refs(translation, names);
+            collect_value_refs(linear, names);
+            collect_object_value_refs(object, object_bindings, names);
+        }
+        ObjectExpr::RegisteredOp {
+            value_args,
+            object_args,
+            ..
+        } => {
+            for arg in value_args {
+                collect_value_refs(arg, names);
+            }
+            for arg in object_args {
+                collect_object_value_refs(arg, object_bindings, names);
+            }
+        }
+    }
+}
+
+fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
+    match expr {
+        ValueExpr::Float(_) => {}
+        ValueExpr::Var(name, _) => {
+            names.insert(name.clone());
+        }
+        ValueExpr::Call { args, .. } => {
+            for arg in args {
+                collect_value_refs(arg, names);
+            }
+        }
+        ValueExpr::Binary { left, right, .. } => {
+            collect_value_refs(left, names);
+            collect_value_refs(right, names);
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_value_refs(x, names);
+            collect_value_refs(y, names);
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_value_refs(x, names);
+            collect_value_refs(y, names);
+            collect_value_refs(z, names);
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_value_refs(x, names);
+            collect_value_refs(y, names);
+            collect_value_refs(z, names);
+            collect_value_refs(w, names);
+        }
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_value_refs(row, names);
+            }
+        }
+        ValueExpr::Derivative { epsilon, at, .. }
+        | ValueExpr::Gradient { epsilon, at, .. }
+        | ValueExpr::Divergence { epsilon, at, .. } => {
+            collect_value_refs(epsilon, names);
+            collect_value_refs(at, names);
+        }
+        ValueExpr::Partial { epsilon, at, .. } => {
+            collect_value_refs(epsilon, names);
+            collect_value_refs(at, names);
+        }
+        ValueExpr::DirectionalDerivative {
+            epsilon,
+            direction,
+            at,
+            ..
+        } => {
+            collect_value_refs(epsilon, names);
+            collect_value_refs(direction, names);
+            collect_value_refs(at, names);
         }
     }
 }
@@ -806,13 +1060,26 @@ fn emit_vec3_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: B
 fn emit_object_expr(
     expr: &ObjectExpr,
     point_expr: &str,
-    object_bindings: &BTreeMap<String, ObjectExpr>,
+    object_bindings: &BTreeMap<String, ObjectBinding>,
     helper_names: &HashMap<String, String>,
+    scene_input_names: &[String],
 ) -> String {
     match expr {
         ObjectExpr::Var(name) => object_bindings
             .get(name)
-            .map(|expr| emit_object_expr(expr, point_expr, object_bindings, helper_names))
+            .map(|binding| {
+                if binding.generated {
+                    emit_generated_object_call(name, point_expr, scene_input_names)
+                } else {
+                    emit_object_expr(
+                        &binding.expr,
+                        point_expr,
+                        object_bindings,
+                        helper_names,
+                        scene_input_names,
+                    )
+                }
+            })
             .unwrap_or_else(|| format!("obj_{}", name)),
         ObjectExpr::Primitive { name, kind, fields } => match kind {
             PrimitiveKind::ParamStruct(param_type) => {
@@ -867,7 +1134,13 @@ fn emit_object_expr(
         } => {
             let transformed_point =
                 emit_transformed_point(point_expr, translation, linear, helper_names);
-            emit_object_expr(object, &transformed_point, object_bindings, helper_names)
+            emit_object_expr(
+                object,
+                &transformed_point,
+                object_bindings,
+                helper_names,
+                scene_input_names,
+            )
         }
         ObjectExpr::RegisteredOp {
             name: _,
@@ -883,13 +1156,19 @@ fn emit_object_expr(
                     &revolved_point,
                     object_bindings,
                     helper_names,
+                    scene_input_names,
                 );
             }
             if glsl_name == "op_extrusion" {
                 let height = emit_plain_value_expr(&value_args[0], helper_names);
                 let base_point = format!("vec3(({}).xy, 0.0)", point_expr);
-                let base_distance =
-                    emit_object_expr(&object_args[0], &base_point, object_bindings, helper_names);
+                let base_distance = emit_object_expr(
+                    &object_args[0],
+                    &base_point,
+                    object_bindings,
+                    helper_names,
+                    scene_input_names,
+                );
                 return format!(
                     "op_extrusion({}, ({}).z, {})",
                     base_distance, point_expr, height
@@ -897,7 +1176,15 @@ fn emit_object_expr(
             }
             let mut args = object_args
                 .iter()
-                .map(|arg| emit_object_expr(arg, point_expr, object_bindings, helper_names))
+                .map(|arg| {
+                    emit_object_expr(
+                        arg,
+                        point_expr,
+                        object_bindings,
+                        helper_names,
+                        scene_input_names,
+                    )
+                })
                 .collect::<Vec<_>>();
             args.extend(
                 value_args
@@ -907,6 +1194,16 @@ fn emit_object_expr(
             format!("{}({})", glsl_name, args.join(", "))
         }
     }
+}
+
+fn emit_generated_object_call(
+    name: &str,
+    point_expr: &str,
+    scene_input_names: &[String],
+) -> String {
+    let mut args = vec![point_expr.to_string()];
+    args.extend(scene_input_names.iter().cloned());
+    format!("sdf_{}({})", name, args.join(", "))
 }
 
 fn primitive_value_field<'a>(
