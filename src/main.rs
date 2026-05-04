@@ -8,7 +8,7 @@ const COLOR_TYPE: &str = "33";
 const COLOR_CATEGORY: &str = "93";
 const COLOR_CAT_METATYPE: &str = "97";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [PATH]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen PATH is omitted, lane reads source from stdin. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Add `// fragment-shader: #version 330 core` to wrap the generated GLSL in a minimal fullscreen fragment shader.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -107,14 +107,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         [flag, shell] if matches!(flag.as_str(), "--print-completion" | "-pc") => {
             print_completion(shell)
         }
-        [path] => compile_path(path),
+        [path] => print_compile_path(path),
+        [source_path, target_path] => write_compile_path(source_path, target_path),
         _ => Err("unexpected arguments; run `lane --help` for usage".into()),
     }
 }
 
-fn compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn print_compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let source = fs::read_to_string(path)?;
     print_compiled_program(&source)
+}
+
+fn write_compile_path(
+    source_path: &str,
+    target_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = fs::read_to_string(source_path)?;
+    let output = compile_program_output(&source)?;
+    fs::write(target_path, output)?;
+    Ok(())
 }
 
 fn compile_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
@@ -124,13 +135,17 @@ fn compile_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_compiled_program(source: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let glsl = lane::compile_program(source)?;
-    let output = match fragment_shader_version(source) {
-        Some(version) => wrap_fragment_shader(&glsl, version)?,
-        None => glsl,
-    };
+    let output = compile_program_output(source)?;
     print_glsl(&output);
     Ok(())
+}
+
+fn compile_program_output(source: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let glsl = lane::compile_program(source)?;
+    Ok(match fragment_shader_version(source) {
+        Some(version) => wrap_fragment_shader(&glsl, version)?,
+        None => glsl,
+    })
 }
 
 fn fragment_shader_version(source: &str) -> Option<&str> {

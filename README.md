@@ -35,6 +35,7 @@ During development you can also run both binaries directly from the workspace:
 
 ```sh
 cargo run -- test.lane
+cargo run -- test.lane test.glsl
 cargo run -p lane-lsp
 ```
 
@@ -44,7 +45,7 @@ cargo run -p lane-lsp
 lane compiles lane source files into GLSL.
 
 Usage:
-  lane [PATH]
+  lane [SOURCE [TARGET]]
   lane -l, --list [NAME]
   lane -l2, --list2d
   lane -l3, --list3d
@@ -56,8 +57,10 @@ Usage:
 Commands are flag-based. `lane help` is treated as an input path named `help`;
 use `lane -h` or `lane --help` for help.
 
-- `lane [PATH]` compiles a `.lane` source file to GLSL. If `PATH` is omitted,
-  Lane reads source from stdin.
+- `lane [SOURCE]` compiles a `.lane` source file to GLSL on stdout. If
+  `SOURCE` is omitted, Lane reads source from stdin.
+- `lane SOURCE TARGET` compiles `SOURCE` and writes GLSL to `TARGET` instead of
+  stdout.
 - `lane -l` or `lane --list` lists all primitive constructors and their GLSL
   parameter structs.
 - `lane -l NAME` or `lane --list NAME` shows one primitive's visible parameter
