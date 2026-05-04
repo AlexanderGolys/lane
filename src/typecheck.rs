@@ -54,6 +54,7 @@ impl TypedProgram {
                     | Type::Complex
                     | Type::Quat
                     | Type::SE3
+                    | Type::E2
                     | Type::E3
                     | Type::Custom { .. }
                     | Type::Vec2
@@ -619,6 +620,9 @@ fn infer_value_expr(
                 Expr::Ident(name) => name,
                 _ => return Err(Error::new("only named value functions are supported")),
             };
+            if let Some(result) = infer_complex_overload_call(name, args, env, lift_param)? {
+                return Ok(result);
+            }
             let mut current_ty = env
                 .get(name)
                 .cloned()
@@ -678,6 +682,7 @@ fn infer_value_expr(
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
                 | Type::Vec2
@@ -1000,6 +1005,7 @@ fn is_array_element_type(ty: &Type) -> bool {
             | Type::Complex
             | Type::Quat
             | Type::SE3
+            | Type::E2
             | Type::E3
             | Type::Custom { .. }
             | Type::Vec2
@@ -1296,6 +1302,7 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
                 | Type::Vec2
@@ -1370,6 +1377,7 @@ fn infer_identifier_value(
         | Type::Complex
         | Type::Quat
         | Type::SE3
+        | Type::E2
         | Type::E3
         | Type::Custom { .. }
         | Type::Vec2
@@ -1439,6 +1447,29 @@ fn infer_rot_builtin(
     }))
 }
 
+fn infer_complex_overload_call(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<Option<ValueExpr>, Error> {
+    let Some(func) = complex_overload_name(name) else {
+        return Ok(None);
+    };
+    if args.len() != 1 {
+        return Ok(None);
+    }
+    let arg = infer_value_expr(&args[0], env, lift_param)?;
+    if arg.ty() != Type::Complex {
+        return Ok(None);
+    }
+    Ok(Some(ValueExpr::Call {
+        func: func.to_string(),
+        args: vec![arg],
+        ty: Type::Complex,
+    }))
+}
+
 fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error> {
     if left == right {
         let category = match op {
@@ -1462,6 +1493,10 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
 
     if op == BinOp::Mul && left == &Type::E3 && right == &Type::Vec3 {
         return Ok(Type::Vec3);
+    }
+
+    if op == BinOp::Mul && left == &Type::E2 && right == &Type::Vec2 {
+        return Ok(Type::Vec2);
     }
 
     if matches!(op, BinOp::Mul | BinOp::Div)

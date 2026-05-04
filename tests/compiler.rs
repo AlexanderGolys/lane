@@ -279,6 +279,9 @@ fn lists_preregistered_functions_and_types() {
         object.kind == PreregisteredObjectKind::Function && object.name == "pow2"
     }));
     assert!(objects.iter().any(|object| {
+        object.kind == PreregisteredObjectKind::Function && object.name == "exp"
+    }));
+    assert!(!objects.iter().any(|object| {
         object.kind == PreregisteredObjectKind::Function && object.name == "cexp"
     }));
     assert!(objects.iter().any(|object| {
@@ -304,16 +307,15 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "H" && object.ty == "Field × AlgR"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "SE3" && object.ty == "Grp"));
+        .any(|object| object.name == "E2" && object.ty == "Grp"));
+    assert!(!objects.iter().any(|object| object.name == "SE3"));
     assert!(objects
         .iter()
         .any(|object| object.name == "E3" && object.ty == "Grp"));
     assert!(objects
         .iter()
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
-    assert!(objects
-        .iter()
-        .any(|object| object.name == "cexp" && object.ty == "Hom(C, C)"));
+    assert!(!objects.iter().any(|object| object.name == "cexp"));
     assert!(objects
         .iter()
         .any(|object| { object.name == "Union" && object.ty == "Hom(Object × Object, Object)" }));
@@ -368,11 +370,12 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(quat.ty, "Field × AlgR");
     assert!(quat.body.contains("#define H vec4"));
     assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
-    let se3 = known_builtin_object("SE3").unwrap();
-    assert_eq!(se3.ty, "Grp");
-    assert!(se3.body.contains("struct SE3"));
-    assert!(se3.body.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
-    assert!(se3.body.contains("SE3 inv_SE3(SE3 a)"));
+    assert!(known_builtin_object("SE3").is_none());
+    let e2 = known_builtin_object("E2").unwrap();
+    assert_eq!(e2.ty, "Grp");
+    assert!(e2.body.contains("struct E2"));
+    assert!(e2.body.contains("E2 mult_E2(E2 a, E2 b)"));
+    assert!(e2.body.contains("E2 inv_E2(E2 g)"));
     let e3 = known_builtin_object("E3").unwrap();
     assert_eq!(e3.ty, "Grp");
     assert!(e3.body.contains("struct E3"));
@@ -462,12 +465,12 @@ fn supports_derivative_operator_in_function_bodies() {
 #[test]
 fn emits_support_for_custom_complex_functions() {
     let source =
-        "Complex seed = (1, 0)\nfunc(Float -> C) orbit = cexp(seed)\ngenerate Ball3D(r=1)\n";
+        "Complex seed = (1, 0)\nfunc(Float -> C) orbit = exp(seed)\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 cexp(vec2 z) {"));
+    assert!(glsl.contains("vec2 exp(vec2 z) {"));
     assert!(glsl.contains("vec2 seed = vec2(1.0, 0.0);"));
-    assert!(glsl.contains("return cexp(seed);"));
+    assert!(glsl.contains("return exp(seed);"));
 }
 
 #[test]
@@ -507,6 +510,19 @@ fn lowers_se3_group_operations_through_category_helpers() {
 
     assert!(glsl.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
     assert!(glsl.contains("SE3 div_SE3(SE3 a, SE3 b)"));
+}
+
+#[test]
+fn lowers_e2_group_operations_through_category_helpers() {
+    let source = "provided E2 a\nprovided E2 b\nprovided R2 p\nprovided Hom(R2, R) measure\nE2 product = a * b\nE2 ratio = product / a\nR2 moved = ratio * p\nR radius = measure(moved)\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct E2"));
+    assert!(glsl.contains("E2 mult_E2(E2 a, E2 b)"));
+    assert!(glsl.contains("E2 div_E2(E2 a, E2 b)"));
+    assert!(glsl.contains("E2 product = mult_E2(a, b);"));
+    assert!(glsl.contains("E2 ratio = div_E2(product, a);"));
+    assert!(glsl.contains("vec2 moved = act_E2(ratio, p);"));
 }
 
 #[test]

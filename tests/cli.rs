@@ -177,9 +177,10 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("VectR: Cat"));
     assert!(stdout.contains("C: Field × AlgR"));
     assert!(stdout.contains("H: Field × AlgR"));
-    assert!(stdout.contains("E2: VectR"));
+    assert!(stdout.contains("E2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
-    assert!(stdout.contains("cexp: Hom(C, C)"));
+    assert!(!stdout.contains("cexp: Hom(C, C)"));
+    assert!(!stdout.contains("SE3: Grp"));
     assert!(stdout.contains("Union: Hom(Object × Object, Object)"));
     assert!(stdout.contains("SmoothUnion: Hom(R, Hom(Object × Object, Object))"));
     assert!(stdout.contains("Revolution: Hom(R, Hom(Object, Object))"));
@@ -203,10 +204,10 @@ fn lists_known_builtin_objects_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("ctanh: Hom(C, C)"));
     assert!(stdout.contains("partialX: Hom(R, Hom(Hom(R3, R), Hom(R3, R)))"));
     assert!(stdout.contains("E3: Grp"));
     assert!(stdout.contains("AlgR: Cat"));
+    assert!(!stdout.contains("ctanh: Hom(C, C)"));
 }
 
 #[test]

@@ -132,6 +132,7 @@ impl TypedProgram {
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
                 | Type::Vec2
@@ -156,6 +157,7 @@ impl TypedProgram {
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
                 | Type::Vec2
@@ -366,6 +368,7 @@ impl TypedProgram {
                 | Type::Complex
                 | Type::Quat
                 | Type::SE3
+                | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
                 | Type::Vec2
@@ -424,6 +427,12 @@ impl TypedProgram {
 
         let mut blocks = Vec::new();
         for name in names {
+            if let Some(func) = name.strip_prefix("complex:") {
+                if let Some(support_glsl) = complex_overload_support_glsl(func) {
+                    blocks.push(support_glsl);
+                }
+                continue;
+            }
             if let Some(primitive) = registry.primitives.get(name.as_str()) {
                 blocks.push(primitive.support_glsl);
                 continue;
@@ -469,7 +478,7 @@ impl TypedProgram {
 
 fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
     match ty {
-        Type::SE3 | Type::E3 => {
+        Type::SE3 | Type::E2 | Type::E3 => {
             names.insert(ty.type_name());
         }
         Type::Custom { .. } => {}
@@ -921,6 +930,9 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Var { .. } => {}
         ValueExpr::Call { func, args, ty } => {
             collect_type_support(ty, names);
+            if ty == &Type::Complex && complex_overload_support_glsl(func).is_some() {
+                names.insert(format!("complex:{func}"));
+            }
             if func != "rot" {
                 names.insert(func.clone());
             }
@@ -1146,6 +1158,9 @@ fn emit_binary_expr(
         (BinOp::Div, Type::Quat, Type::Quat) => format!("div_H({}, {})", left, right),
         (BinOp::Mul, Type::SE3, Type::SE3) => format!("mult_SE3({}, {})", left, right),
         (BinOp::Div, Type::SE3, Type::SE3) => format!("div_SE3({}, {})", left, right),
+        (BinOp::Mul, Type::E2, Type::E2) => format!("mult_E2({}, {})", left, right),
+        (BinOp::Div, Type::E2, Type::E2) => format!("div_E2({}, {})", left, right),
+        (BinOp::Mul, Type::E2, Type::Vec2) => format!("act_E2({}, {})", left, right),
         (BinOp::Mul, Type::E3, Type::E3) => format!("mult_E3({}, {})", left, right),
         (BinOp::Div, Type::E3, Type::E3) => format!("div_E3({}, {})", left, right),
         (BinOp::Mul, Type::E3, Type::Vec3) => format!("act_E3({}, {})", left, right),
@@ -1225,6 +1240,9 @@ fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<&'static 
         (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
         | (BinOp::Div, Type::Float, Type::Quat) => Some("H"),
         (BinOp::Mul | BinOp::Div, Type::SE3, Type::SE3) => Some("SE3"),
+        (BinOp::Mul | BinOp::Div, Type::E2, Type::E2) | (BinOp::Mul, Type::E2, Type::Vec2) => {
+            Some("E2")
+        }
         (BinOp::Mul | BinOp::Div, Type::E3, Type::E3) | (BinOp::Mul, Type::E3, Type::Vec3) => {
             Some("E3")
         }

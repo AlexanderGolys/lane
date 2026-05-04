@@ -148,11 +148,11 @@ representations.
 | `Int` | `Z` | `int` |
 | `Complex` | `C` | `vec2` |
 | `H` | | `vec4` |
-| `Vec2` | `R2`, `E2` | `vec2` |
+| `Vec2` | `R2` | `vec2` |
+| `E2` | | `E2` struct |
 | `Vec3` | `R3` | `vec3` |
 | `E3` | | `E3` struct |
 | `Vec4` | `R4` | `vec4` |
-| `SE3` | | `SE3` struct |
 | `Mat2` | | `mat2` |
 | `Mat3` | | `mat3` |
 | `Mat4` | | `mat4` |
@@ -200,10 +200,9 @@ Arithmetic is typechecked through built-in algebraic categories instead of one
 rule per concrete type. Current categories include additive groups, monoids,
 rings, fields, real vector spaces, and real algebras. For example, `C` and `H`
 support field-style multiplication and division through generated helper
-functions, `E3` and `SE3` emit their GLSL structs plus group multiplication and
+functions, `E2` and `E3` emit their GLSL structs plus group multiplication and
 inverse helpers, and `R2`/`R3`/matrices share real vector-space scaling rules.
-`E3` is the Euclidean group of 3D isometries, including reflections; `SE3` is
-the orientation-preserving subgroup.
+`E2` and `E3` are Euclidean groups of 2D and 3D isometries.
 
 User-defined function bodies currently support `R` inputs. Inside a
 `Func(R, T)` binding, bare unary function identifiers are implicitly applied to
@@ -400,32 +399,22 @@ scene using most registered primitives and operators.
 | `VectR` | `Cat` |
 | `AlgR` | `Cat` |
 | `C` | `Field × AlgR` |
-| `E2` | `VectR` |
+| `E2` | `Grp` |
 | `E3` | `Grp` |
 | `H` | `Field × AlgR` |
-| `SE3` | `Grp` |
 | `pow2` | `Hom(R, R)` |
-| `ccos` | `Hom(C, C)` |
-| `ccosh` | `Hom(C, C)` |
-| `cexp` | `Hom(C, C)` |
-| `cinv` | `Hom(C, C)` |
-| `clog` | `Hom(C, C)` |
-| `csin` | `Hom(C, C)` |
-| `csinh` | `Hom(C, C)` |
-| `csqrt` | `Hom(C, C)` |
-| `ctan` | `Hom(C, C)` |
-| `ctanh` | `Hom(C, C)` |
 
-`lane --list-objects C`, `lane --list-objects H`, `lane --list-objects E3`,
-and `lane --list-objects SE3` show the operation support required by those
-types, such as complex and quaternion multiplication or the `E3`/`SE3` structs,
+`lane --list-objects C`, `lane --list-objects H`, `lane --list-objects E2`,
+and `lane --list-objects E3` show the operation support required by those
+types, such as complex and quaternion multiplication or the `E2`/`E3` structs,
 multiplication, inverse, and division helpers. These structural operations are
 attached to the type definitions, not listed as separate arbitrary value
 functions.
 
-Raw GLSL `sin` and `cos` are also available as `Hom(R, R)` value functions, but
-they are not listed by `lane --list-objects` because they do not require custom
-support code.
+Raw GLSL `sin` and `cos` are available as `Hom(R, R)` value functions. Complex
+functions use overloaded source names such as `exp(z)`, `log(z)`, and `sin(z)`
+for `C` inputs; their generated GLSL overloads are included only when used, so
+they are not listed as separate `c*` functions by `lane --list-objects`.
 
 ### Differential Builtins
 

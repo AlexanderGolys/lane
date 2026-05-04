@@ -228,15 +228,62 @@ pub fn is_known_category_name(name: &str) -> bool {
     category_by_name(name).is_some()
 }
 
-const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
+const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
     ("C", "#define Complex vec2"),
-    ("E2", "#define E2 vec2"),
+    ("E2", ""),
     ("E3", ""),
     ("H", "#define H vec4"),
-    ("SE3", ""),
 ];
 
 const COMPLEX_FIELD_SUPPORT_GLSL: &str = "vec2 mult_C(vec2 a, vec2 b) {\n    return vec2((a.x * b.x) - (a.y * b.y), (a.x * b.y) + (a.y * b.x));\n}\n\nvec2 div_C(vec2 a, vec2 b) {\n    return mult_C(a, vec2(b.x, -b.y) / dot(b, b));\n}";
+
+const COMPLEX_OVERLOAD_NAMES: [&str; 10] = [
+    "inv", "exp", "log", "sqrt", "sin", "cos", "tan", "sinh", "cosh", "tanh",
+];
+
+fn complex_overload_name(name: &str) -> Option<&'static str> {
+    match name {
+        "cinv" => Some("inv"),
+        "cexp" => Some("exp"),
+        "clog" => Some("log"),
+        "csqrt" => Some("sqrt"),
+        "csin" => Some("sin"),
+        "ccos" => Some("cos"),
+        "ctan" => Some("tan"),
+        "csinh" => Some("sinh"),
+        "ccosh" => Some("cosh"),
+        "ctanh" => Some("tanh"),
+        "inv" => Some("inv"),
+        "exp" => Some("exp"),
+        "log" => Some("log"),
+        "sqrt" => Some("sqrt"),
+        "sin" => Some("sin"),
+        "cos" => Some("cos"),
+        "tan" => Some("tan"),
+        "sinh" => Some("sinh"),
+        "cosh" => Some("cosh"),
+        "tanh" => Some("tanh"),
+        _ => None,
+    }
+}
+
+fn complex_overload_support_glsl(name: &str) -> Option<&'static str> {
+    match name {
+        "inv" => Some("vec2 inv(vec2 z) {\n    return vec2(z.x, -z.y) / dot(z, z);\n}"),
+        "exp" => Some("vec2 exp(vec2 z) {\n    float scale = exp(z.x);\n    return scale * vec2(cos(z.y), sin(z.y));\n}"),
+        "log" => Some("vec2 log(vec2 z) {\n    return vec2(log(length(z)), atan(z.y, z.x));\n}"),
+        "sqrt" => Some("vec2 sqrt(vec2 z) {\n    float r = length(z);\n    float a = sqrt(max((r + z.x) * 0.5, 0.0));\n    float b = sqrt(max((r - z.x) * 0.5, 0.0));\n    return vec2(a, sign(z.y) * b);\n}"),
+        "sin" => Some("vec2 sin(vec2 z) {\n    return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y));\n}"),
+        "cos" => Some("vec2 cos(vec2 z) {\n    return vec2(cos(z.x) * cosh(z.y), -sin(z.x) * sinh(z.y));\n}"),
+        "tan" => Some("vec2 tan(vec2 z) {\n    float d = cos(2.0 * z.x) + cosh(2.0 * z.y);\n    return vec2(sin(2.0 * z.x), sinh(2.0 * z.y)) / d;\n}"),
+        "sinh" => Some("vec2 sinh(vec2 z) {\n    return vec2(sinh(z.x) * cos(z.y), cosh(z.x) * sin(z.y));\n}"),
+        "cosh" => Some("vec2 cosh(vec2 z) {\n    return vec2(cosh(z.x) * cos(z.y), sinh(z.x) * sin(z.y));\n}"),
+        "tanh" => Some("vec2 tanh(vec2 z) {\n    float d = cosh(2.0 * z.x) + cos(2.0 * z.y);\n    return vec2(sinh(2.0 * z.x), sin(2.0 * z.y)) / d;\n}"),
+        _ => None,
+    }
+}
+
+const E2_GROUP_SUPPORT_GLSL: &str = "struct E2 {\n    mat2 A;\n    vec2 t;\n};\n\nvec2 act_E2(E2 g, vec2 p) {\n    return (g.A * p) + g.t;\n}\n\nE2 mult_E2(E2 a, E2 b) {\n    return E2(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE2 inv_E2(E2 g) {\n    mat2 inverse_linear = transpose(g.A);\n    return E2(inverse_linear, -(inverse_linear * g.t));\n}\n\nE2 div_E2(E2 a, E2 b) {\n    return mult_E2(a, inv_E2(b));\n}";
 
 const QUAT_FIELD_SUPPORT_GLSL: &str = "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}";
 
@@ -364,7 +411,7 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
     BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
@@ -398,7 +445,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
     },
     BuiltinTypeDef {
         ty: Type::Vec2,
-        aliases: &["Vec2", "R2", "E2"],
+        aliases: &["Vec2", "R2"],
         display_name: "R2",
         support_glsl: None,
         categories: &[AlgebraicCategory::VectR],
@@ -444,6 +491,13 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
         categories: &[AlgebraicCategory::Grp],
     },
     BuiltinTypeDef {
+        ty: Type::E2,
+        aliases: &["E2"],
+        display_name: "E2",
+        support_glsl: Some(E2_GROUP_SUPPORT_GLSL),
+        categories: &[AlgebraicCategory::Grp],
+    },
+    BuiltinTypeDef {
         ty: Type::E3,
         aliases: &["E3"],
         display_name: "E3",
@@ -479,6 +533,7 @@ enum Type {
     Complex,
     Quat,
     SE3,
+    E2,
     E3,
     Custom {
         name: String,
@@ -506,6 +561,7 @@ impl Type {
             Self::Complex => "vec2".to_string(),
             Self::Quat => "vec4".to_string(),
             Self::SE3 => "SE3".to_string(),
+            Self::E2 => "E2".to_string(),
             Self::E3 => "E3".to_string(),
             Self::Custom { name, .. } => name.clone(),
             Self::Vec2 => "vec2".to_string(),
