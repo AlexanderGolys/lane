@@ -45,7 +45,7 @@ cargo run -p lane-lsp
 lane compiles lane source files into GLSL.
 
 Usage:
-  lane [SOURCE [TARGET]]
+  lane [SOURCE [TARGET]] [--show]
   lane -l, --list [NAME]
   lane -l2, --list2d
   lane -l3, --list3d
@@ -60,6 +60,9 @@ use `lane -h` or `lane --help` for help.
 - `lane [SOURCE]` compiles a `.lane` source file to GLSL on stdout. If
   `SOURCE` is omitted, Lane reads source from stdin.
 - `lane SOURCE TARGET` compiles `SOURCE` and writes GLSL to `TARGET` instead of
+  stdout.
+- `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
+  `lane SOURCE TARGET --show` writes GLSL to `TARGET` and also prints it to
   stdout.
 - Compiler errors include the 1-based source line when Lane can associate the
   error with a declaration.

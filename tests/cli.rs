@@ -303,7 +303,7 @@ fn prints_help_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Usage:"));
-    assert!(stdout.contains("lane [SOURCE [TARGET]]"));
+    assert!(stdout.contains("lane [SOURCE [TARGET]] [--show]"));
     assert!(stdout.contains("lane -l, --list [NAME]"));
     assert!(stdout.contains("lane -l2, --list2d"));
     assert!(stdout.contains("lane -l3, --list3d"));
@@ -311,6 +311,7 @@ fn prints_help_from_cli() {
     assert!(stdout.contains("lane -pc, --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h, --help"));
     assert!(stdout.contains("When TARGET is present"));
+    assert!(stdout.contains("Use --show or -s with SOURCE TARGET"));
     assert!(!stdout.contains("lane --list [NAME]"));
     assert!(!stdout.contains("lane -l [NAME]"));
 }
@@ -329,7 +330,7 @@ fn treats_old_list_command_as_input_path() {
 }
 
 #[test]
-fn treats_removed_show_flag_as_invalid_path() {
+fn rejects_show_without_source_and_target() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .args(["--show", "ParamBall3D"])
         .output()
@@ -338,9 +339,7 @@ fn treats_removed_show_flag_as_invalid_path() {
     assert!(!output.status.success());
 
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("unexpected arguments") || stderr.contains("No such file or directory")
-    );
+    assert!(stderr.contains("--show requires SOURCE and TARGET"));
 }
 
 #[test]
@@ -402,6 +401,56 @@ fn writes_compiled_output_to_target_path() {
     let glsl = std::fs::read_to_string(&target_path).unwrap();
     assert!(glsl.contains("float scene_sdf(vec3 p)"));
     assert!(glsl.contains("sdf0_Ball3D(p, ParamBall3D(1.0f))"));
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
+fn show_prints_compiled_output_while_writing_target_path() {
+    let temp_dir = unique_temp_dir("lane-cli-show-target");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let target_path = temp_dir.join("scene.glsl");
+    std::fs::write(&source_path, "generate Ball3D(r=1)\n").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg("--show")
+        .arg(&source_path)
+        .arg(&target_path)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let glsl = std::fs::read_to_string(&target_path).unwrap();
+    assert_eq!(stdout, format!("{glsl}\n"));
+    assert!(stdout.contains("sdf0_Ball3D(p, ParamBall3D(1.0f))"));
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
+fn short_show_flag_can_follow_source_and_target() {
+    let temp_dir = unique_temp_dir("lane-cli-short-show-target");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let target_path = temp_dir.join("scene.glsl");
+    std::fs::write(&source_path, "generate Ball3D(r=2)\n").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg(&source_path)
+        .arg(&target_path)
+        .arg("-s")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let glsl = std::fs::read_to_string(&target_path).unwrap();
+    assert_eq!(stdout, format!("{glsl}\n"));
+    assert!(stdout.contains("ParamBall3D(2.0f)"));
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }

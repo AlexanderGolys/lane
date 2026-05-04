@@ -8,7 +8,7 @@ const COLOR_TYPE: &str = "33";
 const COLOR_CATEGORY: &str = "93";
 const COLOR_CAT_METATYPE: &str = "97";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -32,7 +32,7 @@ const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     fi
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--list -l --list2d -l2 --list3d -l3 --list-objects -lo --print-completion -pc --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--show -s --list -l --list2d -l2 --list3d -l3 --list-objects -lo --print-completion -pc --help -h" -- "$cur") )
         return
     fi
 }
@@ -50,6 +50,7 @@ _lane() {
         '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
         '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(__OBJECTS__)' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
+        '(-s --show)'{-s,--show}'[print compiled GLSL while also writing TARGET]' \
         '(-h --help)'{-h,--help}'[show help]'
 }
 
@@ -64,6 +65,7 @@ complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
 complete -c lane -o lo -l list-objects -d 'List builtin Lane objects'
 complete -c lane -o lo -l list-objects -r -a '__OBJECTS__' -d 'Show one builtin object'
 complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
+complete -c lane -s s -l show -d 'Print compiled GLSL while also writing TARGET'
 complete -c lane -s h -l help -d 'Show help'
 "#;
 
@@ -107,8 +109,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         [flag, shell] if matches!(flag.as_str(), "--print-completion" | "-pc") => {
             print_completion(shell)
         }
+        [flag, source_path, target_path] if is_show(flag) => {
+            write_compile_path(source_path, target_path, true)
+        }
+        [source_path, target_path, flag] if is_show(flag) => {
+            write_compile_path(source_path, target_path, true)
+        }
+        [flag] if is_show(flag) => Err("--show requires SOURCE and TARGET".into()),
+        [flag, _] if is_show(flag) => Err("--show requires SOURCE and TARGET".into()),
         [path] => print_compile_path(path),
-        [source_path, target_path] => write_compile_path(source_path, target_path),
+        [source_path, target_path] => write_compile_path(source_path, target_path, false),
         _ => Err("unexpected arguments; run `lane --help` for usage".into()),
     }
 }
@@ -121,10 +131,14 @@ fn print_compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {
 fn write_compile_path(
     source_path: &str,
     target_path: &str,
+    show: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = fs::read_to_string(source_path)?;
     let output = compile_program_output(&source)?;
-    fs::write(target_path, output)?;
+    fs::write(target_path, &output)?;
+    if show {
+        print_glsl(&output);
+    }
     Ok(())
 }
 
@@ -150,6 +164,10 @@ fn print_help() {
 
 fn is_help(arg: &str) -> bool {
     matches!(arg, "-h" | "--help")
+}
+
+fn is_show(arg: &str) -> bool {
+    matches!(arg, "-s" | "--show")
 }
 
 fn print_known_primitive_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
