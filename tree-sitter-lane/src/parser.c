@@ -29,7 +29,7 @@ enum ts_symbol_identifiers {
   anon_sym_Ring = 7,
   anon_sym_Field = 8,
   anon_sym_VectR = 9,
-  anon_sym_AlgR = 10,
+  anon_sym_RAlg = 10,
   anon_sym_generate = 11,
   anon_sym_gen = 12,
   anon_sym_EQ = 13,
@@ -96,7 +96,7 @@ static const char * const ts_symbol_names[] = {
   [anon_sym_Ring] = "type_identifier",
   [anon_sym_Field] = "type_identifier",
   [anon_sym_VectR] = "type_identifier",
-  [anon_sym_AlgR] = "type_identifier",
+  [anon_sym_RAlg] = "type_identifier",
   [anon_sym_generate] = "generate",
   [anon_sym_gen] = "gen",
   [anon_sym_EQ] = "=",
@@ -163,7 +163,7 @@ static const TSSymbol ts_symbol_map[] = {
   [anon_sym_Ring] = anon_sym_Ab,
   [anon_sym_Field] = anon_sym_Ab,
   [anon_sym_VectR] = anon_sym_Ab,
-  [anon_sym_AlgR] = anon_sym_Ab,
+  [anon_sym_RAlg] = anon_sym_Ab,
   [anon_sym_generate] = anon_sym_generate,
   [anon_sym_gen] = anon_sym_gen,
   [anon_sym_EQ] = anon_sym_EQ,
@@ -260,7 +260,7 @@ static const TSSymbolMetadata ts_symbol_metadata[] = {
     .visible = true,
     .named = true,
   },
-  [anon_sym_AlgR] = {
+  [anon_sym_RAlg] = {
     .visible = true,
     .named = true,
   },
@@ -905,26 +905,26 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       END_STATE();
     case 1:
       if (lookahead == 'b') ADVANCE(13);
-      if (lookahead == 'l') ADVANCE(14);
-      if (lookahead == 'r') ADVANCE(15);
+      if (lookahead == 'r') ADVANCE(14);
       END_STATE();
     case 2:
-      if (lookahead == 'n') ADVANCE(16);
+      if (lookahead == 'n') ADVANCE(15);
       END_STATE();
     case 3:
-      if (lookahead == 'i') ADVANCE(17);
-      if (lookahead == 'u') ADVANCE(18);
+      if (lookahead == 'i') ADVANCE(16);
+      if (lookahead == 'u') ADVANCE(17);
       END_STATE();
     case 4:
-      if (lookahead == 'r') ADVANCE(19);
+      if (lookahead == 'r') ADVANCE(18);
       END_STATE();
     case 5:
-      if (lookahead == 'o') ADVANCE(20);
+      if (lookahead == 'o') ADVANCE(19);
       END_STATE();
     case 6:
-      if (lookahead == 'o') ADVANCE(21);
+      if (lookahead == 'o') ADVANCE(20);
       END_STATE();
     case 7:
+      if (lookahead == 'A') ADVANCE(21);
       if (lookahead == 'i') ADVANCE(22);
       END_STATE();
     case 8:
@@ -946,28 +946,28 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       ACCEPT_TOKEN(anon_sym_Ab);
       END_STATE();
     case 14:
-      if (lookahead == 'g') ADVANCE(27);
+      if (lookahead == 'r') ADVANCE(27);
       END_STATE();
     case 15:
-      if (lookahead == 'r') ADVANCE(28);
+      if (lookahead == 'd') ADVANCE(28);
       END_STATE();
     case 16:
-      if (lookahead == 'd') ADVANCE(29);
+      if (lookahead == 'e') ADVANCE(29);
       END_STATE();
     case 17:
-      if (lookahead == 'e') ADVANCE(30);
+      if (lookahead == 'n') ADVANCE(30);
       END_STATE();
     case 18:
-      if (lookahead == 'n') ADVANCE(31);
+      if (lookahead == 'p') ADVANCE(31);
       END_STATE();
     case 19:
-      if (lookahead == 'p') ADVANCE(32);
+      if (lookahead == 'm') ADVANCE(32);
       END_STATE();
     case 20:
-      if (lookahead == 'm') ADVANCE(33);
+      if (lookahead == 'n') ADVANCE(33);
       END_STATE();
     case 21:
-      if (lookahead == 'n') ADVANCE(34);
+      if (lookahead == 'l') ADVANCE(34);
       END_STATE();
     case 22:
       if (lookahead == 'n') ADVANCE(35);
@@ -985,28 +985,28 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       if (lookahead == 'o') ADVANCE(39);
       END_STATE();
     case 27:
-      if (lookahead == 'R') ADVANCE(40);
+      if (lookahead == 'a') ADVANCE(40);
       END_STATE();
     case 28:
-      if (lookahead == 'a') ADVANCE(41);
-      END_STATE();
-    case 29:
       ACCEPT_TOKEN(anon_sym_End);
       END_STATE();
+    case 29:
+      if (lookahead == 'l') ADVANCE(41);
+      END_STATE();
     case 30:
-      if (lookahead == 'l') ADVANCE(42);
+      if (lookahead == 'c') ADVANCE(42);
       END_STATE();
     case 31:
-      if (lookahead == 'c') ADVANCE(43);
-      END_STATE();
-    case 32:
       ACCEPT_TOKEN(anon_sym_Grp);
       END_STATE();
-    case 33:
+    case 32:
       ACCEPT_TOKEN(anon_sym_Hom);
       END_STATE();
-    case 34:
+    case 33:
       ACCEPT_TOKEN(anon_sym_Mon);
+      END_STATE();
+    case 34:
+      if (lookahead == 'g') ADVANCE(43);
       END_STATE();
     case 35:
       if (lookahead == 'g') ADVANCE(44);
@@ -1025,16 +1025,16 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
       if (lookahead == 'v') ADVANCE(48);
       END_STATE();
     case 40:
-      ACCEPT_TOKEN(anon_sym_AlgR);
-      END_STATE();
-    case 41:
       if (lookahead == 'y') ADVANCE(49);
       END_STATE();
-    case 42:
+    case 41:
       if (lookahead == 'd') ADVANCE(50);
       END_STATE();
-    case 43:
+    case 42:
       ACCEPT_TOKEN(anon_sym_Func);
+      END_STATE();
+    case 43:
+      ACCEPT_TOKEN(anon_sym_RAlg);
       END_STATE();
     case 44:
       ACCEPT_TOKEN(anon_sym_Ring);
@@ -1260,7 +1260,7 @@ static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
     [anon_sym_Ring] = ACTIONS(1),
     [anon_sym_Field] = ACTIONS(1),
     [anon_sym_VectR] = ACTIONS(1),
-    [anon_sym_AlgR] = ACTIONS(1),
+    [anon_sym_RAlg] = ACTIONS(1),
     [anon_sym_generate] = ACTIONS(1),
     [anon_sym_gen] = ACTIONS(1),
     [anon_sym_EQ] = ACTIONS(1),
@@ -1441,7 +1441,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Ring,
       anon_sym_Field,
       anon_sym_VectR,
-      anon_sym_AlgR,
+      anon_sym_RAlg,
   [163] = 6,
     ACTIONS(3), 1,
       sym_comment,

@@ -297,7 +297,7 @@ enum AlgebraicCategory {
     Ring,
     Field,
     VectR,
-    AlgR,
+    RAlg,
 }
 
 struct AlgebraicCategoryDef {
@@ -331,8 +331,8 @@ const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 7] = [
         name: "VectR",
     },
     AlgebraicCategoryDef {
-        category: AlgebraicCategory::AlgR,
-        name: "AlgR",
+        category: AlgebraicCategory::RAlg,
+        name: "RAlg",
     },
 ];
 
@@ -418,7 +418,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
-            AlgebraicCategory::AlgR,
+            AlgebraicCategory::RAlg,
             AlgebraicCategory::VectR,
         ],
     },
@@ -437,7 +437,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
-            AlgebraicCategory::AlgR,
+            AlgebraicCategory::RAlg,
             AlgebraicCategory::VectR,
         ],
     },
@@ -470,7 +470,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
         categories: &[
             AlgebraicCategory::Field,
             AlgebraicCategory::Grp,
-            AlgebraicCategory::AlgR,
+            AlgebraicCategory::RAlg,
             AlgebraicCategory::VectR,
         ],
     },
@@ -665,10 +665,10 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
 fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> bool {
     matches!(
         (source, target),
-        (AlgebraicCategory::AlgR, AlgebraicCategory::Ring)
-            | (AlgebraicCategory::AlgR, AlgebraicCategory::VectR)
-            | (AlgebraicCategory::AlgR, AlgebraicCategory::Ab)
-            | (AlgebraicCategory::AlgR, AlgebraicCategory::Mon)
+        (AlgebraicCategory::RAlg, AlgebraicCategory::Ring)
+            | (AlgebraicCategory::RAlg, AlgebraicCategory::VectR)
+            | (AlgebraicCategory::RAlg, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::RAlg, AlgebraicCategory::Mon)
             | (AlgebraicCategory::Ring, AlgebraicCategory::Ab)
             | (AlgebraicCategory::Ring, AlgebraicCategory::Mon)
             | (AlgebraicCategory::Field, AlgebraicCategory::Grp)

@@ -39,7 +39,7 @@ module.exports = grammar({
                 'Ring',
                 'Field',
                 'VectR',
-                'AlgR',
+                'RAlg',
             ), $.type_identifier)),
             field('name', $.identifier),
         ),

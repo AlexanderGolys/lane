@@ -175,8 +175,8 @@ fn lists_known_builtin_objects_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Field: Cat"));
     assert!(stdout.contains("VectR: Cat"));
-    assert!(stdout.contains("C: Field, AlgR"));
-    assert!(stdout.contains("H: Field, AlgR"));
+    assert!(stdout.contains("C: Field, RAlg"));
+    assert!(stdout.contains("H: Field, RAlg"));
     assert!(stdout.contains("E2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(!stdout.contains("cexp: Hom(C, C)"));
@@ -204,7 +204,7 @@ fn lists_known_builtin_objects_from_short_flag() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("E3: Grp"));
-    assert!(stdout.contains("AlgR: Cat"));
+    assert!(stdout.contains("RAlg: Cat"));
     assert!(!stdout.contains("partialX: Hom(R, Hom(Hom(R3, R), Hom(R3, R)))"));
     assert!(!stdout.contains("ctanh: Hom(C, C)"));
 }
@@ -233,7 +233,7 @@ fn shows_builtin_type_detail_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("H: Field, AlgR"));
+    assert!(stdout.contains("H: Field, RAlg"));
     assert!(stdout.contains("#define H vec4"));
     assert!(stdout.contains("vec4 mult_H(vec4 a, vec4 b)"));
 }
@@ -275,7 +275,7 @@ fn prints_bash_completion_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
-    assert!(stdout.contains("Ab Mon Grp Ring Field VectR AlgR"));
+    assert!(stdout.contains("Ab Mon Grp Ring Field VectR RAlg"));
     assert!(stdout.contains("C E2 E3"));
     assert!(stdout.contains("Difference"));
     assert!(!stdout.contains("Complex Difference E2"));

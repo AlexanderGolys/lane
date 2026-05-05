@@ -11,7 +11,7 @@
 (number) @number
 
 ((type_identifier) @constant.builtin
-  (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "Field" "VectR" "AlgR")
+  (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "Field" "VectR" "RAlg")
   (#set! priority 110))
 
 (type_identifier) @type

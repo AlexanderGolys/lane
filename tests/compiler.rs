@@ -301,10 +301,10 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "VectR" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "C" && object.ty == "Field, AlgR"));
+        .any(|object| object.name == "C" && object.ty == "Field, RAlg"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "H" && object.ty == "Field, AlgR"));
+        .any(|object| object.name == "H" && object.ty == "Field, RAlg"));
     assert!(objects
         .iter()
         .any(|object| object.name == "E2" && object.ty == "Grp"));
@@ -366,10 +366,10 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(rot.body, "");
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
-    assert_eq!(complex.ty, "Field, AlgR");
+    assert_eq!(complex.ty, "Field, RAlg");
     assert!(complex.body.contains("#define Complex vec2"));
     assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert_eq!(quat.ty, "Field, AlgR");
+    assert_eq!(quat.ty, "Field, RAlg");
     assert!(quat.body.contains("#define H vec4"));
     assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
     let e2 = known_builtin_object("E2").unwrap();

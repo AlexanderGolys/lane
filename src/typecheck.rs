@@ -919,7 +919,7 @@ fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKin
                 Some(NeutralKind::Identity)
             } else if has_category(ty, AlgebraicCategory::Ring)
                 || has_category(ty, AlgebraicCategory::Field)
-                || has_category(ty, AlgebraicCategory::AlgR)
+                || has_category(ty, AlgebraicCategory::RAlg)
             {
                 Some(NeutralKind::One)
             } else {
@@ -1971,11 +1971,11 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         }
     }
 
-    if has_category(left, AlgebraicCategory::AlgR) && right == &Type::Float {
+    if has_category(left, AlgebraicCategory::RAlg) && right == &Type::Float {
         return Ok(left.clone());
     }
 
-    if left == &Type::Float && has_category(right, AlgebraicCategory::AlgR) {
+    if left == &Type::Float && has_category(right, AlgebraicCategory::RAlg) {
         return Ok(right.clone());
     }
 

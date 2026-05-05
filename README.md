@@ -221,7 +221,7 @@ be overloaded by distinct domains. Ambiguous overloads require an explicit
 binding type.
 
 Provided category types use the category names `Ab`, `Mon`, `Grp`, `Ring`,
-`Field`, `VectR`, and `AlgR`. For example:
+`Field`, `VectR`, and `RAlg`. For example:
 
 ```lane
 provided Grp G
@@ -409,11 +409,11 @@ scene using most registered primitives and operators.
 | `Ring` | `Cat` |
 | `Field` | `Cat` |
 | `VectR` | `Cat` |
-| `AlgR` | `Cat` |
-| `C` | `Field, AlgR` |
+| `RAlg` | `Cat` |
+| `C` | `Field, RAlg` |
 | `E2` | `Grp` |
 | `E3` | `Grp` |
-| `H` | `Field, AlgR` |
+| `H` | `Field, RAlg` |
 | `pow2` | `Hom(R, R)` |
 
 `lane --list-objects C`, `lane --list-objects H`, `lane --list-objects E2`,
