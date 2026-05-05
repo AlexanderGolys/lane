@@ -1,4 +1,7 @@
-["provided" "construct" "const" "Func" "Hom" "End" "Array" "if" "else"] @keyword
+["provided" "construct" "const" "Func" "Hom" "End" "Array"] @keyword
+
+(conditional_expression
+  ["if" "else"] @keyword.conditional)
 
 (gen_modifier) @keyword
 

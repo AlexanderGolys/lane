@@ -30,14 +30,18 @@ From command mode, `:TSInstall lane` works too after the plugin has loaded.
 If you do not use nvim-treesitter, compile the parser and register it directly:
 
 ```sh
-cc -fPIC -shared -I src src/parser.c -o lane.so
+cc -fPIC -shared -I src src/parser.c -o parser.so
 ```
 
 ```lua
 require("lane").setup({
-    parser_path = "/home/flux/sdf-compiler/tree-sitter-lane/lane.so",
+    parser_path = "/home/flux/sdf-compiler/tree-sitter-lane/parser.so",
 })
 ```
+
+By default, `require("lane").setup()` uses `parser.so` from this directory only
+when it is at least as new as `src/parser.c`; otherwise it lets
+nvim-treesitter's installed parser handle `lane` buffers.
 
 Start highlighting for Lane buffers with Neovim's current tree-sitter API:
 
@@ -54,6 +58,9 @@ The grammar includes highlight queries for both the tree-sitter CLI and Neovim:
 
 - `queries/highlights.scm` is used by the tree-sitter CLI.
 - `queries/lane/highlights.scm` is used by Neovim's runtime query loader.
+
+Neovim captures Lane conditionals with `@keyword.conditional`, so `if` and
+`else` follow the active colorscheme's conditional keyword style.
 
 Generate the parser with:
 
