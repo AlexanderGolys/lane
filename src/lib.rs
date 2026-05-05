@@ -825,6 +825,11 @@ enum Expr {
         object: Box<Expr>,
         field: String,
     },
+    Conditional {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Option<Box<Expr>>,
+    },
     Index {
         array: Box<Expr>,
         index: Box<Expr>,
@@ -888,6 +893,12 @@ enum ValueExpr {
     },
     BoolToNumberCast {
         value: Box<ValueExpr>,
+        ty: Type,
+    },
+    Conditional {
+        condition: Box<ValueExpr>,
+        then_branch: Box<ValueExpr>,
+        else_branch: Box<ValueExpr>,
         ty: Type,
     },
     ObjectGetterCall {
@@ -969,6 +980,7 @@ impl ValueExpr {
             Self::Call { ty, .. } => ty.clone(),
             Self::MonoidPow { ty, .. } => ty.clone(),
             Self::BoolToNumberCast { ty, .. } => ty.clone(),
+            Self::Conditional { ty, .. } => ty.clone(),
             Self::ObjectGetterCall { ty, .. } => ty.clone(),
             Self::Array { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
             Self::Index { ty, .. } => ty.clone(),
@@ -1028,6 +1040,11 @@ enum FunctionExprKind {
         func: String,
         args: Vec<PointwiseCallArg>,
     },
+    PointwiseConditional {
+        condition: PointwiseCallArg,
+        then_branch: PointwiseCallArg,
+        else_branch: PointwiseCallArg,
+    },
     ProductSameDomain(Vec<FunctionExpr>),
     ProductTensor(Box<FunctionExpr>, Box<FunctionExpr>),
 }
@@ -1075,6 +1092,16 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
                 .iter()
                 .map(|call_arg| apply_pointwise_call_arg(call_arg, arg.clone()))
                 .collect(),
+            ty: func.output.clone(),
+        },
+        FunctionExprKind::PointwiseConditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => ValueExpr::Conditional {
+            condition: Box::new(apply_pointwise_call_arg(condition, arg.clone())),
+            then_branch: Box::new(apply_pointwise_call_arg(then_branch, arg.clone())),
+            else_branch: Box::new(apply_pointwise_call_arg(else_branch, arg)),
             ty: func.output.clone(),
         },
         FunctionExprKind::ProductSameDomain(funcs) => product_value(

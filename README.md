@@ -616,6 +616,18 @@ Bool inside = 0 <= time
 Bool ordered = count < 4
 ```
 
+### Conditional Values
+
+`if(cond) x else y` selects between two values of the same type and emits a GLSL
+conditional expression. `cond` must be `Bool`. The shorthand `if(cond) x` uses
+zero for the else branch when `0` is valid for the type of `x`.
+
+```lane
+R clipped = if(inside) distance else 0
+R masked = if(inside) distance
+Hom(R2, R4) color = if(shape.sdf > 0) foreground else background
+```
+
 ### Function Composition `@`
 
 `f @ g` means `f(g(t))` for unary functions.

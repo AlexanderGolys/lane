@@ -687,7 +687,8 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         | Expr::Tuple(_)
         | Expr::Array(_)
         | Expr::Index { .. }
-        | Expr::FieldAccess { .. } => Err(Error::new("expected an Object expression")),
+        | Expr::FieldAccess { .. }
+        | Expr::Conditional { .. } => Err(Error::new("expected an Object expression")),
         Expr::Binary { .. } => Err(Error::new("unsupported object expression")),
     }
 }
@@ -1025,6 +1026,17 @@ fn infer_value_expr(
         Expr::FieldAccess { .. } => Err(Error::new(
             "object getters are functions and must be called or passed as closures",
         )),
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => infer_conditional_value_expr(
+            condition,
+            then_branch,
+            else_branch.as_deref(),
+            env,
+            lift_param,
+        ),
         Expr::Tuple(items) => infer_tuple_value_expr(items, env, lift_param),
         Expr::Array(items) => infer_array_literal(items, env, lift_param, None),
         Expr::Index { array, index } => infer_index_expr(array, index, env, lift_param),
@@ -1189,6 +1201,21 @@ fn infer_value_expr_for_type(
             }
             infer_value_expr(expr, env, lift_param)
         }
+        (
+            _,
+            Expr::Conditional {
+                condition,
+                then_branch,
+                else_branch,
+            },
+        ) => infer_conditional_value_expr_for_type(
+            condition,
+            then_branch,
+            else_branch.as_deref(),
+            expected_ty,
+            env,
+            lift_param,
+        ),
         (_, Expr::Ident(name)) if lift_param.is_some() && env.get_value(name).is_none() => {
             let func = infer_function_expr_for_type(expr, env, &Type::Float, expected_ty)?;
             Ok(apply_function_expr(
@@ -1275,6 +1302,111 @@ fn infer_value_expr_for_type(
         }
         _ => infer_value_expr(expr, env, lift_param),
     }
+}
+
+fn infer_conditional_value_expr(
+    condition: &Expr,
+    then_branch: &Expr,
+    else_branch: Option<&Expr>,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    let condition = infer_value_expr_for_type(condition, &Type::Bool, env, lift_param)?;
+    ensure_type(&condition.ty(), &Type::Bool, "conditional condition")?;
+    let then_branch = infer_value_expr(then_branch, env, lift_param)?;
+    let output_ty = then_branch.ty();
+    let else_branch = match else_branch {
+        Some(else_branch) => {
+            let else_branch = infer_value_expr(else_branch, env, lift_param)?;
+            match cast_value_to_type(else_branch, &output_ty) {
+                Ok(else_branch) => else_branch,
+                Err(else_branch) => {
+                    let else_ty = else_branch.ty();
+                    let Ok(then_branch) = cast_value_to_type(then_branch, &else_ty) else {
+                        return Err(Error::new(format!(
+                            "conditional branches have incompatible types {} and {}",
+                            format_type(&output_ty),
+                            format_type(&else_ty)
+                        )));
+                    };
+                    return Ok(ValueExpr::Conditional {
+                        condition: Box::new(condition),
+                        then_branch: Box::new(then_branch),
+                        else_branch: Box::new(else_branch),
+                        ty: else_ty,
+                    });
+                }
+            }
+        }
+        None => zero_value_for_type(&output_ty).ok_or_else(|| {
+            Error::new(format!(
+                "conditional without else cannot use 0 as {}",
+                format_type(&output_ty)
+            ))
+        })?,
+    };
+    Ok(ValueExpr::Conditional {
+        condition: Box::new(condition),
+        then_branch: Box::new(then_branch),
+        else_branch: Box::new(else_branch),
+        ty: output_ty,
+    })
+}
+
+fn infer_conditional_value_expr_for_type(
+    condition: &Expr,
+    then_branch: &Expr,
+    else_branch: Option<&Expr>,
+    expected_ty: &Type,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    let condition = infer_value_expr_for_type(condition, &Type::Bool, env, lift_param)?;
+    ensure_type(&condition.ty(), &Type::Bool, "conditional condition")?;
+    let then_branch = infer_value_expr_for_type(then_branch, expected_ty, env, lift_param)?;
+    ensure_type(&then_branch.ty(), expected_ty, "conditional then branch")?;
+    let else_branch = match else_branch {
+        Some(else_branch) => infer_value_expr_for_type(else_branch, expected_ty, env, lift_param)?,
+        None => zero_value_for_type(expected_ty).ok_or_else(|| {
+            Error::new(format!(
+                "conditional without else cannot use 0 as {}",
+                format_type(expected_ty)
+            ))
+        })?,
+    };
+    ensure_type(&else_branch.ty(), expected_ty, "conditional else branch")?;
+    Ok(ValueExpr::Conditional {
+        condition: Box::new(condition),
+        then_branch: Box::new(then_branch),
+        else_branch: Box::new(else_branch),
+        ty: expected_ty.clone(),
+    })
+}
+
+fn cast_value_to_type(value: ValueExpr, expected_ty: &Type) -> Result<ValueExpr, ValueExpr> {
+    if types_compatible_for_expected(&value.ty(), expected_ty) {
+        return Ok(value);
+    }
+    if let Some(cast) = try_int_literal_cast_value(&value, expected_ty) {
+        return Ok(cast);
+    }
+    if let Some(cast) = try_bool_to_number_cast_value(&value, expected_ty) {
+        return Ok(cast);
+    }
+    if let Some(cast) = try_neutral_cast_value(&value, expected_ty) {
+        return Ok(cast);
+    }
+    Err(value)
+}
+
+fn zero_value_for_type(ty: &Type) -> Option<ValueExpr> {
+    if ty == &Type::Bool {
+        return Some(ValueExpr::Bool(false));
+    }
+    neutral_kind_for_type(ty, NeutralKind::Zero).map(|kind| ValueExpr::Neutral {
+        kind,
+        ty: ty.clone(),
+    })
 }
 
 fn infer_pointwise_value_call(
@@ -1365,6 +1497,16 @@ fn collect_lifted_param_type(
         }
         ValueExpr::BoolToNumberCast { value, .. } => {
             collect_lifted_param_type(value, name, ty)?;
+        }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_lifted_param_type(condition, name, ty)?;
+            collect_lifted_param_type(then_branch, name, ty)?;
+            collect_lifted_param_type(else_branch, name, ty)?;
         }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
@@ -2457,6 +2599,16 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             };
             infer_pointwise_call_function_candidates(name, args, env)
         }
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => infer_conditional_function_candidates(
+            condition,
+            then_branch,
+            else_branch.as_deref(),
+            env,
+        ),
         Expr::Binary { op, left, right } => {
             infer_pointwise_binary_function_candidates(*op, left, right, env)
         }
@@ -2509,6 +2661,113 @@ fn infer_pointwise_binary_function_candidates(
         ));
     }
     Ok(candidates)
+}
+
+fn infer_conditional_function_candidates(
+    condition: &Expr,
+    then_branch: &Expr,
+    else_branch: Option<&Expr>,
+    env: &Env<'_>,
+) -> Result<Vec<FunctionExpr>, Error> {
+    let condition_candidates =
+        infer_pointwise_arg_candidates_for_expected(condition, &Type::Bool, env);
+    let then_candidates = infer_pointwise_binary_arg_candidates(then_branch, env);
+    let mut candidates = Vec::new();
+
+    for condition in &condition_candidates {
+        for then_branch in &then_candidates {
+            let else_candidates = match else_branch {
+                Some(else_branch) => infer_pointwise_binary_arg_candidates(else_branch, env),
+                None => {
+                    let Some(zero) = zero_value_for_type(&then_branch.output) else {
+                        continue;
+                    };
+                    vec![PointwiseBinaryArgCandidate {
+                        arg: PointwiseCallArg::Value(Box::new(zero)),
+                        output: then_branch.output.clone(),
+                        domain: None,
+                        lifted: false,
+                    }]
+                }
+            };
+            for else_branch in &else_candidates {
+                if !types_equivalent(&then_branch.output, &else_branch.output) {
+                    continue;
+                }
+                let mut input = None;
+                if !merge_pointwise_domain(&mut input, condition.domain.as_ref())
+                    || !merge_pointwise_domain(&mut input, then_branch.domain.as_ref())
+                    || !merge_pointwise_domain(&mut input, else_branch.domain.as_ref())
+                {
+                    continue;
+                }
+                if !condition.lifted && !then_branch.lifted && !else_branch.lifted {
+                    continue;
+                }
+                let Some(input) = input else {
+                    continue;
+                };
+                candidates.push(FunctionExpr {
+                    input: normalize_scalar_product_type(&input),
+                    output: then_branch.output.clone(),
+                    kind: FunctionExprKind::PointwiseConditional {
+                        condition: condition.arg.clone(),
+                        then_branch: then_branch.arg.clone(),
+                        else_branch: else_branch.arg.clone(),
+                    },
+                });
+            }
+        }
+    }
+
+    Ok(candidates)
+}
+
+fn infer_pointwise_arg_candidates_for_expected(
+    expr: &Expr,
+    expected_ty: &Type,
+    env: &Env<'_>,
+) -> Vec<PointwiseBinaryArgCandidate> {
+    let mut candidates = Vec::new();
+    if let Ok(funcs) = infer_function_expr_candidates(expr, env) {
+        candidates.extend(funcs.into_iter().filter_map(|func| {
+            (types_equivalent(&func.output, expected_ty)
+                || can_cast_function_output_to_expected(&func.output, expected_ty))
+            .then(|| PointwiseBinaryArgCandidate {
+                output: expected_ty.clone(),
+                domain: Some(func.input.clone()),
+                lifted: true,
+                arg: PointwiseCallArg::Function {
+                    expected: expected_ty.clone(),
+                    func: Box::new(func),
+                },
+            })
+        }));
+    }
+    if let Ok(value) = infer_value_expr_for_type(expr, expected_ty, env, None) {
+        if types_compatible_for_expected(&value.ty(), expected_ty) {
+            candidates.push(PointwiseBinaryArgCandidate {
+                arg: PointwiseCallArg::Value(Box::new(value)),
+                output: expected_ty.clone(),
+                domain: None,
+                lifted: false,
+            });
+        }
+    }
+    candidates
+}
+
+fn merge_pointwise_domain(target: &mut Option<Type>, domain: Option<&Type>) -> bool {
+    let Some(domain) = domain else {
+        return true;
+    };
+    match target {
+        Some(existing) => types_equivalent(existing, domain),
+        None => {
+            *target = Some(domain.clone());
+            true
+        }
+    }
 }
 
 #[derive(Clone)]

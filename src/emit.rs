@@ -635,6 +635,16 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
         ValueExpr::BoolToNumberCast { value, .. } => {
             collect_object_getter_value_refs(value, names);
         }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_object_getter_value_refs(condition, names);
+            collect_object_getter_value_refs(then_branch, names);
+            collect_object_getter_value_refs(else_branch, names);
+        }
         ValueExpr::ObjectGetterCall {
             object,
             point,
@@ -735,6 +745,15 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
             for arg in args {
                 collect_object_getter_pointwise_call_arg_refs(arg, names);
             }
+        }
+        FunctionExprKind::PointwiseConditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_object_getter_pointwise_call_arg_refs(condition, names);
+            collect_object_getter_pointwise_call_arg_refs(then_branch, names);
+            collect_object_getter_pointwise_call_arg_refs(else_branch, names);
         }
         FunctionExprKind::ProductSameDomain(funcs) => {
             for func in funcs {
@@ -1472,6 +1491,16 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
         ValueExpr::BoolToNumberCast { value, .. } => {
             collect_concat_helpers(value, helpers);
         }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_concat_helpers(condition, helpers);
+            collect_concat_helpers(then_branch, helpers);
+            collect_concat_helpers(else_branch, helpers);
+        }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
         } => {
@@ -1568,6 +1597,16 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
             is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
         }
         ValueExpr::BoolToNumberCast { value, .. } => is_global_const_value_expr(value, names),
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            is_global_const_value_expr(condition, names)
+                && is_global_const_value_expr(then_branch, names)
+                && is_global_const_value_expr(else_branch, names)
+        }
         ValueExpr::Array { .. }
         | ValueExpr::Index { .. }
         | ValueExpr::Concat { .. }
@@ -1656,6 +1695,16 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         ValueExpr::BoolToNumberCast { value, .. } => {
             collect_value_refs(value, names);
         }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_value_refs(condition, names);
+            collect_value_refs(then_branch, names);
+            collect_value_refs(else_branch, names);
+        }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
         } => {
@@ -1743,6 +1792,16 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         }
         ValueExpr::BoolToNumberCast { value, .. } => {
             collect_value_function_refs(value, names);
+        }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_value_function_refs(condition, names);
+            collect_value_function_refs(then_branch, names);
+            collect_value_function_refs(else_branch, names);
         }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
@@ -1946,6 +2005,17 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         ValueExpr::BoolToNumberCast { value, .. } => {
             collect_value_support(value, names);
         }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ty,
+        } => {
+            collect_type_support(ty, names);
+            collect_value_support(condition, names);
+            collect_value_support(then_branch, names);
+            collect_value_support(else_branch, names);
+        }
         ValueExpr::ObjectGetterCall {
             point,
             captures,
@@ -2052,6 +2122,15 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
                 collect_pointwise_call_arg_support(arg, names);
             }
         }
+        FunctionExprKind::PointwiseConditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_pointwise_call_arg_support(condition, names);
+            collect_pointwise_call_arg_support(then_branch, names);
+            collect_pointwise_call_arg_support(else_branch, names);
+        }
         FunctionExprKind::ProductSameDomain(funcs) => {
             for func in funcs {
                 collect_function_support(func, names);
@@ -2115,6 +2194,17 @@ fn emit_value_expr(
                 _ => unreachable!(),
             }
         }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => format!(
+            "({} ? {} : {})",
+            emit_value_expr(condition, helper_names, value_names),
+            emit_value_expr(then_branch, helper_names, value_names),
+            emit_value_expr(else_branch, helper_names, value_names)
+        ),
         ValueExpr::ObjectGetterCall {
             object,
             getter,

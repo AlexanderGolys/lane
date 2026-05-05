@@ -874,6 +874,29 @@ fn casts_bool_values_to_expected_numeric_types() {
 }
 
 #[test]
+fn supports_conditional_value_expressions() {
+    let source = "provided Bool flag\nconst R a = if(flag) 2 else 3\nconst R b = if(flag) 2\nconst Object output = Ball3D(r=a + b)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float a = (flag ? 2.0 : 3.0);"));
+    assert!(glsl.contains("float b = (flag ? 2.0 : 0.0);"));
+    assert!(glsl.contains("ParamBall3D((a + b))"));
+}
+
+#[test]
+fn supports_pointwise_conditional_functions() {
+    let source = "#2D\nconst Object2D shape = Box2D(a=1, b=2)\nconst Hom(R2, R) clipped = if(shape.sdf > 0) shape.sdf\nconst Hom(R2, R4) color = if(shape.sdf > 0) (1, 0, 0, 1) else (0, 0, 1, 1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float clipped(vec2 t)"));
+    assert!(glsl.contains("return ((sdf_shape(t) > 0.0) ? sdf_shape(t) : 0.0);"));
+    assert!(glsl.contains("vec4 color(vec2 t)"));
+    assert!(glsl.contains(
+        "return ((sdf_shape(t) > 0.0) ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0, 0.0, 1.0, 1.0));"
+    ));
+}
+
+#[test]
 fn supports_comparison_operators() {
     let source = "provided Hom(Bool, R) choose\nprovided R time\nprovided Z count\nconst Bool scalar_order = 1 + time <= 3\nconst Bool int_order = count < 4\nconst Bool bool_equal = true == false\nconst Bool int_not_equal = count != 0\nconst R radius = choose(or(and(scalar_order, int_order), and(bool_equal, int_not_equal)))\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();

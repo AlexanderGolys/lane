@@ -601,6 +601,24 @@ impl ExprParser {
                 if name == "false" {
                     return Ok(Expr::Bool(false));
                 }
+                if name == "if" {
+                    self.expect(Token::LParen)?;
+                    let condition = self.parse_compare()?;
+                    self.expect(Token::RParen)?;
+                    let then_branch = self.parse_compare()?;
+                    let else_branch = match self.peek() {
+                        Some(Token::Ident(keyword)) if keyword == "else" => {
+                            self.index += 1;
+                            Some(Box::new(self.parse_compare()?))
+                        }
+                        _ => None,
+                    };
+                    return Ok(Expr::Conditional {
+                        condition: Box::new(condition),
+                        then_branch: Box::new(then_branch),
+                        else_branch,
+                    });
+                }
                 if matches!(self.peek(), Some(Token::LParen)) {
                     let args = self.parse_mixed_args()?;
                     return Ok(Expr::Constructor { name, args });
