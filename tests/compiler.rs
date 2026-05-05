@@ -608,15 +608,15 @@ fn supports_pointwise_bool_masks_for_vector_functions() {
 }
 
 #[test]
-fn forward_declares_object_helpers_used_by_functions() {
+fn emits_functions_and_object_helpers_in_source_order() {
     let source = "#2D\nconst Object2D rect = Box2D(a=1, b=2)\nconst Object2D scene = rect\nconst Hom(R2, R4) color = if(scene.sdf > 0) (1, 0, 0, 1)\n";
     let glsl = compile_program(source).unwrap();
 
-    let sdf_decl = glsl.find("float sdf_scene(vec2 p);").unwrap();
-    let color_def = glsl.find("vec4 color(vec2 t) {").unwrap();
+    let rect_def = glsl.find("float sdf_rect(vec2 p) {").unwrap();
     let sdf_def = glsl.find("float sdf_scene(vec2 p) {").unwrap();
-    assert!(sdf_decl < color_def);
-    assert!(color_def < sdf_def);
+    let color_def = glsl.find("vec4 color(vec2 t) {").unwrap();
+    assert!(rect_def < sdf_def);
+    assert!(sdf_def < color_def);
     assert!(glsl.contains("return ((sdf_scene(t) > 0.0) ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0));"));
 }
 

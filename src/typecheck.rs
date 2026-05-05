@@ -58,6 +58,7 @@ impl TypedProgram {
                         expr,
                         generated: binding.generated,
                         dimension,
+                        line: binding.line,
                     });
                 }
                 Err(object_err) => {
@@ -81,6 +82,7 @@ impl TypedProgram {
                                     output,
                                     expr,
                                     generated: binding.generated,
+                                    line: binding.line,
                                 });
                                 continue;
                             }
@@ -104,6 +106,7 @@ impl TypedProgram {
                                     },
                                 ),
                                 generated: binding.generated,
+                                line: binding.line,
                             });
                             continue;
                         }
@@ -181,6 +184,7 @@ impl TypedProgram {
                 output: output_ty,
                 expr,
                 generated: func.generated,
+                line: func.line,
             });
         }
 
@@ -231,6 +235,7 @@ impl TypedProgram {
                 expr,
                 generated: binding.generated,
                 dimension,
+                line: binding.line,
             });
         }
 
@@ -257,6 +262,11 @@ impl TypedProgram {
                 expr: output.clone(),
                 generated: true,
                 dimension: object_dimension(output, &env),
+                line: program
+                    .output
+                    .as_ref()
+                    .map(|output| output.line)
+                    .unwrap_or(usize::MAX),
             });
         }
 

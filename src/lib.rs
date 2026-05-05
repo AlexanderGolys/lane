@@ -1214,6 +1214,7 @@ struct TypedFunc {
     output: Type,
     expr: ValueExpr,
     generated: bool,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -1222,6 +1223,7 @@ struct TypedBinding {
     expr: ObjectExpr,
     generated: bool,
     dimension: Option<ShapeDimension>,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]

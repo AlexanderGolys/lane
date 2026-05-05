@@ -1,5 +1,11 @@
 use super::*;
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum EmitItem {
+    Func(String),
+    Object(String),
+}
+
 impl TypedProgram {
     pub(super) fn emit_glsl(&self, registry: &Registry) -> String {
         let mut lines = Vec::new();
@@ -22,17 +28,6 @@ impl TypedProgram {
         let object_bindings = self.object_bindings();
         let object_getter_bindings = self.object_getter_bindings();
 
-        let func_object_getter_bindings =
-            self.object_getter_bindings_used_by_emitted_funcs(&emitted_func_names);
-        for line in
-            self.emit_object_helper_forward_declarations(&func_object_getter_bindings, &locals)
-        {
-            lines.push(line);
-        }
-        if !func_object_getter_bindings.is_empty() {
-            lines.push(String::new());
-        }
-
         for line in self.emit_global_value_binding_lines(&global_value_names, &helper_names) {
             lines.push(line);
         }
@@ -40,40 +35,33 @@ impl TypedProgram {
             lines.push(String::new());
         }
 
-        for func in &self.funcs {
-            if !emitted_func_names.contains(&func.name) {
-                continue;
-            }
-            let func_var_names = HashMap::from([("t".to_string(), locals.func_param.clone())]);
-            lines.push(format!(
-                "{} {}({} {}) {{",
-                func.output.glsl_name(),
-                helper_name(&func.name),
-                func.input.glsl_name(),
-                locals.func_param
-            ));
-            lines.push(format!(
-                "    return {};",
-                emit_value_expr(&func.expr, &helper_names, &func_var_names)
-            ));
-            lines.push("}".to_string());
-            lines.push(String::new());
-        }
-
         let signature = self.scene_signature(&locals.point);
-
-        for binding in &self.bindings {
-            if !binding.generated && !object_getter_bindings.contains(&binding.name) {
-                continue;
+        for item in self.ordered_emitted_items(&emitted_func_names, &object_getter_bindings) {
+            match item {
+                EmitItem::Func(name) => {
+                    let func = self
+                        .funcs
+                        .iter()
+                        .find(|func| func.name == name)
+                        .expect("ordered emitted function exists");
+                    lines.extend(self.emit_func(func, &helper_names, &locals));
+                }
+                EmitItem::Object(name) => {
+                    let binding = self
+                        .bindings
+                        .iter()
+                        .find(|binding| binding.name == name)
+                        .expect("ordered emitted object exists");
+                    lines.extend(self.emit_generated_binding(
+                        binding,
+                        &object_bindings,
+                        &helper_names,
+                        &scene_input_names,
+                        &global_value_names,
+                        &locals,
+                    ));
+                }
             }
-            lines.extend(self.emit_generated_binding(
-                binding,
-                &object_bindings,
-                &helper_names,
-                &scene_input_names,
-                &global_value_names,
-                &locals,
-            ));
         }
 
         if let Some(scene_output) = &self.output {
@@ -124,48 +112,6 @@ impl TypedProgram {
         }
 
         suffix_glsl_float_literals(&lines.join("\n"))
-    }
-
-    fn emit_object_helper_forward_declarations(
-        &self,
-        object_getter_bindings: &BTreeSet<String>,
-        locals: &EmitLocals,
-    ) -> Vec<String> {
-        let mut lines = Vec::new();
-        for binding in &self.bindings {
-            if !object_getter_bindings.contains(&binding.name) {
-                continue;
-            }
-            let dimension = binding.dimension.unwrap_or(self.ambient_dimension);
-            let signature = self.object_helper_signature(&locals.point, dimension);
-            lines.push(format!(
-                "float sdf_{}({});",
-                binding.name,
-                signature.join(", ")
-            ));
-            if dimension == ShapeDimension::D3 {
-                lines.push(format!(
-                    "{} grad_sdf_{}({});",
-                    ambient_vector_glsl_type(dimension),
-                    binding.name,
-                    signature.join(", ")
-                ));
-            }
-        }
-        lines
-    }
-
-    fn object_getter_bindings_used_by_emitted_funcs(
-        &self,
-        emitted_func_names: &BTreeSet<String>,
-    ) -> BTreeSet<String> {
-        let mut names = BTreeSet::new();
-        for func in &self.funcs {
-            if emitted_func_names.contains(&func.name) {
-                collect_object_getter_value_refs(&func.expr, &mut names);
-            }
-        }
-        names
     }
 
     fn scene_signature(&self, point_name: &str) -> Vec<String> {
@@ -330,6 +276,49 @@ impl TypedProgram {
                 )
             })
             .collect()
+    }
+
+    fn emit_func(
+        &self,
+        func: &TypedFunc,
+        helper_names: &HashMap<String, String>,
+        locals: &EmitLocals,
+    ) -> Vec<String> {
+        let func_var_names = HashMap::from([("t".to_string(), locals.func_param.clone())]);
+        vec![
+            format!(
+                "{} {}({} {}) {{",
+                func.output.glsl_name(),
+                helper_name(&func.name),
+                func.input.glsl_name(),
+                locals.func_param
+            ),
+            format!(
+                "    return {};",
+                emit_value_expr(&func.expr, helper_names, &func_var_names)
+            ),
+            "}".to_string(),
+            String::new(),
+        ]
+    }
+
+    fn ordered_emitted_items(
+        &self,
+        emitted_func_names: &BTreeSet<String>,
+        object_getter_bindings: &BTreeSet<String>,
+    ) -> Vec<EmitItem> {
+        let mut items = self
+            .funcs
+            .iter()
+            .filter(|func| emitted_func_names.contains(&func.name))
+            .map(|func| (func.line, EmitItem::Func(func.name.clone())))
+            .chain(self.bindings.iter().filter_map(|binding| {
+                (binding.generated || object_getter_bindings.contains(&binding.name))
+                    .then_some((binding.line, EmitItem::Object(binding.name.clone())))
+            }))
+            .collect::<Vec<_>>();
+        items.sort_by_key(|(line, item)| (*line, item.clone()));
+        items.into_iter().map(|(_, item)| item).collect()
     }
 
     fn emit_generated_binding(
