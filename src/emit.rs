@@ -599,6 +599,10 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
             collect_object_getter_function_refs(outer, names);
             collect_object_getter_function_refs(inner, names);
         }
+        FunctionExprKind::PointwiseBinary { left, right, .. } => {
+            collect_object_getter_function_refs(left, names);
+            collect_object_getter_function_refs(right, names);
+        }
         FunctionExprKind::ProductSameDomain(funcs) => {
             for func in funcs {
                 collect_object_getter_function_refs(func, names);
@@ -1653,6 +1657,10 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
         FunctionExprKind::Compose(outer, inner) => {
             collect_function_support(outer, names);
             collect_function_support(inner, names);
+        }
+        FunctionExprKind::PointwiseBinary { left, right, .. } => {
+            collect_function_support(left, names);
+            collect_function_support(right, names);
         }
         FunctionExprKind::ProductSameDomain(funcs) => {
             for func in funcs {

@@ -1000,6 +1000,11 @@ enum FunctionExprKind {
         captures: Vec<ValueExpr>,
     },
     Compose(Box<FunctionExpr>, Box<FunctionExpr>),
+    PointwiseBinary {
+        op: BinOp,
+        left: Box<FunctionExpr>,
+        right: Box<FunctionExpr>,
+    },
     ProductSameDomain(Vec<FunctionExpr>),
     ProductTensor(Box<FunctionExpr>, Box<FunctionExpr>),
 }
@@ -1026,6 +1031,12 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             let inner_value = apply_function_expr(inner, arg);
             apply_function_expr(outer, inner_value)
         }
+        FunctionExprKind::PointwiseBinary { op, left, right } => ValueExpr::Binary {
+            op: *op,
+            left: Box::new(apply_function_expr(left, arg.clone())),
+            right: Box::new(apply_function_expr(right, arg)),
+            ty: func.output.clone(),
+        },
         FunctionExprKind::ProductSameDomain(funcs) => product_value(
             funcs
                 .iter()

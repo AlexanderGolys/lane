@@ -604,6 +604,13 @@ Func(R, R) wave = pow2 @ sin
 R y = wave(time)
 ```
 
+Functions with matching domains support pointwise arithmetic when their codomain
+supports the corresponding operation.
+
+```lane
+Hom(R2, R) h = f + g
+```
+
 ### Function Products
 
 Tuples of functions with the same domain form a product-valued function. Products

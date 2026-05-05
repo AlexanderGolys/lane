@@ -552,6 +552,25 @@ fn supports_tensor_function_products() {
 }
 
 #[test]
+fn supports_pointwise_function_arithmetic() {
+    let source = "provided Hom(R2, R) f\nprovided Hom(R x R, R) g\nHom(R2, R) h = f + g\nprovided R2 uv\nconst Object output = Ball3D(r=h(uv))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float dsl_h(vec2 t)"));
+    assert!(glsl.contains("return (f(t) + g(t));"));
+}
+
+#[test]
+fn supports_pointwise_function_arithmetic_support_dependencies() {
+    let source = "provided Hom(R, C) f\nprovided Hom(R, C) g\nHom(R, C) h = f * g\nconst Object output = Ball3D(r=length(h(1)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
+    assert!(glsl.contains("vec2 dsl_h(float t)"));
+    assert!(glsl.contains("return mult_C(f(t), g(t));"));
+}
+
+#[test]
 fn emits_glsl_builtin_scalar_vector_and_geometric_calls() {
     let source = "provided R3 v\nR3 n = normalize(v)\nR len = length(n)\nR angle = atan(len, 1)\nR3 bounced = reflect(v, n)\nR3 blended = mix(clamp(cross(n, bounced), -1, 1), refract(v, n, 0.5), 0.25)\nconst Object output = Ball3D(r=len + distance(blended, n) + dot(blended, n) + angle)\n";
     let glsl = compile_program(source).unwrap();

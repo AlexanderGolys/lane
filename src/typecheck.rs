@@ -2315,10 +2315,48 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             left,
             right,
         } => infer_tensor_function_product_candidates(left, right, env),
+        Expr::Binary { op, left, right } => {
+            infer_pointwise_binary_function_candidates(*op, left, right, env)
+        }
         _ => Err(Error::new(
             "function composition currently only supports named unary functions",
         )),
     }
+}
+
+fn infer_pointwise_binary_function_candidates(
+    op: BinOp,
+    left: &Expr,
+    right: &Expr,
+    env: &Env<'_>,
+) -> Result<Vec<FunctionExpr>, Error> {
+    let left_candidates = infer_function_expr_candidates(left, env)?;
+    let right_candidates = infer_function_expr_candidates(right, env)?;
+    let mut candidates = Vec::new();
+    for left in &left_candidates {
+        for right in &right_candidates {
+            if !types_equivalent(&left.input, &right.input) {
+                continue;
+            }
+            if let Ok(output) = infer_binary_type(op, &left.output, &right.output) {
+                candidates.push(FunctionExpr {
+                    input: normalize_scalar_product_type(&left.input),
+                    output,
+                    kind: FunctionExprKind::PointwiseBinary {
+                        op,
+                        left: Box::new(left.clone()),
+                        right: Box::new(right.clone()),
+                    },
+                });
+            }
+        }
+    }
+    if candidates.is_empty() {
+        return Err(Error::new(
+            "no pointwise function arithmetic overload matches provided operands",
+        ));
+    }
+    Ok(candidates)
 }
 
 fn infer_same_domain_function_product_candidates(
