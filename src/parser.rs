@@ -12,6 +12,12 @@ enum Token {
     Colon,
     Comma,
     Equal,
+    EqualEqual,
+    BangEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
     Plus,
     Minus,
     Star,
@@ -431,12 +437,35 @@ impl ExprParser {
     }
 
     fn parse(mut self) -> Result<Expr, Error> {
-        let expr = self.parse_add_sub()?;
+        let expr = self.parse_compare()?;
         if self.peek().is_some() {
             return Err(Error::new(format!(
                 "unexpected trailing token {} in expression",
                 self.describe_current_token()
             )));
+        }
+        Ok(expr)
+    }
+
+    fn parse_compare(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.parse_add_sub()?;
+        loop {
+            let op = match self.peek() {
+                Some(Token::EqualEqual) => BinOp::Eq,
+                Some(Token::BangEqual) => BinOp::Ne,
+                Some(Token::Less) => BinOp::Lt,
+                Some(Token::LessEqual) => BinOp::Le,
+                Some(Token::Greater) => BinOp::Gt,
+                Some(Token::GreaterEqual) => BinOp::Ge,
+                _ => break,
+            };
+            self.index += 1;
+            let rhs = self.parse_add_sub()?;
+            expr = Expr::Binary {
+                op,
+                left: Box::new(expr),
+                right: Box::new(rhs),
+            };
         }
         Ok(expr)
     }
@@ -526,7 +555,7 @@ impl ExprParser {
                 }
                 Some(Token::LBracket) => {
                     self.index += 1;
-                    let index = self.parse_add_sub()?;
+                    let index = self.parse_compare()?;
                     self.expect(Token::RBracket)?;
                     expr = Expr::Index {
                         array: Box::new(expr),
@@ -588,7 +617,7 @@ impl ExprParser {
     }
 
     fn parse_paren_or_tuple(&mut self) -> Result<Expr, Error> {
-        let first = self.parse_add_sub()?;
+        let first = self.parse_compare()?;
         if !matches!(self.peek(), Some(Token::Comma)) {
             self.expect(Token::RParen)?;
             return Ok(first);
@@ -597,7 +626,7 @@ impl ExprParser {
         let mut items = vec![first];
         while matches!(self.peek(), Some(Token::Comma)) {
             self.index += 1;
-            items.push(self.parse_add_sub()?);
+            items.push(self.parse_compare()?);
         }
         self.expect(Token::RParen)?;
         Ok(Expr::Tuple(items))
@@ -611,7 +640,7 @@ impl ExprParser {
 
         let mut items = Vec::new();
         loop {
-            items.push(self.parse_add_sub()?);
+            items.push(self.parse_compare()?);
             match self.peek() {
                 Some(Token::Comma) => self.index += 1,
                 Some(Token::RBracket) => {
@@ -632,7 +661,7 @@ impl ExprParser {
         }
         let mut args = Vec::new();
         loop {
-            args.push(self.parse_add_sub()?);
+            args.push(self.parse_compare()?);
             match self.peek() {
                 Some(Token::Comma) => self.index += 1,
                 Some(Token::RParen) => {
@@ -667,7 +696,7 @@ impl ExprParser {
                 _ => return Err(Error::new("expected named constructor arguments")),
             };
             self.index += 2;
-            let expr = self.parse_add_sub()?;
+            let expr = self.parse_compare()?;
             named.push((field_name, expr));
             match self.peek() {
                 Some(Token::Comma) => self.index += 1,
@@ -720,6 +749,12 @@ impl ExprParser {
             Token::Colon => "':'".to_string(),
             Token::Comma => "','".to_string(),
             Token::Equal => "'='".to_string(),
+            Token::EqualEqual => "'=='".to_string(),
+            Token::BangEqual => "'!='".to_string(),
+            Token::Less => "'<'".to_string(),
+            Token::LessEqual => "'<='".to_string(),
+            Token::Greater => "'>'".to_string(),
+            Token::GreaterEqual => "'>='".to_string(),
             Token::Plus => "'+'".to_string(),
             Token::Minus => "'-'".to_string(),
             Token::Star => "'*'".to_string(),
@@ -760,6 +795,26 @@ fn tokenize(source: &str) -> Vec<Token> {
         }
         if ch == '-' && chars.get(index + 1) == Some(&'>') {
             tokens.push(Token::Arrow);
+            index += 2;
+            continue;
+        }
+        if ch == '=' && chars.get(index + 1) == Some(&'=') {
+            tokens.push(Token::EqualEqual);
+            index += 2;
+            continue;
+        }
+        if ch == '!' && chars.get(index + 1) == Some(&'=') {
+            tokens.push(Token::BangEqual);
+            index += 2;
+            continue;
+        }
+        if ch == '<' && chars.get(index + 1) == Some(&'=') {
+            tokens.push(Token::LessEqual);
+            index += 2;
+            continue;
+        }
+        if ch == '>' && chars.get(index + 1) == Some(&'=') {
+            tokens.push(Token::GreaterEqual);
             index += 2;
             continue;
         }
@@ -807,6 +862,8 @@ fn tokenize(source: &str) -> Vec<Token> {
             ':' => Token::Colon,
             ',' => Token::Comma,
             '=' => Token::Equal,
+            '<' => Token::Less,
+            '>' => Token::Greater,
             '+' => Token::Plus,
             '-' => Token::Minus,
             '*' => Token::Star,

@@ -1076,7 +1076,19 @@ fn infer_value_expr(
             let (left, right, ty) = match infer_binary_type(*op, &left.ty(), &right.ty()) {
                 Ok(ty) => (left, right, ty),
                 Err(original_err) => {
-                    if let Some(right_cast) = try_neutral_cast_value(&right, &left.ty()) {
+                    if let Some(right_cast) = try_int_literal_cast_value(&right, &left.ty()) {
+                        if let Ok(ty) = infer_binary_type(*op, &left.ty(), &right_cast.ty()) {
+                            (left, right_cast, ty)
+                        } else {
+                            return Err(original_err);
+                        }
+                    } else if let Some(left_cast) = try_int_literal_cast_value(&left, &right.ty()) {
+                        if let Ok(ty) = infer_binary_type(*op, &left_cast.ty(), &right.ty()) {
+                            (left_cast, right, ty)
+                        } else {
+                            return Err(original_err);
+                        }
+                    } else if let Some(right_cast) = try_neutral_cast_value(&right, &left.ty()) {
                         if let Ok(ty) = infer_binary_type(*op, &left.ty(), &right_cast.ty()) {
                             (left, right_cast, ty)
                         } else {
@@ -2672,16 +2684,34 @@ fn infer_complex_overload_call(
 }
 
 fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error> {
-    if left == right {
+    if left == right && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div) {
         let category = match op {
             BinOp::Add | BinOp::Sub => AlgebraicCategory::Ab,
             BinOp::Mul => AlgebraicCategory::Mon,
             BinOp::Div => AlgebraicCategory::DivRing,
-            BinOp::Product | BinOp::Compose => unreachable!(),
+            BinOp::Eq
+            | BinOp::Ne
+            | BinOp::Lt
+            | BinOp::Le
+            | BinOp::Gt
+            | BinOp::Ge
+            | BinOp::Product
+            | BinOp::Compose => unreachable!(),
         };
         if has_category(left, category) {
             return Ok(left.clone());
         }
+    }
+
+    if matches!(op, BinOp::Eq | BinOp::Ne) && left == right && is_equality_comparable_type(left) {
+        return Ok(Type::Bool);
+    }
+
+    if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
+        && left == right
+        && is_ordered_comparable_type(left)
+    {
+        return Ok(Type::Bool);
     }
 
     if has_category(left, AlgebraicCategory::RAlg) && right == &Type::Float {
@@ -2717,6 +2747,29 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         op.symbol(),
         format_type(right)
     )))
+}
+
+fn is_equality_comparable_type(ty: &Type) -> bool {
+    matches!(ty, Type::Bool | Type::Float | Type::Int)
+}
+
+fn is_ordered_comparable_type(ty: &Type) -> bool {
+    matches!(ty, Type::Float | Type::Int)
+}
+
+fn try_int_literal_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
+    if expected_ty != &Type::Int {
+        return None;
+    }
+    let ValueExpr::Float(value) = value else {
+        return None;
+    };
+    let rounded = value.round();
+    if (value - rounded).abs() < f64::EPSILON {
+        Some(ValueExpr::Int(rounded as i64))
+    } else {
+        None
+    }
 }
 
 fn try_neutral_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {

@@ -821,6 +821,28 @@ fn supports_bool_field_values_and_builtins() {
 }
 
 #[test]
+fn supports_comparison_operators() {
+    let source = "provided Hom(Bool, R) choose\nprovided R time\nprovided Z count\nconst Bool scalar_order = 1 + time <= 3\nconst Bool int_order = count < 4\nconst Bool bool_equal = true == false\nconst Bool int_not_equal = count != 0\nconst R radius = choose(or(and(scalar_order, int_order), and(bool_equal, int_not_equal)))\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("bool scalar_order = ((1.0 + time) <= 3.0);"));
+    assert!(glsl.contains("bool int_order = (count < 4);"));
+    assert!(glsl.contains("const bool bool_equal = (true == false);"));
+    assert!(glsl.contains("bool int_not_equal = (count != 0);"));
+    assert!(glsl.contains(
+        "float radius = choose(or(and(scalar_order, int_order), and(bool_equal, int_not_equal)));"
+    ));
+}
+
+#[test]
+fn rejects_ordering_non_ordered_values() {
+    let source = "const Bool bad = true < false\nconst Object output = Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("unsupported operands for binary operator: Bool < Bool"));
+}
+
+#[test]
 fn casts_bool_zero_and_one_neutral_literals() {
     let source = "const Bool zero = 0\nconst Bool one = 1\nconst Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();

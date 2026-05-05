@@ -595,6 +595,17 @@ C normalized = z / z
 R3 half = (1, 2, 3) / 2
 ```
 
+### Comparisons
+
+`==` and `!=` compare `Bool`, `R`, and `Z` values. `<`, `<=`, `>`, and `>=`
+compare `R` and `Z` values. All comparison operators return `Bool`.
+
+```lane
+Bool same = time == 0
+Bool inside = 0 <= time
+Bool ordered = count < 4
+```
+
 ### Function Composition `@`
 
 `f @ g` means `f(g(t))` for unary functions.

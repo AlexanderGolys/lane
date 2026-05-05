@@ -934,7 +934,14 @@ fn product_op_for_binary(op: BinOp) -> Option<ProductOp> {
         BinOp::Sub => Some(ProductOp::Sub),
         BinOp::Mul => Some(ProductOp::Mult),
         BinOp::Div => Some(ProductOp::Inv),
-        BinOp::Product | BinOp::Compose => None,
+        BinOp::Eq
+        | BinOp::Ne
+        | BinOp::Lt
+        | BinOp::Le
+        | BinOp::Gt
+        | BinOp::Ge
+        | BinOp::Product
+        | BinOp::Compose => None,
     }
 }
 
@@ -2265,7 +2272,14 @@ fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> Str
         BinOp::Sub => format!("sub_{}({}, {})", name, left, right),
         BinOp::Mul => format!("mult_{}({}, {})", name, left, right),
         BinOp::Div => format!("mult_{}({}, inv_{}({}))", name, left, name, right),
-        BinOp::Product | BinOp::Compose => unreachable!(),
+        BinOp::Eq
+        | BinOp::Ne
+        | BinOp::Lt
+        | BinOp::Le
+        | BinOp::Gt
+        | BinOp::Ge
+        | BinOp::Product
+        | BinOp::Compose => unreachable!(),
     }
 }
 
@@ -2276,7 +2290,16 @@ fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> St
     match op {
         BinOp::Mul => format!("scale_{}({}, {})", name, value, scalar),
         BinOp::Div => format!("scale_{}({}, (1.0 / {}))", name, value, scalar),
-        BinOp::Add | BinOp::Sub | BinOp::Product | BinOp::Compose => unreachable!(),
+        BinOp::Add
+        | BinOp::Sub
+        | BinOp::Eq
+        | BinOp::Ne
+        | BinOp::Lt
+        | BinOp::Le
+        | BinOp::Gt
+        | BinOp::Ge
+        | BinOp::Product
+        | BinOp::Compose => unreachable!(),
     }
 }
 
