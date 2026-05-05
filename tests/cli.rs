@@ -212,6 +212,42 @@ fn lists_known_builtin_objects_from_short_flag() {
 }
 
 #[test]
+fn lists_all_builtin_items_from_command() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg("list-all")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball3D: {r: R}"));
+    assert!(stdout.contains("Box2D: {a: R, b: R}"));
+    assert!(stdout.contains("Polygon2D: { points: R2 list }"));
+    assert!(stdout.contains("Field: Cat"));
+    assert!(stdout.contains("C: Field, RAlg"));
+    assert!(stdout.contains("sin: Hom(R, R)"));
+    assert!(stdout.contains("clamp: Hom(R × R × R, R)"));
+    assert!(stdout.contains("union: Hom(Object × Object, Object)"));
+    assert!(!stdout.contains("sdf0_Ball3D"));
+    assert!(!stdout.contains("struct ParamBall3D"));
+}
+
+#[test]
+fn lists_all_builtin_items_from_flag() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg("--list-all")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball3D: {r: R}"));
+    assert!(stdout.contains("sin: Hom(R, R)"));
+}
+
+#[test]
 fn shows_known_builtin_object_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .args(["--list-objects", "revolution"])
@@ -286,6 +322,8 @@ fn prints_bash_completion_from_cli() {
     assert!(stdout.contains("--list"));
     assert!(stdout.contains("-l2"));
     assert!(stdout.contains("--list-objects"));
+    assert!(stdout.contains("--list-all"));
+    assert!(stdout.contains("list-all"));
 }
 
 #[test]
@@ -317,6 +355,8 @@ fn prints_help_from_cli() {
     assert!(stdout.contains("lane -l2, --list2d"));
     assert!(stdout.contains("lane -l3, --list3d"));
     assert!(stdout.contains("lane -lo, --list-objects [NAME]"));
+    assert!(stdout.contains("lane list-all"));
+    assert!(stdout.contains("lane --list-all"));
     assert!(stdout.contains("lane -pc, --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h, --help"));
     assert!(stdout.contains("When TARGET is present"));

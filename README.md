@@ -44,6 +44,8 @@ Usage:
   lane -l2, --list2d
   lane -l3, --list3d
   lane -lo, --list-objects [NAME]
+  lane list-all
+  lane --list-all
   lane -pc, --print-completion <bash|zsh|fish>
   lane -h, --help
 ```
@@ -59,6 +61,9 @@ Usage:
 - `lane -lo` or `lane --list-objects` lists builtin objects, type aliases, and
   algebraic categories.
 - `lane -lo NAME` shows one builtin object's type and support body.
+- `lane list-all` or `lane --list-all` lists every builtin item on one line,
+  including primitive constructors, GLSL functions, type aliases, object
+  operators, and algebraic categories.
 - `lane -pc SHELL` prints completion code for `bash`, `zsh`, or `fish`.
 - `lane help` is treated as an input path. Use `lane -h` or `lane --help`.
 
