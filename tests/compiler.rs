@@ -345,7 +345,18 @@ fn lists_builtin_lane_objects() {
     assert!(objects.iter().any(|object| {
         object.name == "divergence" && object.ty == "Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"
     }));
-    assert!(!objects.iter().any(|object| object.name == "sin"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "sin" && object.ty.contains("Hom(R3, R3)")));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "clamp" && object.ty.contains("Hom(R3 × R × R, R3)")));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "reflect" && object.ty.contains("Hom(R3 × R3, R3)")));
+    assert!(objects.iter().any(|object| {
+        object.name == "matrixCompMult" && object.ty.contains("Hom(Mat3 × Mat3, Mat3)")
+    }));
 }
 
 #[test]
@@ -392,6 +403,10 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(field.body, "");
     assert_eq!(gradient.ty, "Hom(Hom(R3, R), Hom(R3, R3))");
     assert_eq!(gradient.body, "");
+    let clamp = known_builtin_object("clamp").unwrap();
+    assert!(clamp.ty.contains("Hom(R × R × R, R)"));
+    assert!(clamp.ty.contains("Hom(R3 × R × R, R3)"));
+    assert_eq!(clamp.body, "");
 }
 
 #[test]
@@ -498,6 +513,31 @@ fn emits_support_for_custom_complex_functions() {
     assert!(glsl.contains("vec2 exp(vec2 z) {"));
     assert!(glsl.contains("vec2 seed = vec2(1.0, 0.0);"));
     assert!(glsl.contains("return exp(seed);"));
+}
+
+#[test]
+fn emits_glsl_builtin_scalar_vector_and_geometric_calls() {
+    let source = "provided R3 v\nR3 n = normalize(v)\nR len = length(n)\nR angle = atan(len, 1)\nR3 bounced = reflect(v, n)\nR3 blended = mix(clamp(cross(n, bounced), -1, 1), refract(v, n, 0.5), 0.25)\ngenerate Ball3D(r=len + distance(blended, n) + dot(blended, n) + angle)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 n = normalize(v);"));
+    assert!(glsl.contains("float len = length(n);"));
+    assert!(glsl.contains("float angle = atan(len, 1.0);"));
+    assert!(glsl.contains("vec3 bounced = reflect(v, n);"));
+    assert!(glsl.contains(
+        "vec3 blended = mix(clamp(cross(n, bounced), (-1.0), 1.0), refract(v, n, 0.5), 0.25);"
+    ));
+    assert!(glsl.contains("distance(blended, n)"));
+    assert!(glsl.contains("dot(blended, n)"));
+}
+
+#[test]
+fn emits_glsl_builtin_matrix_calls() {
+    let source = "provided Mat3 frame\nMat3 m = matrixCompMult(frame, inverse(transpose(frame)))\nR d = determinant(m)\ngenerate Ball3D(r=d)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat3 m = matrixCompMult(frame, inverse(transpose(frame)));"));
+    assert!(glsl.contains("float d = determinant(m);"));
 }
 
 #[test]
@@ -716,10 +756,10 @@ fn allows_vector_space_scaling_by_category() {
 
 #[test]
 fn rejects_invalid_function_composition() {
-    let source = "provided Func(Float, Vec3) center\nFunc(Float, Float) wobble = sin @ center\ngenerate Ball3D(r=1)\n";
+    let source = "provided Func(Float, Vec3) center\nFunc(Float, Float) wobble = pow2 @ center\ngenerate Ball3D(r=1)\n";
     let error = compile_program(source).unwrap_err().to_string();
 
-    assert!(error.contains("cannot compose sin @ center"));
+    assert!(error.contains("cannot compose pow2 @ center"));
 }
 
 #[test]

@@ -579,12 +579,40 @@ R x = xs[1]
 
 ## Builtin Value Functions
 
-### `sin`, `cos`, `pow2`
+### GLSL Math Builtins
 
-Scalar functions:
+Lane pre-registers GLSL math builtins whose signatures fit Lane's current value
+types: `R`, `Z`, `R2`, `R3`, `R4`, and `Mat2` through `Mat4x4`. Calls emit as
+direct GLSL calls and do not add support bodies.
 
 ```lane
+provided Mat3 frame
 R y = sin(time) + cos(time)
+R3 n = normalize((1, 2, 3))
+R3 reflected = reflect(n, (0, 1, 0))
+R3 color = mix(clamp(reflected, 0, 1), (1, 0, 0), 0.25)
+Mat3 adjusted = matrixCompMult(frame, inverse(transpose(frame)))
+```
+
+Registered GLSL functions include:
+
+- Angle and trigonometry: `radians`, `degrees`, `sin`, `cos`, `tan`, `asin`,
+  `acos`, `atan`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`.
+- Exponential: `pow`, `exp`, `log`, `exp2`, `log2`, `sqrt`, `inversesqrt`.
+- Common math: `abs`, `sign`, `floor`, `trunc`, `round`, `roundEven`, `ceil`,
+  `fract`, `mod`, `min`, `max`, `clamp`, `mix`, `step`, `smoothstep`, `fma`.
+- Geometric functions: `length`, `distance`, `dot`, `cross`, `normalize`,
+  `faceforward`, `reflect`, `refract`.
+- Matrix functions: `matrixCompMult`, `transpose`, `determinant`, `inverse`.
+- Fragment derivative functions: `dFdx`, `dFdy`, `fwidth`.
+
+Boolean, sampler, image, atomic, packing, and out-parameter GLSL builtins are
+not registered yet because Lane does not have the corresponding value types or
+parameter passing forms.
+
+`pow2` remains available as a Lane helper:
+
+```lane
 R squared = pow2(y)
 ```
 

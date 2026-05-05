@@ -189,7 +189,9 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("derivative: Hom(R, Hom(Hom(R, R), Hom(R, R)))"));
     assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
     assert!(stdout.contains("divergence: Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"));
-    assert!(!stdout.contains(" sin"));
+    assert!(stdout.contains("sin: Hom(R, R)"));
+    assert!(stdout.contains("clamp: Hom(R × R × R, R)"));
+    assert!(stdout.contains("reflect: Hom(R × R, R)"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
 

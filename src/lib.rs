@@ -1191,6 +1191,14 @@ fn format_object_type(ty: &Type) -> String {
     }
 }
 
+fn format_overload_set(overloads: &[Type]) -> String {
+    overloads
+        .iter()
+        .map(format_object_type)
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 fn flatten_func_type<'a>(ty: &'a Type) -> (Vec<&'a Type>, &'a Type) {
     let mut inputs = Vec::new();
     let mut current = ty;
@@ -1240,6 +1248,238 @@ fn flatten_call<'a>(expr: &'a Expr) -> Result<(String, Vec<&'a Expr>), Error> {
             _ => return Err(Error::new("unsupported callable object expression")),
         }
     }
+}
+
+fn glsl_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
+    let mut result = Vec::new();
+    for (candidate, overloads) in glsl_builtin_value_func_overloads() {
+        if candidate == name {
+            result.extend(overloads);
+        }
+    }
+    (!result.is_empty()).then_some(result)
+}
+
+fn glsl_builtin_value_func_overloads() -> Vec<(&'static str, Vec<Type>)> {
+    let mut funcs = Vec::new();
+
+    for name in [
+        "radians",
+        "degrees",
+        "sin",
+        "cos",
+        "tan",
+        "asin",
+        "acos",
+        "sinh",
+        "cosh",
+        "tanh",
+        "asinh",
+        "acosh",
+        "atanh",
+        "exp",
+        "log",
+        "exp2",
+        "log2",
+        "sqrt",
+        "inversesqrt",
+        "abs",
+        "sign",
+        "floor",
+        "trunc",
+        "round",
+        "roundEven",
+        "ceil",
+        "fract",
+        "normalize",
+        "dFdx",
+        "dFdy",
+        "fwidth",
+    ] {
+        funcs.push((name, unary_float_gen_type_overloads()));
+    }
+
+    funcs.extend([
+        ("atan", same_type_float_gen_overloads(2)),
+        ("atan", unary_float_gen_type_overloads()),
+        ("pow", same_type_float_gen_overloads(2)),
+        ("mod", same_or_scalar_float_gen_overloads(2)),
+        ("min", same_or_scalar_float_gen_overloads(2)),
+        ("max", same_or_scalar_float_gen_overloads(2)),
+        ("clamp", same_or_scalar_float_gen_overloads(3)),
+        ("mix", same_prefix_scalar_last_float_gen_overloads()),
+        ("step", scalar_or_same_first_float_gen_overloads()),
+        ("smoothstep", scalar_or_same_prefix_float_gen_overloads()),
+        ("fma", same_type_float_gen_overloads(3)),
+        ("length", vector_measure_overloads(1)),
+        ("distance", vector_measure_overloads(2)),
+        ("dot", vector_measure_overloads(2)),
+        (
+            "cross",
+            vec![func_type(vec![Type::Vec3, Type::Vec3], Type::Vec3)],
+        ),
+        ("faceforward", same_type_float_gen_overloads(3)),
+        ("reflect", same_type_float_gen_overloads(2)),
+        ("refract", gen_type_with_scalar_last_overloads(3)),
+        ("matrixCompMult", same_matrix_overloads()),
+        ("transpose", transpose_matrix_overloads()),
+        ("determinant", square_matrix_to_float_overloads()),
+        ("inverse", square_matrix_overloads()),
+    ]);
+
+    funcs.extend([
+        ("abs", vec![Type::func(Type::Int, Type::Int)]),
+        ("sign", vec![Type::func(Type::Int, Type::Int)]),
+        (
+            "min",
+            vec![func_type(vec![Type::Int, Type::Int], Type::Int)],
+        ),
+        (
+            "max",
+            vec![func_type(vec![Type::Int, Type::Int], Type::Int)],
+        ),
+        (
+            "clamp",
+            vec![func_type(vec![Type::Int, Type::Int, Type::Int], Type::Int)],
+        ),
+    ]);
+
+    funcs
+}
+
+fn unary_float_gen_type_overloads() -> Vec<Type> {
+    float_gen_types()
+        .into_iter()
+        .map(|ty| Type::func(ty.clone(), ty))
+        .collect()
+}
+
+fn same_type_float_gen_overloads(arity: usize) -> Vec<Type> {
+    float_gen_types()
+        .into_iter()
+        .map(|ty| func_type(vec![ty.clone(); arity], ty))
+        .collect()
+}
+
+fn same_or_scalar_float_gen_overloads(arity: usize) -> Vec<Type> {
+    let mut overloads = same_type_float_gen_overloads(arity);
+    for ty in vector_types() {
+        let mut args = vec![ty.clone()];
+        args.extend(vec![Type::Float; arity - 1]);
+        overloads.push(func_type(args, ty));
+    }
+    overloads
+}
+
+fn scalar_or_same_first_float_gen_overloads() -> Vec<Type> {
+    let mut overloads = same_type_float_gen_overloads(2);
+    for ty in vector_types() {
+        overloads.push(func_type(vec![Type::Float, ty.clone()], ty));
+    }
+    overloads
+}
+
+fn scalar_or_same_prefix_float_gen_overloads() -> Vec<Type> {
+    let mut overloads = same_type_float_gen_overloads(3);
+    for ty in vector_types() {
+        overloads.push(func_type(vec![Type::Float, Type::Float, ty.clone()], ty));
+    }
+    overloads
+}
+
+fn same_prefix_scalar_last_float_gen_overloads() -> Vec<Type> {
+    let mut overloads = same_type_float_gen_overloads(3);
+    for ty in vector_types() {
+        overloads.push(func_type(vec![ty.clone(), ty.clone(), Type::Float], ty));
+    }
+    overloads
+}
+
+fn gen_type_with_scalar_last_overloads(arity: usize) -> Vec<Type> {
+    float_gen_types()
+        .into_iter()
+        .map(|ty| {
+            let mut args = vec![ty.clone(); arity - 1];
+            args.push(Type::Float);
+            func_type(args, ty)
+        })
+        .collect()
+}
+
+fn vector_measure_overloads(arity: usize) -> Vec<Type> {
+    float_gen_types()
+        .into_iter()
+        .map(|ty| func_type(vec![ty; arity], Type::Float))
+        .collect()
+}
+
+fn same_matrix_overloads() -> Vec<Type> {
+    matrix_types()
+        .into_iter()
+        .map(|ty| func_type(vec![ty.clone(), ty.clone()], ty))
+        .collect()
+}
+
+fn transpose_matrix_overloads() -> Vec<Type> {
+    matrix_shapes()
+        .into_iter()
+        .map(|(rows, columns)| Type::func(Type::Mat(rows, columns), Type::Mat(columns, rows)))
+        .collect()
+}
+
+fn square_matrix_to_float_overloads() -> Vec<Type> {
+    square_matrix_types()
+        .into_iter()
+        .map(|ty| Type::func(ty, Type::Float))
+        .collect()
+}
+
+fn square_matrix_overloads() -> Vec<Type> {
+    square_matrix_types()
+        .into_iter()
+        .map(|ty| Type::func(ty.clone(), ty))
+        .collect()
+}
+
+fn func_type(inputs: Vec<Type>, output: Type) -> Type {
+    let input = match inputs.as_slice() {
+        [single] => single.clone(),
+        _ => Type::Product(inputs),
+    };
+    Type::func(input, output)
+}
+
+fn float_gen_types() -> Vec<Type> {
+    let mut types = vec![Type::Float];
+    types.extend(vector_types());
+    types
+}
+
+fn vector_types() -> Vec<Type> {
+    vec![Type::Vec2, Type::Vec3, Type::Vec4]
+}
+
+fn matrix_types() -> Vec<Type> {
+    matrix_shapes()
+        .into_iter()
+        .map(|(rows, columns)| Type::Mat(rows, columns))
+        .collect()
+}
+
+fn square_matrix_types() -> Vec<Type> {
+    (2..=4)
+        .map(|dimension| Type::Mat(dimension, dimension))
+        .collect()
+}
+
+fn matrix_shapes() -> Vec<(usize, usize)> {
+    let mut shapes = Vec::new();
+    for rows in 2..=4 {
+        for columns in 2..=4 {
+            shapes.push((rows, columns));
+        }
+    }
+    shapes
 }
 
 impl BinOp {

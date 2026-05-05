@@ -261,6 +261,7 @@ struct ValueInfo {
 #[derive(Clone)]
 struct FunctionInfo {
     ty: Type,
+    builtin: bool,
 }
 
 impl<'a> Env<'a> {
@@ -278,7 +279,16 @@ impl<'a> Env<'a> {
                 .or_default()
                 .push(FunctionInfo {
                     ty: func.ty.clone(),
+                    builtin: true,
                 });
+        }
+        for (name, overloads) in glsl_builtin_value_func_overloads() {
+            let funcs = funcs.entry(name.to_string()).or_default();
+            for ty in overloads {
+                if !funcs.iter().any(|func| func.ty == ty) {
+                    funcs.push(FunctionInfo { ty, builtin: true });
+                }
+            }
         }
         for name in COMPLEX_OVERLOAD_NAMES {
             funcs
@@ -286,6 +296,7 @@ impl<'a> Env<'a> {
                 .or_default()
                 .push(FunctionInfo {
                     ty: Type::func(Type::Complex, Type::Complex),
+                    builtin: true,
                 });
         }
         for op in registry.object_ops.values() {
@@ -294,6 +305,7 @@ impl<'a> Env<'a> {
                 .or_default()
                 .push(FunctionInfo {
                     ty: object_op_type(op),
+                    builtin: true,
                 });
         }
         Self {
@@ -334,18 +346,24 @@ impl<'a> Env<'a> {
         }
         let (domain, _) = function_domain_and_output(&ty)?;
         let overloads = self.funcs.entry(name.clone()).or_default();
-        if overloads.iter().any(|func| {
-            function_domain_and_output(&func.ty)
-                .map(|(existing_domain, _)| existing_domain == domain)
-                .unwrap_or(false)
-        }) {
-            return Err(Error::new(format!(
-                "duplicate overload for '{}' with domain {}",
-                name,
-                format_type(&domain)
-            )));
+        let (_, output) = function_domain_and_output(&ty)?;
+        for func in overloads.iter() {
+            let Ok((existing_domain, existing_output)) = function_domain_and_output(&func.ty)
+            else {
+                continue;
+            };
+            if existing_domain == domain {
+                if func.builtin && existing_output == output {
+                    return Ok(());
+                }
+                return Err(Error::new(format!(
+                    "duplicate overload for '{}' with domain {}",
+                    name,
+                    format_type(&domain)
+                )));
+            }
         }
-        overloads.push(FunctionInfo { ty });
+        overloads.push(FunctionInfo { ty, builtin: false });
         Ok(())
     }
 

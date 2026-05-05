@@ -754,11 +754,22 @@ impl Registry {
             .iter()
             .filter_map(|(name, func)| func.listed.then_some(*name))
             .collect();
+        value_func_names.extend(
+            glsl_builtin_value_func_overloads()
+                .into_iter()
+                .map(|(name, _)| name),
+        );
         value_func_names.sort_unstable();
+        value_func_names.dedup();
         for name in value_func_names {
+            let ty = if let Some(func) = self.value_funcs.get(name).filter(|func| func.listed) {
+                format_object_type(&func.ty)
+            } else {
+                format_overload_set(&glsl_builtin_value_func_overload_types(name).unwrap())
+            };
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
-                ty: format_object_type(&self.value_funcs[name].ty),
+                ty,
                 kind: KnownBuiltinObjectKind::Function,
             });
         }
@@ -766,7 +777,9 @@ impl Registry {
         let mut op_names: Vec<_> = self.object_ops.keys().copied().collect();
         op_names.sort_unstable();
         for name in op_names {
-            if self.value_funcs.get(name).is_some_and(|func| func.listed) {
+            if self.value_funcs.get(name).is_some_and(|func| func.listed)
+                || glsl_builtin_value_func_overload_types(name).is_some()
+            {
                 continue;
             }
             let op = &self.object_ops[name];
@@ -816,6 +829,15 @@ impl Registry {
                     body: suffix_glsl_float_literals(func.support_glsl.unwrap_or_default()),
                 });
             }
+        }
+
+        if let Some(overloads) = glsl_builtin_value_func_overload_types(name) {
+            return Some(KnownBuiltinObjectDetail {
+                name: name.to_string(),
+                ty: format_overload_set(&overloads),
+                kind: KnownBuiltinObjectKind::Function,
+                body: String::new(),
+            });
         }
 
         let op = self.object_ops.get(name)?;
