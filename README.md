@@ -89,14 +89,14 @@ vim.lsp.enable("lane_lsp")
 ## Program Structure
 
 Lane source is line-oriented. Each non-empty, non-comment line is one
-declaration. A program must end with exactly one `generate` or `gen`
-declaration.
+declaration. A program must contain exactly one `const Object` binding, which
+marks the final scene.
 
 ```lane
 provided R time
 Func(R, R) pulse = pow2 @ sin
 Object shape = Ball3D(r=1 + pulse(time))
-generate shape
+const Object output = shape
 ```
 
 Line comments start with `//`:
@@ -104,7 +104,7 @@ Line comments start with `//`:
 ```lane
 provided R time // animation clock
 // final scene
-generate Ball3D(r=1 + time)
+const Object output = Ball3D(r=1 + time)
 ```
 
 ## Directives
@@ -121,7 +121,7 @@ and 3D object operators are rejected, and generated entry points use `vec2`.
 ```lane
 #2D
 Object shape = Box2D(a=2, b=1) + (1, 2)
-generate shape
+const Object output = shape
 ```
 
 Other `#...` lines are not language directives; the compiler treats unknown
@@ -139,7 +139,7 @@ provided Hom(R3, R) density
 provided R3 p
 R3 normal = gradient(density)(p)
 Func(R, R) slope = grad(sin)
-generate Ball3D(r=slope(0) + density(normal))
+const Object output = Ball3D(r=slope(0) + density(normal))
 ```
 
 Explicit epsilon arguments still override the directive:
@@ -159,7 +159,7 @@ Declares a GLSL input. The input appears as a parameter of `scene_sdf`,
 ```lane
 provided R time
 provided R3 center
-generate Ball3D(r=1 + time) + center
+const Object output = Ball3D(r=1 + time) + center
 ```
 
 ### `provided CATEGORY TypeName`
@@ -173,7 +173,7 @@ provided G a
 provided G b
 provided Hom(G, R) measure
 R radius = measure(a * b)
-generate Ball3D(r=radius)
+const Object output = Ball3D(r=radius)
 ```
 
 This emits calls such as `mult_G(a, b)`. For neutral literals, Lane expects
@@ -189,7 +189,7 @@ Grp G = E3 x E2 {m, n}
 provided G a
 provided G b
 G product = a * b
-generate Ball3D(r=1)
+const Object output = Ball3D(r=1)
 ```
 
 Emitted support includes:
@@ -243,7 +243,7 @@ the expression has one clear type.
 radius = 1 + 2
 offset = (1, 0, 0)
 shape = Ball3D(r=radius) + offset
-generate shape
+const Object output = shape
 ```
 
 ### `construct Object name = object_expression`
@@ -254,7 +254,7 @@ Exports a reusable SDF helper named `sdf_name` and a gradient helper named
 ```lane
 provided R radius
 construct Object shell = Ball3D(r=radius) + (1, 0, 0)
-generate shell
+const Object output = shell
 ```
 
 Object bindings also expose function getters:
@@ -264,7 +264,7 @@ Object shell = Ball3D(r=2)
 R d = shell.sdf((0, 0, 0))
 R3 normal = shell.grad((0, 0, 0))
 R3 finite_diff_normal = gradient(shell.sdf)((0, 0, 0))
-generate Ball3D(r=d + length(normal + finite_diff_normal))
+const Object output = Ball3D(r=d + length(normal + finite_diff_normal))
 ```
 
 `obj.sdf` has type `Hom(R3, R)` for 3D objects and `Hom(R2, R)` for 2D
@@ -274,31 +274,10 @@ getter emits the same helper functions as `construct`, even for a plain
 
 ### `const Object name = object_expression`
 
-`const` is an alias for `construct` on object bindings. It exports the same SDF
-and gradient helpers.
-
-```lane
-const Object shell = Ball3D(r=2)
-generate union(shell, shell + (2, 0, 0))
-```
-
-On product type declarations, `const` has a different meaning: it eagerly emits
-all product operations for the declared category.
-
-### `generate expression`
-
 Sets the final scene. Use exactly once.
 
 ```lane
-generate Ball3D(r=1)
-```
-
-### `gen expression`
-
-Short alias for `generate`.
-
-```lane
-gen Box3D(a=1, b=2, c=3)
+const Object output = Ball3D(r=1)
 ```
 
 ## Types
@@ -451,7 +430,7 @@ Use previously declared values, functions, objects, or provided inputs.
 ```lane
 provided R radius
 Object ball = Ball3D(r=radius)
-generate ball
+const Object output = ball
 ```
 
 ### Neutral Literals: `0`, `1`, `e`, `I`
@@ -652,16 +631,16 @@ Value-level `rot(axis, anchor, angle)` constructs an `E3` isometry.
 R3 axis = (0, 0, 1)
 E3 r = rot(axis, 0, time)
 R3 p = r * (1, 0, 0)
-generate Ball3D(r=1) + p
+const Object output = Ball3D(r=1) + p
 ```
 
 Object-level `rot(...)` rotates an object by applying the inverse transform to
 the sampled point. Defaults are accepted:
 
 ```lane
-generate rot((0, 1, 0), (1, 0, 0), 0.5)(Ball3D(r=1))
-generate rot(0.5)(Ball3D(r=1)) // axis=(0,0,1), anchor=0
-generate rot()(Ball3D(r=1))    // angle=0
+const Object output = rot((0, 1, 0), (1, 0, 0), 0.5)(Ball3D(r=1))
+const Object output = rot(0.5)(Ball3D(r=1)) // axis=(0,0,1), anchor=0
+const Object output = rot()(Ball3D(r=1))    // angle=0
 ```
 
 ### `rot2D`
@@ -671,15 +650,15 @@ Value-level `rot2D(anchor, angle)` constructs an `E2` isometry.
 ```lane
 #2D
 E2 r = rot2D((0, 0), time)
-generate r * Box2D(a=1, b=.5)
+const Object output = r * Box2D(a=1, b=.5)
 ```
 
 Object-level `rot2D(...)` rotates 2D objects:
 
 ```lane
-generate rot2D((1, 0), 0.5)(Box2D(a=1, b=.5))
-generate rot2D(0.5)(Box2D(a=1, b=.5)) // anchor=0
-generate rot2D()(Box2D(a=1, b=.5))    // angle=0
+const Object output = rot2D((1, 0), 0.5)(Box2D(a=1, b=.5))
+const Object output = rot2D(0.5)(Box2D(a=1, b=.5)) // anchor=0
+const Object output = rot2D()(Box2D(a=1, b=.5))    // angle=0
 ```
 
 ### Differential Builtins
@@ -719,7 +698,7 @@ actions produce `Object` or `Object2D` values.
 Object a = Ball3D(r=2)
 Object b = Box3D(1, .5, .25) + (2, 0, 0)
 Object c = smoothUnion(.2)(a, b)
-generate c
+const Object output = c
 ```
 
 ### 3D Primitive Constructors
@@ -756,15 +735,15 @@ Triangle2D(p0=(0, 0), p1=(1, 0), p2=(0, 1))
 Associative operators accept two or more objects:
 
 ```lane
-generate union(Ball3D(r=1), Box3D(1, 1, 1), Torus3D(2, .2))
-generate intersect(Ball3D(r=2), Box3D(1, 1, 1))
-generate xor(Ball3D(r=1), Ball3D(r=1) + (1, 0, 0))
+const Object output = union(Ball3D(r=1), Box3D(1, 1, 1), Torus3D(2, .2))
+const Object output = intersect(Ball3D(r=2), Box3D(1, 1, 1))
+const Object output = xor(Ball3D(r=1), Ball3D(r=1) + (1, 0, 0))
 ```
 
 Binary difference accepts exactly two objects:
 
 ```lane
-generate diff(Box3D(2, 2, 2), Ball3D(r=1))
+const Object output = diff(Box3D(2, 2, 2), Ball3D(r=1))
 ```
 
 ### Smooth Object Operators
@@ -772,10 +751,10 @@ generate diff(Box3D(2, 2, 2), Ball3D(r=1))
 Smooth operators are curried by smoothing radius `k`.
 
 ```lane
-generate smoothUnion(.2)(Ball3D(r=1), Box3D(1, 1, 1))
-generate smoothIntersect(.2)(Ball3D(r=2), Box3D(1, 1, 1))
-generate smoothDiff(.2)(Box3D(2, 2, 2), Ball3D(r=1))
-generate smoothXor(.2)(Ball3D(r=1), Ball3D(r=1) + (1, 0, 0))
+const Object output = smoothUnion(.2)(Ball3D(r=1), Box3D(1, 1, 1))
+const Object output = smoothIntersect(.2)(Ball3D(r=2), Box3D(1, 1, 1))
+const Object output = smoothDiff(.2)(Box3D(2, 2, 2), Ball3D(r=1))
+const Object output = smoothXor(.2)(Ball3D(r=1), Ball3D(r=1) + (1, 0, 0))
 ```
 
 ### `revolution`
@@ -784,7 +763,7 @@ Lifts an `Object2D` profile into a 3D surface of revolution.
 
 ```lane
 Object2D profile = Segment2D(a=(0, -1), b=(0, 1))
-generate revolution(1.5)(profile)
+const Object output = revolution(1.5)(profile)
 ```
 
 ### `extrude`
@@ -792,7 +771,7 @@ generate revolution(1.5)(profile)
 Extrudes a 2D profile along the `z` axis.
 
 ```lane
-generate extrude(.25)(Box2D(a=1, b=.5))
+const Object output = extrude(.25)(Box2D(a=1, b=.5))
 ```
 
 ### Ambient Transforms
@@ -800,17 +779,17 @@ generate extrude(.25)(Box2D(a=1, b=.5))
 Translate objects with vector addition:
 
 ```lane
-generate Ball3D(r=1) + (1, 2, 3)
+const Object output = Ball3D(r=1) + (1, 2, 3)
 ```
 
 Apply orthogonal matrix actions or isometry actions with `*`:
 
 ```lane
 provided Mat3 R
-generate R * Ball3D(r=1)
+const Object output = R * Ball3D(r=1)
 
 E3 g = E3(e, (1, 2, 3))
-generate g * Ball3D(r=1)
+const Object output = g * Ball3D(r=1)
 ```
 
 Under `#2D`, `E2 * Object2D` is accepted:
@@ -818,7 +797,7 @@ Under `#2D`, `E2 * Object2D` is accepted:
 ```lane
 #2D
 E2 g = E2(e, (1, 2))
-generate g * Box2D(a=2, b=1)
+const Object output = g * Box2D(a=2, b=1)
 ```
 
 ## Emitted GLSL
@@ -853,7 +832,7 @@ construct Object ball = Ball3D(r=1 + sin(time))
 Object box = E3(e, (2, 0, 0)) * Box3D(a=1, b=.5, c=.5)
 Object scene = smoothUnion(.2)(spin * ball, box)
 
-generate scene
+const Object output = scene
 ```
 
 Use the CLI for authoritative registered GLSL bodies:
@@ -870,7 +849,7 @@ The repository includes compile-valid feature samples:
 
 - `all_features.lane` uses the 3D language surface: provided inputs, provided
   category types, constructed product types, typed and inferred bindings,
-  `construct`, `const Object`, `gen`, arrays, product domains, categories,
+  `construct`, `const Object`, arrays, product domains, categories,
   neutral casts, differential builtins, value-level rotations, object-level
   rotations, primitive constructors, object operators, revolution, extrusion,
   and ambient actions.

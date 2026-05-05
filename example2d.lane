@@ -8,4 +8,4 @@ Object A = Box2D(
 Object B = Ball3D(r=rB(time)) + centerB(time)
 Object C = SmoothUnion(hardness(time))(A, B)
 
-generate C
+const Object output = C

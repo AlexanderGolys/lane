@@ -436,7 +436,7 @@ fn writes_compiled_output_to_target_path() {
     std::fs::create_dir(&temp_dir).unwrap();
     let source_path = temp_dir.join("scene.lane");
     let target_path = temp_dir.join("scene.glsl");
-    std::fs::write(&source_path, "generate Ball3D(r=1)\n").unwrap();
+    std::fs::write(&source_path, "const Object output = Ball3D(r=1)\n").unwrap();
 
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .arg(&source_path)
@@ -460,7 +460,7 @@ fn show_prints_compiled_output_while_writing_target_path() {
     std::fs::create_dir(&temp_dir).unwrap();
     let source_path = temp_dir.join("scene.lane");
     let target_path = temp_dir.join("scene.glsl");
-    std::fs::write(&source_path, "generate Ball3D(r=1)\n").unwrap();
+    std::fs::write(&source_path, "const Object output = Ball3D(r=1)\n").unwrap();
 
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .arg("--show")
@@ -485,7 +485,7 @@ fn short_show_flag_can_follow_source_and_target() {
     std::fs::create_dir(&temp_dir).unwrap();
     let source_path = temp_dir.join("scene.lane");
     let target_path = temp_dir.join("scene.glsl");
-    std::fs::write(&source_path, "generate Ball3D(r=2)\n").unwrap();
+    std::fs::write(&source_path, "const Object output = Ball3D(r=2)\n").unwrap();
 
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .arg(&source_path)
@@ -512,11 +512,9 @@ fn treats_fragment_shader_directive_as_a_comment() {
         .spawn()
         .and_then(|mut child| {
             use std::io::Write;
-            child
-                .stdin
-                .as_mut()
-                .unwrap()
-                .write_all(b"// fragment-shader: #version 330 core\ngenerate Ball3D(r=1)\n")?;
+            child.stdin.as_mut().unwrap().write_all(
+                b"// fragment-shader: #version 330 core\nconst Object output = Ball3D(r=1)\n",
+            )?;
             child.wait_with_output()
         })
         .unwrap();

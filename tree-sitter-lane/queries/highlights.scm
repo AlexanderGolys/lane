@@ -1,4 +1,4 @@
-["provided" "generate" "gen" "construct" "const" "Func" "Hom" "End" "Array"] @keyword
+["provided" "construct" "const" "Func" "Hom" "End" "Array"] @keyword
 
 (gen_modifier) @keyword
 

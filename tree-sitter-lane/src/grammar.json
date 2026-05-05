@@ -63,10 +63,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "output_declaration"
-        },
-        {
-          "type": "SYMBOL",
           "name": "inferred_binding_declaration"
         },
         {
@@ -320,32 +316,6 @@
           "content": {
             "type": "SYMBOL",
             "name": "identifier"
-          }
-        }
-      ]
-    },
-    "output_declaration": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "generate"
-            },
-            {
-              "type": "STRING",
-              "value": "gen"
-            }
-          ]
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
           }
         }
       ]

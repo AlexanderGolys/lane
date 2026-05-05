@@ -2,12 +2,15 @@
 Expressions
 ==================
 
-generate smoothUnion(0.25)(a, b, c)
+const Object output = smoothUnion(0.25)(a, b, c)
 
 ---
 
 (source_file
-  (output_declaration
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
     (call_expression
       (call_expression
         (identifier)
@@ -22,12 +25,15 @@ generate smoothUnion(0.25)(a, b, c)
 Named Arguments And Tuples
 ==================
 
-generate Box3D(a=2, b=1, c=3) + (-1, -2, -3)
+const Object output = Box3D(a=2, b=1, c=3) + (-1, -2, -3)
 
 ---
 
 (source_file
-  (output_declaration
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
     (binary_expression
       (call_expression
         (identifier)
@@ -53,12 +59,15 @@ generate Box3D(a=2, b=1, c=3) + (-1, -2, -3)
 Scientific Notation
 ==================
 
-generate Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)
+const Object output = Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)
 
 ---
 
 (source_file
-  (output_declaration
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
     (binary_expression
       (call_expression
         (identifier)
@@ -114,12 +123,15 @@ R3 g = gradient(shell.sdf)(p) + shell.grad(p)
 Arrays
 ==================
 
-generate concat(a, [4, 5])[size(a) - 1]
+const Object output = concat(a, [4, 5])[size(a) - 1]
 
 ---
 
 (source_file
-  (output_declaration
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
     (index_expression
       (call_expression
         (identifier)

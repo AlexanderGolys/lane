@@ -18,5 +18,5 @@ Object v34 = Segment3D(p3, p4)
 construct Object v = Union(b1, b2, b3, b4)
 construct Object e = Union(v12, v23, v34)
 
-generate SmoothUnion(.5)(v, e)
+const Object output = SmoothUnion(.5)(v, e)
 

@@ -73,7 +73,7 @@ Object2D profile = Segment2D(a=(0, -1), b=(0, 1))
 Object2D polygon = Polygon2D(points=((0, 0), (1, 0), (1, 1), (0, 1)))
 
 construct Object reusableBall = Ball3D(r=radius)
-const Object cachedBox = Box3D(1, .5, .25) + crossed
+construct Object cachedBox = Box3D(1, .5, .25) + crossed
 
 Object namedPrimitive = Torus3D(major=2, minor=.2)
 Object positionalPrimitive = Box3D(1, 2, 3)
@@ -93,4 +93,4 @@ Object smooths = smoothXor(.1)(smoothDiff(.1)(smoothIntersect(.1)(smoothUnion(.1
 
 scene = union(toggled, smooths)
 
-gen scene
+const Object output = scene

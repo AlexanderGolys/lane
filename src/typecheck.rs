@@ -228,8 +228,10 @@ impl TypedProgram {
         if program.ambient_dimension == ShapeDimension::D2
             && object_dimension(&output, &env) != Some(ShapeDimension::D2)
         {
-            return Err(Error::new("generate expected Object2D in 2D ambient space")
-                .with_line(program.output.line));
+            return Err(
+                Error::new("const output expected Object2D in 2D ambient space")
+                    .with_line(program.output.line),
+            );
         }
 
         Ok(Self {

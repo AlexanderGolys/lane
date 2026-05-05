@@ -974,58 +974,6 @@
     }
   },
   {
-    "type": "output_declaration",
-    "named": true,
-    "fields": {
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "array_expression",
-            "named": true
-          },
-          {
-            "type": "binary_expression",
-            "named": true
-          },
-          {
-            "type": "call_expression",
-            "named": true
-          },
-          {
-            "type": "field_access_expression",
-            "named": true
-          },
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "index_expression",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "tuple_expression",
-            "named": true
-          },
-          {
-            "type": "unary_expression",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "parenthesized_expression",
     "named": true,
     "fields": {
@@ -1303,10 +1251,6 @@
         },
         {
           "type": "input_declaration",
-          "named": true
-        },
-        {
-          "type": "output_declaration",
           "named": true
         },
         {
@@ -1606,14 +1550,6 @@
   {
     "type": "directive",
     "named": true
-  },
-  {
-    "type": "gen",
-    "named": false
-  },
-  {
-    "type": "generate",
-    "named": false
   },
   {
     "type": "identifier",

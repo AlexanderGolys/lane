@@ -8,4 +8,4 @@ Object A = Ball3D(r=3) + centerA(time)
 Object B = Ball3D(r=rB(time)) + centerB(time)
 Object C = smoothUnion(hardness(time))(A, B)
 
-generate C
+const Object output = C

@@ -744,6 +744,7 @@ struct BindingDecl {
     ty: Type,
     expr: Expr,
     generated: bool,
+    final_output: bool,
     line: usize,
 }
 
@@ -760,6 +761,7 @@ struct InferredBindingDecl {
     name: String,
     expr: Expr,
     generated: bool,
+    final_output: bool,
     line: usize,
 }
 
@@ -792,7 +794,6 @@ enum Decl {
     ValueBinding(ValueBindingDecl),
     Binding(BindingDecl),
     InferredBinding(InferredBindingDecl),
-    Output(OutputDecl),
 }
 
 #[derive(Clone, Debug)]

@@ -116,18 +116,40 @@ impl<'a> Parser<'a> {
                 Decl::Input(input) => inputs.push(input),
                 Decl::Func(func) => funcs.push(func),
                 Decl::ValueBinding(binding) => value_bindings.push(binding),
-                Decl::Binding(binding) => bindings.push(binding),
-                Decl::InferredBinding(binding) => inferred_bindings.push(binding),
-                Decl::Output(out) => {
-                    if output.is_some() {
-                        return Err(Error::new("multiple out declarations are not supported"));
+                Decl::Binding(binding) => {
+                    if binding.final_output {
+                        if output.is_some() {
+                            return Err(Error::new(
+                                "multiple const output declarations are not supported",
+                            ));
+                        }
+                        output = Some(OutputDecl {
+                            expr: binding.expr,
+                            line: binding.line,
+                        });
+                        continue;
                     }
-                    output = Some(out);
+                    bindings.push(binding);
+                }
+                Decl::InferredBinding(binding) => {
+                    if binding.final_output {
+                        if output.is_some() {
+                            return Err(Error::new(
+                                "multiple const output declarations are not supported",
+                            ));
+                        }
+                        output = Some(OutputDecl {
+                            expr: binding.expr,
+                            line: binding.line,
+                        });
+                        continue;
+                    }
+                    inferred_bindings.push(binding);
                 }
             }
         }
 
-        let output = output.ok_or_else(|| Error::new("missing generate declaration"))?;
+        let output = output.ok_or_else(|| Error::new("missing const output declaration"))?;
 
         Ok(Program {
             ambient_dimension,
@@ -171,26 +193,16 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        if let Some(rest) = line
-            .strip_prefix("generate ")
-            .or_else(|| line.strip_prefix("gen "))
-        {
-            let expr_source = rest.trim();
-            if let Some((left, _)) = expr_source.split_once('=') {
-                if parse_type(left.trim()).is_ok() {
-                    return Err(Error::new(
-                        "use 'generate value' instead of 'generate type = value'",
-                    ));
-                }
-            }
-            let expr = ExprParser::new(expr_source).parse()?;
-            return Ok(Decl::Output(OutputDecl {
-                expr,
-                line: line_number,
-            }));
+        if line.starts_with("generate ") || line.starts_with("gen ") {
+            return Err(Error::new(
+                "generate declarations have been removed; use 'const Object name = value'",
+            ));
         }
 
-        let generated = line.starts_with("construct ") || line.starts_with("const ");
+        let is_construct = line.starts_with("construct ");
+        let is_const = line.starts_with("const ");
+        let generated = is_construct || is_const;
+        let final_output = is_const;
         let line = line
             .strip_prefix("construct ")
             .or_else(|| line.strip_prefix("const "))
@@ -208,6 +220,7 @@ impl<'a> Parser<'a> {
                 name: left.to_string(),
                 expr,
                 generated,
+                final_output,
                 line: line_number,
             }));
         }
@@ -221,7 +234,7 @@ impl<'a> Parser<'a> {
         if matches!(ty, Type::Func(_, _)) {
             if generated {
                 return Err(Error::new(
-                    "'construct' currently only supports Object bindings",
+                    "'construct' and 'const' currently only support Object bindings",
                 ));
             }
             return Ok(Decl::Func(FuncDecl {
@@ -234,7 +247,7 @@ impl<'a> Parser<'a> {
         if !matches!(ty, Type::Object | Type::Object2D) {
             if generated {
                 return Err(Error::new(
-                    "'construct' currently only supports Object bindings",
+                    "'construct' and 'const' currently only support Object bindings",
                 ));
             }
             return Ok(Decl::ValueBinding(ValueBindingDecl {
@@ -249,6 +262,7 @@ impl<'a> Parser<'a> {
             ty,
             expr,
             generated,
+            final_output,
             line: line_number,
         }))
     }
@@ -780,10 +794,6 @@ fn tokenize(source: &str) -> Vec<Token> {
     }
 
     tokens
-}
-
-fn parse_type(source: &str) -> Result<Type, Error> {
-    parse_type_with_custom_types(source, &HashMap::new())
 }
 
 fn parse_type_with_custom_types(

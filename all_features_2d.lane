@@ -11,6 +11,6 @@ R2 p = turn * (1, 0)
 R radius = field(p)
 
 construct Object profile = Box2D(a=2, b=1) + p
-const Object disk = Ball2D(r=radius)
+construct Object disk = Ball2D(r=radius)
 
-generate union(move * profile, rot2D(0.5)(disk), Segment2D(length=2))
+const Object output = union(move * profile, rot2D(0.5)(disk), Segment2D(length=2))

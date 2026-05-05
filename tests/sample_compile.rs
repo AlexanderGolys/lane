@@ -41,7 +41,7 @@ provided Func(Float, Vec3) centerA
     Object B = Ball3D(r=rB(time)) + centerB(time)
     Object C = smoothUnion(hardness(time))(A, B)
 
-generate C
+const Object output = C
 "#;
 
     let glsl = compile_program(source).unwrap();

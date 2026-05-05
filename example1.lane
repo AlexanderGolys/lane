@@ -7,7 +7,7 @@ R3 c0 = (3, 0, 0)
 R v1 = 1
 R v2 = 2
 
-const Object T2 = Torus3D(major=3, minor=1)
+construct Object T2 = Torus3D(major=3, minor=1)
 
 E3 r1 = rot(e3, e3*0, time*v1)
 R3 c = r1 * c0
@@ -15,6 +15,6 @@ R3 p1 = r1 * p0
 E3 r2 = rot(cross(c, p1), c, time*v2)
 R3 p = r2 * p1
 
-const Object B = Ball3D(r=1) + p
+construct Object B = Ball3D(r=1) + p
 
-generate union(T2, B)  
+const Object output = union(T2, B)  

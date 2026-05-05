@@ -29,7 +29,6 @@ module.exports = grammar({
             $.provided_category_declaration,
             $.product_type_declaration,
             $.input_declaration,
-            $.output_declaration,
             $.inferred_binding_declaration,
             $.binding_declaration,
         ),
@@ -80,11 +79,6 @@ module.exports = grammar({
             'provided',
             field('type', $._type),
             field('name', $.identifier),
-        ),
-
-        output_declaration: ($) => seq(
-            choice('generate', 'gen'),
-            field('value', $._expression),
         ),
 
         binding_declaration: ($) => seq(

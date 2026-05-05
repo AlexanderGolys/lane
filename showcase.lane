@@ -64,4 +64,4 @@ Object formed = smoothUnion(.1)(lathe, slab)
 Object smooth_x = smoothXor(.2 + ripple(time))(smoothUnion(.15)(smoothUnion(.1)(smooth_mix, framed), formed), orbit)
 Object final = smoothUnion(.3)(smoothUnion(.15)(smoothUnion(.15)(smooth_x, guide), graph), spin(time) * planar_twist)
 
-generate final
+const Object output = final
