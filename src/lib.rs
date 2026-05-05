@@ -283,13 +283,11 @@ fn complex_overload_support_glsl(name: &str) -> Option<&'static str> {
     }
 }
 
-const E2_GROUP_SUPPORT_GLSL: &str = "struct E2 {\n    mat2 A;\n    vec2 t;\n};\n\nvec2 act_E2(E2 g, vec2 p) {\n    return (g.A * p) + g.t;\n}\n\nE2 mult_E2(E2 a, E2 b) {\n    return E2(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE2 inv_E2(E2 g) {\n    mat2 inverse_linear = transpose(g.A);\n    return E2(inverse_linear, -(inverse_linear * g.t));\n}\n\nE2 div_E2(E2 a, E2 b) {\n    return mult_E2(a, inv_E2(b));\n}";
+const E2_GROUP_SUPPORT_GLSL: &str = "struct E2 {\n    mat2 A;\n    vec2 t;\n};\n\nvec2 act_E2(E2 g, vec2 p) {\n    return (g.A * p) + g.t;\n}\n\nE2 mult_E2(E2 a, E2 b) {\n    return E2(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE2 inv_E2(E2 g) {\n    mat2 inverse_linear = transpose(g.A);\n    return E2(inverse_linear, -(inverse_linear * g.t));\n}";
 
 const QUAT_FIELD_SUPPORT_GLSL: &str = "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}";
 
-const E3_GROUP_SUPPORT_GLSL: &str = "struct E3 {\n    mat3 A;\n    vec3 t;\n};\n\nvec3 act_E3(E3 g, vec3 p) {\n    return (g.A * p) + g.t;\n}\n\nE3 mult_E3(E3 a, E3 b) {\n    return E3(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE3 inv_E3(E3 g) {\n    mat3 inverse_linear = transpose(g.A);\n    return E3(inverse_linear, -(inverse_linear * g.t));\n}\n\nE3 div_E3(E3 a, E3 b) {\n    return mult_E3(a, inv_E3(b));\n}\n\nmat3 rot_E3_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nE3 rot(vec3 binormal, vec3 anchor, float angle) {\n    mat3 A = rot_E3_matrix(binormal, angle);\n    return E3(A, anchor - (A * anchor));\n}";
-
-const SE3_GROUP_SUPPORT_GLSL: &str = "struct SE3 {\n    vec4 q;\n    vec3 t;\n};\n\nvec4 se3_mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 se3_inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec3 act_SE3(SE3 tf, vec3 p) {\n    vec4 rotated = se3_mult_H(se3_mult_H(tf.q, vec4(0.0, p)), vec4(tf.q.x, -tf.q.y, -tf.q.z, -tf.q.w));\n    return rotated.yzw + tf.t;\n}\n\nSE3 mult_SE3(SE3 a, SE3 b) {\n    return SE3(se3_mult_H(a.q, b.q), act_SE3(a, b.t));\n}\n\nSE3 inv_SE3(SE3 a) {\n    vec4 q_inv = se3_inv_H(a.q);\n    vec4 rotated = se3_mult_H(se3_mult_H(q_inv, vec4(0.0, -a.t)), vec4(q_inv.x, -q_inv.y, -q_inv.z, -q_inv.w));\n    return SE3(q_inv, rotated.yzw);\n}\n\nSE3 div_SE3(SE3 a, SE3 b) {\n    return mult_SE3(a, inv_SE3(b));\n}";
+const E3_GROUP_SUPPORT_GLSL: &str = "struct E3 {\n    mat3 A;\n    vec3 t;\n};\n\nvec3 act_E3(E3 g, vec3 p) {\n    return (g.A * p) + g.t;\n}\n\nE3 mult_E3(E3 a, E3 b) {\n    return E3(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE3 inv_E3(E3 g) {\n    mat3 inverse_linear = transpose(g.A);\n    return E3(inverse_linear, -(inverse_linear * g.t));\n}\n\nmat3 rot_E3_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nE3 rot(vec3 binormal, vec3 anchor, float angle) {\n    mat3 A = rot_E3_matrix(binormal, angle);\n    return E3(A, anchor - (A * anchor));\n}";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AlgebraicCategory {
@@ -396,7 +394,7 @@ fn format_categories(categories: &[AlgebraicCategory]) -> String {
         .iter()
         .map(|category| category_name(*category))
         .collect::<Vec<_>>()
-        .join(" × ")
+        .join(", ")
 }
 
 struct BuiltinTypeDef {
@@ -411,7 +409,7 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
     BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
@@ -484,13 +482,6 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
         categories: &[],
     },
     BuiltinTypeDef {
-        ty: Type::SE3,
-        aliases: &["SE3"],
-        display_name: "SE3",
-        support_glsl: Some(SE3_GROUP_SUPPORT_GLSL),
-        categories: &[AlgebraicCategory::Grp],
-    },
-    BuiltinTypeDef {
         ty: Type::E2,
         aliases: &["E2"],
         display_name: "E2",
@@ -532,7 +523,6 @@ enum Type {
     Int,
     Complex,
     Quat,
-    SE3,
     E2,
     E3,
     Custom {
@@ -560,7 +550,6 @@ impl Type {
             Self::Int => "int".to_string(),
             Self::Complex => "vec2".to_string(),
             Self::Quat => "vec4".to_string(),
-            Self::SE3 => "SE3".to_string(),
             Self::E2 => "E2".to_string(),
             Self::E3 => "E3".to_string(),
             Self::Custom { name, .. } => name.clone(),
@@ -730,6 +719,14 @@ struct ValueBindingDecl {
 }
 
 #[derive(Clone, Debug)]
+struct InferredBindingDecl {
+    name: String,
+    expr: Expr,
+    generated: bool,
+    line: usize,
+}
+
+#[derive(Clone, Debug)]
 struct OutputDecl {
     expr: Expr,
     line: usize,
@@ -741,6 +738,7 @@ struct Program {
     funcs: Vec<FuncDecl>,
     value_bindings: Vec<ValueBindingDecl>,
     bindings: Vec<BindingDecl>,
+    inferred_bindings: Vec<InferredBindingDecl>,
     output: OutputDecl,
 }
 
@@ -751,6 +749,7 @@ enum Decl {
     Func(FuncDecl),
     ValueBinding(ValueBindingDecl),
     Binding(BindingDecl),
+    InferredBinding(InferredBindingDecl),
     Output(OutputDecl),
 }
 
@@ -798,6 +797,10 @@ enum BinOp {
 enum ValueExpr {
     Float(f64),
     Int(i64),
+    Neutral {
+        kind: NeutralKind,
+        ty: Type,
+    },
     Var {
         name: String,
         ty: Type,
@@ -874,6 +877,7 @@ impl ValueExpr {
         match self {
             Self::Float(_) => Type::Float,
             Self::Int(_) => Type::Int,
+            Self::Neutral { ty, .. } => ty.clone(),
             Self::Var { ty, .. } => ty.clone(),
             Self::Call { ty, .. } => ty.clone(),
             Self::Array { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
@@ -900,6 +904,13 @@ impl ValueExpr {
             _ => None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NeutralKind {
+    Zero,
+    One,
+    Identity,
 }
 
 #[derive(Clone, Debug)]

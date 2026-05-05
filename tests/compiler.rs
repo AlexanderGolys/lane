@@ -301,14 +301,13 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "VectR" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "C" && object.ty == "Field × AlgR"));
+        .any(|object| object.name == "C" && object.ty == "Field, AlgR"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "H" && object.ty == "Field × AlgR"));
+        .any(|object| object.name == "H" && object.ty == "Field, AlgR"));
     assert!(objects
         .iter()
         .any(|object| object.name == "E2" && object.ty == "Grp"));
-    assert!(!objects.iter().any(|object| object.name == "SE3"));
     assert!(objects
         .iter()
         .any(|object| object.name == "E3" && object.ty == "Grp"));
@@ -328,12 +327,12 @@ fn lists_builtin_lane_objects() {
     assert!(objects.iter().any(|object| {
         object.name == "Extrusion" && object.ty == "Hom(R, Hom(Object, Object))"
     }));
-    assert!(objects.iter().any(|object| {
-        object.name == "rot" && object.ty == "Hom(R3 × R3 × R, Hom(Object, Object))"
-    }));
-    assert!(objects.iter().any(|object| {
-        object.name == "rot2D" && object.ty == "Hom(R2 × R, Hom(Object, Object))"
-    }));
+    assert!(objects
+        .iter()
+        .any(|object| { object.name == "rot" && object.ty == "Hom(R3 × R3 × R, E3)" }));
+    assert!(objects
+        .iter()
+        .any(|object| { object.name == "rot2D" && object.ty == "Hom(R2 × R, E2)" }));
     assert!(objects.iter().any(|object| {
         object.name == "derivative" && object.ty == "Hom(R, Hom(Hom(R, R), Hom(R, R)))"
     }));
@@ -363,17 +362,16 @@ fn looks_up_builtin_object_detail() {
         .body
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
     let rot = known_builtin_object("rot").unwrap();
-    assert_eq!(rot.ty, "Hom(R3 × R3 × R, Hom(Object, Object))");
-    assert!(rot.body.contains("vec3 op_rot_inverse_point"));
+    assert_eq!(rot.ty, "Hom(R3 × R3 × R, E3)");
+    assert_eq!(rot.body, "");
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
-    assert_eq!(complex.ty, "Field × AlgR");
+    assert_eq!(complex.ty, "Field, AlgR");
     assert!(complex.body.contains("#define Complex vec2"));
     assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert_eq!(quat.ty, "Field × AlgR");
+    assert_eq!(quat.ty, "Field, AlgR");
     assert!(quat.body.contains("#define H vec4"));
     assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
-    assert!(known_builtin_object("SE3").is_none());
     let e2 = known_builtin_object("E2").unwrap();
     assert_eq!(e2.ty, "Grp");
     assert!(e2.body.contains("struct E2"));
@@ -515,46 +513,32 @@ fn lowers_quaternion_field_operations_through_category_helpers() {
 }
 
 #[test]
-fn emits_struct_support_for_se3_group_values() {
-    let source = "provided SE3 pose\ngenerate Ball3D(r=1)\n";
-    let glsl = compile_program(source).unwrap();
-
-    assert!(glsl.contains("struct SE3"));
-    assert!(glsl.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
-    assert!(glsl.contains("SE3 inv_SE3(SE3 a)"));
-    assert!(glsl.contains("float scene_sdf(vec3 p, SE3 pose)"));
-}
-
-#[test]
-fn lowers_se3_group_operations_through_category_helpers() {
-    let source =
-        "provided SE3 a\nprovided SE3 b\nSE3 product = a * b\nSE3 ratio = a / b\ngenerate Ball3D(r=1)\n";
-    let glsl = compile_program(source).unwrap();
-
-    assert!(glsl.contains("SE3 mult_SE3(SE3 a, SE3 b)"));
-    assert!(glsl.contains("SE3 div_SE3(SE3 a, SE3 b)"));
-}
-
-#[test]
 fn lowers_e2_group_operations_through_category_helpers() {
-    let source = "provided E2 a\nprovided E2 b\nprovided R2 p\nprovided Hom(R2, R) measure\nE2 product = a * b\nE2 ratio = product / a\nR2 moved = ratio * p\nR radius = measure(moved)\ngenerate Ball3D(r=radius)\n";
+    let source = "provided E2 a\nprovided E2 b\nprovided R2 p\nprovided Hom(R2, R) measure\nE2 product = a * b\nR2 moved = product * p\nR radius = measure(moved)\ngenerate Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct E2"));
     assert!(glsl.contains("E2 mult_E2(E2 a, E2 b)"));
-    assert!(glsl.contains("E2 div_E2(E2 a, E2 b)"));
+    assert!(!glsl.contains("E2 div_E2(E2 a, E2 b)"));
     assert!(glsl.contains("E2 product = mult_E2(a, b);"));
-    assert!(glsl.contains("E2 ratio = div_E2(product, a);"));
-    assert!(glsl.contains("vec2 moved = act_E2(ratio, p);"));
+    assert!(glsl.contains("vec2 moved = act_E2(product, p);"));
 }
 
 #[test]
 fn supports_provided_group_category_types() {
-    let source = "provided Grp G\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure((a * b) / a)\ngenerate Ball3D(r=radius)\n";
+    let source = "provided Grp G\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\ngenerate Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p, G a, G b) {"));
-    assert!(glsl.contains("float radius = measure(mult_G(mult_G(a, b), inv_G(a)));"));
+    assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
+}
+
+#[test]
+fn rejects_division_for_group_category_types() {
+    let source = "provided Grp G\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a / b)\ngenerate Ball3D(r=radius)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("unsupported operands for binary operator: G / G"));
 }
 
 #[test]
@@ -564,6 +548,59 @@ fn supports_provided_vector_space_category_types() {
 
     assert!(glsl.contains("float scene_sdf(vec3 p, V v) {"));
     assert!(glsl.contains("float radius = norm(scale_V(scale_V(v, (1.0 / 3.0)), 2.0));"));
+}
+
+#[test]
+fn infers_local_value_and_object_binding_types() {
+    let source = "provided R time\nradius = 1 + time\noffset = (1, 0, 0)\nshape = Ball3D(r=radius) + offset\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = (1.0 + time);"));
+    assert!(glsl.contains("vec3 offset = vec3(1.0, 0.0, 0.0);"));
+    assert!(glsl.contains("return sdf0_Ball3D((p - offset), ParamBall3D(radius));"));
+}
+
+#[test]
+fn casts_neutral_literals_to_expected_builtin_types() {
+    let source = "R3 p = 0\nMat3 m = e\nE3 g = E3(e, 0)\ngenerate g * Ball3D(r=1) + p\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 p = vec3(0.0);"));
+    assert!(glsl.contains("mat3 m = mat3(1.0);"));
+    assert!(glsl.contains("E3 g = E3(mat3(1.0), vec3(0.0));"));
+}
+
+#[test]
+fn casts_neutral_literals_to_provided_category_constants() {
+    let source = "provided Grp G\nprovided Hom(G, R) measure\nG g = e\nR radius = measure(g)\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("G g = e_G;"));
+}
+
+#[test]
+fn resolves_overloaded_calls_with_exact_numeric_match_before_neutral_casts() {
+    let source = "provided Hom(C, C) f\nprovided Hom(C, R) norm\nR radius = sin(0)\nC z = f(0)\ngenerate Ball3D(r=radius + norm(z))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = sin(0.0);"));
+    assert!(glsl.contains("vec2 z = f(vec2(0.0, 0.0));"));
+}
+
+#[test]
+fn rejects_ambiguous_overloaded_neutral_casts() {
+    let source = "provided Hom(C, C) f\nprovided Hom(H, H) f\na = f(0)\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("ambiguous overload for 'f'"));
+}
+
+#[test]
+fn rejects_duplicate_overloads_with_same_domain() {
+    let source = "provided Hom(C, C) f\nprovided Hom(C, R) f\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("duplicate overload for 'f' with domain C"));
 }
 
 #[test]

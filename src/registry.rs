@@ -469,6 +469,27 @@ impl Default for Registry {
                 },
             ),
             (
+                "rot",
+                ValueFuncDef {
+                    ty: Type::func(
+                        Type::Product(vec![Type::Vec3, Type::Vec3, Type::Float]),
+                        Type::E3,
+                    ),
+                    support_glsl: None,
+                    listed: true,
+                },
+            ),
+            (
+                "rot2D",
+                ValueFuncDef {
+                    ty: Type::func(Type::Product(vec![Type::Vec2, Type::Float]), Type::E2),
+                    support_glsl: Some(
+                        "mat2 rot2D_E2_matrix(float angle) {\n    float c = cos(angle);\n    float s = sin(angle);\n    return mat2(vec2(c, s), vec2(-s, c));\n}\n\nE2 rot2D(vec2 anchor, float angle) {\n    mat2 A = rot2D_E2_matrix(angle);\n    return E2(A, anchor - (A * anchor));\n}",
+                    ),
+                    listed: true,
+                },
+            ),
+            (
                 "cinv",
                 ValueFuncDef {
                     ty: Type::func(Type::Complex, Type::Complex),
@@ -745,6 +766,9 @@ impl Registry {
         let mut op_names: Vec<_> = self.object_ops.keys().copied().collect();
         op_names.sort_unstable();
         for name in op_names {
+            if self.value_funcs.get(name).is_some_and(|func| func.listed) {
+                continue;
+            }
             let op = &self.object_ops[name];
             objects.push(KnownBuiltinObject {
                 name: op.name.to_string(),

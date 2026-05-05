@@ -175,18 +175,17 @@ fn lists_known_builtin_objects_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Field: Cat"));
     assert!(stdout.contains("VectR: Cat"));
-    assert!(stdout.contains("C: Field × AlgR"));
-    assert!(stdout.contains("H: Field × AlgR"));
+    assert!(stdout.contains("C: Field, AlgR"));
+    assert!(stdout.contains("H: Field, AlgR"));
     assert!(stdout.contains("E2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(!stdout.contains("cexp: Hom(C, C)"));
-    assert!(!stdout.contains("SE3: Grp"));
     assert!(stdout.contains("Union: Hom(Object × Object, Object)"));
     assert!(stdout.contains("SmoothUnion: Hom(R, Hom(Object × Object, Object))"));
     assert!(stdout.contains("Revolution: Hom(R, Hom(Object, Object))"));
     assert!(stdout.contains("Extrusion: Hom(R, Hom(Object, Object))"));
-    assert!(stdout.contains("rot: Hom(R3 × R3 × R, Hom(Object, Object))"));
-    assert!(stdout.contains("rot2D: Hom(R2 × R, Hom(Object, Object))"));
+    assert!(stdout.contains("rot: Hom(R3 × R3 × R, E3)"));
+    assert!(stdout.contains("rot2D: Hom(R2 × R, E2)"));
     assert!(stdout.contains("derivative: Hom(R, Hom(Hom(R, R), Hom(R, R)))"));
     assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
     assert!(stdout.contains("divergence: Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"));
@@ -234,7 +233,7 @@ fn shows_builtin_type_detail_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("H: Field × AlgR"));
+    assert!(stdout.contains("H: Field, AlgR"));
     assert!(stdout.contains("#define H vec4"));
     assert!(stdout.contains("vec4 mult_H(vec4 a, vec4 b)"));
 }

@@ -10,9 +10,12 @@
 (comment) @comment
 (number) @number
 
+((type_identifier) @constant.builtin
+  (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "Field" "VectR" "AlgR")
+  (#set! priority 110))
+
 (type_identifier) @type
 (type_identifier) @type.builtin
-(category_identifier) @constant.builtin
 
 (input_declaration
   name: (identifier) @variable.parameter)
@@ -36,6 +39,9 @@
     (product_type)
     (parenthesized_type)
   ]
+  name: (identifier) @variable)
+
+(inferred_binding_declaration
   name: (identifier) @variable)
 
 (call_expression

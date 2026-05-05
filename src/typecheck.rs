@@ -6,24 +6,29 @@ impl TypedProgram {
 
         for input in &program.inputs {
             validate_user_type(&input.ty).map_err(|err| err.with_line(input.line))?;
-            env.insert(input.name.clone(), input.ty.clone())
-                .map_err(|err| err.with_line(input.line))?;
+            if matches!(input.ty, Type::Func(_, _)) {
+                env.insert_func(input.name.clone(), input.ty.clone())
+                    .map_err(|err| err.with_line(input.line))?;
+            } else {
+                env.insert_value(input.name.clone(), input.ty.clone())
+                    .map_err(|err| err.with_line(input.line))?;
+            }
         }
 
         for func in &program.funcs {
             validate_user_type(&func.ty).map_err(|err| err.with_line(func.line))?;
-            env.insert(func.name.clone(), func.ty.clone())
+            env.insert_func(func.name.clone(), func.ty.clone())
                 .map_err(|err| err.with_line(func.line))?;
         }
 
         for binding in &program.value_bindings {
             validate_user_type(&binding.ty).map_err(|err| err.with_line(binding.line))?;
-            env.insert(binding.name.clone(), binding.ty.clone())
+            env.insert_value(binding.name.clone(), binding.ty.clone())
                 .map_err(|err| err.with_line(binding.line))?;
         }
 
         for binding in &program.bindings {
-            env.insert(binding.name.clone(), binding.ty.clone())
+            env.insert_value(binding.name.clone(), binding.ty.clone())
                 .map_err(|err| err.with_line(binding.line))?;
         }
 
@@ -53,7 +58,6 @@ impl TypedProgram {
                     | Type::Int
                     | Type::Complex
                     | Type::Quat
-                    | Type::SE3
                     | Type::E2
                     | Type::E3
                     | Type::Custom { .. }
@@ -116,6 +120,77 @@ impl TypedProgram {
             });
         }
 
+        for binding in &program.inferred_bindings {
+            if binding.generated {
+                let expr = infer_object_expr(&binding.expr, &env)
+                    .map_err(|err| err.with_line(binding.line))?;
+                env.insert_value(binding.name.clone(), Type::Object)
+                    .map_err(|err| err.with_line(binding.line))?;
+                typed_bindings.push(TypedBinding {
+                    name: binding.name.clone(),
+                    expr,
+                    generated: true,
+                });
+                continue;
+            }
+
+            match infer_object_expr(&binding.expr, &env) {
+                Ok(expr) => {
+                    env.insert_value(binding.name.clone(), Type::Object)
+                        .map_err(|err| err.with_line(binding.line))?;
+                    typed_bindings.push(TypedBinding {
+                        name: binding.name.clone(),
+                        expr,
+                        generated: false,
+                    });
+                }
+                Err(_) => {
+                    let expr = match infer_value_expr(&binding.expr, &env, None) {
+                        Ok(expr) => expr,
+                        Err(value_err) => {
+                            let func = infer_function_expr(&binding.expr, &env)
+                                .map_err(|_| value_err.with_line(binding.line))?;
+                            if func.input != Type::Float {
+                                return Err(Error::new(format!(
+                                    "function '{}' currently only supports float inputs",
+                                    binding.name
+                                ))
+                                .with_line(binding.line));
+                            }
+                            env.insert_func(
+                                binding.name.clone(),
+                                Type::func(func.input.clone(), func.output.clone()),
+                            )
+                            .map_err(|err| err.with_line(binding.line))?;
+                            typed_funcs.push(TypedFunc {
+                                name: binding.name.clone(),
+                                output: func.output.clone(),
+                                expr: apply_function_expr(
+                                    &func,
+                                    ValueExpr::Var {
+                                        name: "t".to_string(),
+                                        ty: Type::Float,
+                                        array_len: None,
+                                    },
+                                ),
+                            });
+                            continue;
+                        }
+                    };
+                    let ty = expr.ty();
+                    validate_user_type(&ty).map_err(|err| err.with_line(binding.line))?;
+                    env.insert_value(binding.name.clone(), ty.clone())
+                        .map_err(|err| err.with_line(binding.line))?;
+                    env.update_array_len(&binding.name, expr.array_len());
+                    typed_value_bindings.push(TypedValueBinding {
+                        name: binding.name.clone(),
+                        ty,
+                        expr,
+                    });
+                }
+            }
+        }
+
         let output = infer_object_expr(&program.output.expr, &env)
             .map_err(|err| err.with_line(program.output.line))?;
 
@@ -133,6 +208,7 @@ impl TypedProgram {
 struct Env<'a> {
     registry: &'a Registry,
     values: HashMap<String, ValueInfo>,
+    funcs: HashMap<String, Vec<FunctionInfo>>,
 }
 
 #[derive(Clone)]
@@ -141,32 +217,48 @@ struct ValueInfo {
     array_len: Option<usize>,
 }
 
+#[derive(Clone)]
+struct FunctionInfo {
+    ty: Type,
+}
+
 impl<'a> Env<'a> {
     fn new(registry: &'a Registry) -> Self {
-        let mut values = HashMap::new();
+        let values = HashMap::new();
+        let mut funcs: HashMap<String, Vec<FunctionInfo>> = HashMap::new();
         for (name, func) in &registry.value_funcs {
-            values.insert(
-                (*name).to_string(),
-                ValueInfo {
+            funcs
+                .entry((*name).to_string())
+                .or_default()
+                .push(FunctionInfo {
                     ty: func.ty.clone(),
-                    array_len: None,
-                },
-            );
+                });
+        }
+        for name in COMPLEX_OVERLOAD_NAMES {
+            funcs
+                .entry(name.to_string())
+                .or_default()
+                .push(FunctionInfo {
+                    ty: Type::func(Type::Complex, Type::Complex),
+                });
         }
         for op in registry.object_ops.values() {
-            values.insert(
-                op.name.to_string(),
-                ValueInfo {
+            funcs
+                .entry(op.name.to_string())
+                .or_default()
+                .push(FunctionInfo {
                     ty: object_op_type(op),
-                    array_len: None,
-                },
-            );
+                });
         }
-        Self { registry, values }
+        Self {
+            registry,
+            values,
+            funcs,
+        }
     }
 
-    fn insert(&mut self, name: String, ty: Type) -> Result<(), Error> {
-        if self.values.contains_key(&name) {
+    fn insert_value(&mut self, name: String, ty: Type) -> Result<(), Error> {
+        if self.values.contains_key(&name) || self.funcs.contains_key(&name) {
             return Err(Error::new(format!("duplicate declaration for '{}'", name)));
         }
         self.values.insert(
@@ -179,12 +271,45 @@ impl<'a> Env<'a> {
         Ok(())
     }
 
+    fn insert_func(&mut self, name: String, ty: Type) -> Result<(), Error> {
+        if self.values.contains_key(&name) {
+            return Err(Error::new(format!("duplicate declaration for '{}'", name)));
+        }
+        let (domain, _) = function_domain_and_output(&ty)?;
+        let overloads = self.funcs.entry(name.clone()).or_default();
+        if overloads.iter().any(|func| {
+            function_domain_and_output(&func.ty)
+                .map(|(existing_domain, _)| existing_domain == domain)
+                .unwrap_or(false)
+        }) {
+            return Err(Error::new(format!(
+                "duplicate overload for '{}' with domain {}",
+                name,
+                format_type(&domain)
+            )));
+        }
+        overloads.push(FunctionInfo { ty });
+        Ok(())
+    }
+
     fn get(&self, name: &str) -> Option<&Type> {
-        self.values.get(name).map(|info| &info.ty)
+        self.values.get(name).map(|info| &info.ty).or_else(|| {
+            self.funcs
+                .get(name)
+                .and_then(|funcs| (funcs.len() == 1).then_some(&funcs[0].ty))
+        })
     }
 
     fn get_value(&self, name: &str) -> Option<&ValueInfo> {
         self.values.get(name)
+    }
+
+    fn function_overloads(&self, name: &str) -> Option<&[FunctionInfo]> {
+        self.funcs.get(name).map(|funcs| funcs.as_slice())
+    }
+
+    fn has_binding(&self, name: &str) -> bool {
+        self.values.contains_key(name) || self.funcs.contains_key(name)
     }
 
     fn update_array_len(&mut self, name: &str, array_len: Option<usize>) {
@@ -192,6 +317,22 @@ impl<'a> Env<'a> {
             info.array_len = array_len;
         }
     }
+}
+
+fn function_domain_and_output(ty: &Type) -> Result<(Type, Type), Error> {
+    let (inputs, output) = flatten_func_type(ty);
+    if inputs.is_empty() {
+        return Err(Error::new(format!(
+            "expected function type, got {}",
+            format_type(ty)
+        )));
+    }
+    let domain = if inputs.len() == 1 {
+        (*inputs[0]).clone()
+    } else {
+        Type::Product(inputs.into_iter().cloned().collect())
+    };
+    Ok((domain, (*output).clone()))
 }
 
 fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
@@ -620,85 +761,13 @@ fn infer_value_expr(
                 Expr::Ident(name) => name,
                 _ => return Err(Error::new("only named value functions are supported")),
             };
+            if let Some(result) = infer_type_constructor_call(name, args, env, lift_param)? {
+                return Ok(result);
+            }
             if let Some(result) = infer_complex_overload_call(name, args, env, lift_param)? {
                 return Ok(result);
             }
-            let mut current_ty = env
-                .get(name)
-                .cloned()
-                .ok_or_else(|| Error::new(format!("unknown function '{}'", name)))?;
-            let mut typed_args = Vec::new();
-            let mut index = 0;
-            while index < args.len() {
-                let (input_ty, output_ty) = match current_ty {
-                    Type::Func(input, output) => (*input, *output),
-                    _ => {
-                        return Err(Error::new(format!(
-                            "'{}' is not callable with more arguments",
-                            name
-                        )))
-                    }
-                };
-                match input_ty {
-                    Type::Product(items) => {
-                        if args.len() - index < items.len() {
-                            return Err(Error::new(format!(
-                                "call '{}(...)' expected {} argument(s), got {}",
-                                name,
-                                items.len(),
-                                args.len() - index
-                            )));
-                        }
-                        for expected_ty in items {
-                            let typed_arg = infer_value_expr_for_type(
-                                &args[index],
-                                &expected_ty,
-                                env,
-                                lift_param,
-                            )?;
-                            ensure_type(
-                                &typed_arg.ty(),
-                                &expected_ty,
-                                &format!("call '{}(...)'", name),
-                            )?;
-                            typed_args.push(typed_arg);
-                            index += 1;
-                        }
-                    }
-                    input_ty => {
-                        let typed_arg =
-                            infer_value_expr_for_type(&args[index], &input_ty, env, lift_param)?;
-                        ensure_type(&typed_arg.ty(), &input_ty, &format!("call '{}(...)'", name))?;
-                        typed_args.push(typed_arg);
-                        index += 1;
-                    }
-                }
-                current_ty = output_ty;
-            }
-
-            match current_ty {
-                Type::Float
-                | Type::Int
-                | Type::Complex
-                | Type::Quat
-                | Type::SE3
-                | Type::E2
-                | Type::E3
-                | Type::Custom { .. }
-                | Type::Vec2
-                | Type::Vec3
-                | Type::Vec4
-                | Type::Mat(_, _)
-                | Type::Array(_) => Ok(ValueExpr::Call {
-                    func: name.clone(),
-                    args: typed_args,
-                    ty: current_ty,
-                }),
-                Type::Object | Type::Product(_) | Type::Func(_, _) => Err(Error::new(format!(
-                    "value expression '{}' does not return a value type",
-                    name
-                ))),
-            }
+            infer_value_call(name, args, env, lift_param, None)
         }
         Expr::Binary {
             op: BinOp::Compose,
@@ -708,7 +777,26 @@ fn infer_value_expr(
         Expr::Binary { op, left, right } => {
             let left = infer_value_expr(left, env, lift_param)?;
             let right = infer_value_expr(right, env, lift_param)?;
-            let ty = infer_binary_type(*op, &left.ty(), &right.ty())?;
+            let (left, right, ty) = match infer_binary_type(*op, &left.ty(), &right.ty()) {
+                Ok(ty) => (left, right, ty),
+                Err(original_err) => {
+                    if let Some(right_cast) = try_neutral_cast_value(&right, &left.ty()) {
+                        if let Ok(ty) = infer_binary_type(*op, &left.ty(), &right_cast.ty()) {
+                            (left, right_cast, ty)
+                        } else {
+                            return Err(original_err);
+                        }
+                    } else if let Some(left_cast) = try_neutral_cast_value(&left, &right.ty()) {
+                        if let Ok(ty) = infer_binary_type(*op, &left_cast.ty(), &right.ty()) {
+                            (left_cast, right, ty)
+                        } else {
+                            return Err(original_err);
+                        }
+                    } else {
+                        return Err(original_err);
+                    }
+                }
+            };
             Ok(ValueExpr::Binary {
                 op: *op,
                 left: Box::new(left),
@@ -739,12 +827,278 @@ fn infer_value_expr_for_type(
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
     match (expected_ty, expr) {
+        (_, Expr::Number(value)) if (*value - 0.0).abs() < f64::EPSILON => {
+            if expected_ty == &Type::Float {
+                return infer_value_expr(expr, env, lift_param);
+            }
+            if let Some(kind) = neutral_kind_for_type(expected_ty, NeutralKind::Zero) {
+                return Ok(ValueExpr::Neutral {
+                    kind,
+                    ty: expected_ty.clone(),
+                });
+            }
+            infer_value_expr(expr, env, lift_param)
+        }
+        (_, Expr::Number(value)) if (*value - 1.0).abs() < f64::EPSILON => {
+            if expected_ty == &Type::Float {
+                return infer_value_expr(expr, env, lift_param);
+            }
+            if let Some(kind) = neutral_kind_for_type(expected_ty, NeutralKind::One) {
+                return Ok(ValueExpr::Neutral {
+                    kind,
+                    ty: expected_ty.clone(),
+                });
+            }
+            infer_value_expr(expr, env, lift_param)
+        }
+        (_, Expr::Ident(name)) if matches!(name.as_str(), "e" | "I") && !env.has_binding(name) => {
+            if let Some(kind) = neutral_kind_for_type(expected_ty, NeutralKind::Identity) {
+                return Ok(ValueExpr::Neutral {
+                    kind,
+                    ty: expected_ty.clone(),
+                });
+            }
+            infer_value_expr(expr, env, lift_param)
+        }
+        (_, Expr::Ident(name)) if lift_param.is_some() && env.get_value(name).is_none() => {
+            let func = infer_function_expr_for_type(expr, env, &Type::Float, expected_ty)?;
+            Ok(apply_function_expr(
+                &func,
+                ValueExpr::Var {
+                    name: lift_param.unwrap().to_string(),
+                    ty: Type::Float,
+                    array_len: None,
+                },
+            ))
+        }
+        (
+            _,
+            Expr::Binary {
+                op: BinOp::Compose, ..
+            },
+        ) if lift_param.is_some() => {
+            let func = infer_function_expr_for_type(expr, env, &Type::Float, expected_ty)?;
+            Ok(apply_function_expr(
+                &func,
+                ValueExpr::Var {
+                    name: lift_param.unwrap().to_string(),
+                    ty: Type::Float,
+                    array_len: None,
+                },
+            ))
+        }
         (Type::Int, _) => infer_int_expr(expr, env, lift_param),
         (Type::Array(element_ty), Expr::Array(items)) => {
             infer_array_literal(items, env, lift_param, Some(element_ty))
         }
+        (_, Expr::Call { callee, args }) => {
+            let Expr::Ident(name) = &**callee else {
+                return infer_value_expr(expr, env, lift_param);
+            };
+            if let Some(result) = infer_type_constructor_call(name, args, env, lift_param)? {
+                ensure_type(&result.ty(), expected_ty, "constructor expression")?;
+                return Ok(result);
+            }
+            infer_value_call(name, args, env, lift_param, Some(expected_ty))
+        }
         _ => infer_value_expr(expr, env, lift_param),
     }
+}
+
+fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKind> {
+    match requested {
+        NeutralKind::Zero => {
+            if has_category(ty, AlgebraicCategory::Ab) {
+                Some(NeutralKind::Zero)
+            } else {
+                None
+            }
+        }
+        NeutralKind::One => {
+            if matches!(ty, Type::Mat(rows, columns) if rows == columns) {
+                Some(NeutralKind::Identity)
+            } else if has_category(ty, AlgebraicCategory::Ring)
+                || has_category(ty, AlgebraicCategory::Field)
+                || has_category(ty, AlgebraicCategory::AlgR)
+            {
+                Some(NeutralKind::One)
+            } else {
+                None
+            }
+        }
+        NeutralKind::Identity => {
+            if has_category(ty, AlgebraicCategory::Grp) {
+                Some(NeutralKind::Identity)
+            } else if matches!(ty, Type::Mat(rows, columns) if rows == columns) {
+                Some(NeutralKind::Identity)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn infer_type_constructor_call(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<Option<ValueExpr>, Error> {
+    let (ty, arg_types) = match name {
+        "E2" => (Type::E2, vec![Type::Mat(2, 2), Type::Vec2]),
+        "E3" => (Type::E3, vec![Type::Mat(3, 3), Type::Vec3]),
+        _ => return Ok(None),
+    };
+    if args.len() != arg_types.len() {
+        return Err(Error::new(format!(
+            "constructor '{}' expects {} argument(s), got {}",
+            name,
+            arg_types.len(),
+            args.len()
+        )));
+    }
+    let mut typed_args = Vec::new();
+    for (arg, expected_ty) in args.iter().zip(arg_types.iter()) {
+        let typed = infer_value_expr_for_type(arg, expected_ty, env, lift_param)?;
+        ensure_type(&typed.ty(), expected_ty, &format!("constructor '{}'", name))?;
+        typed_args.push(typed);
+    }
+    Ok(Some(ValueExpr::Call {
+        func: name.to_string(),
+        args: typed_args,
+        ty,
+    }))
+}
+
+fn infer_value_call(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+    expected_output: Option<&Type>,
+) -> Result<ValueExpr, Error> {
+    let overloads = env
+        .function_overloads(name)
+        .ok_or_else(|| Error::new(format!("unknown function '{}'", name)))?;
+    let mut candidates = Vec::new();
+    let mut first_arg_error = None;
+    for overload in overloads {
+        let Ok((inputs, output)) = call_inputs_and_output(&overload.ty) else {
+            continue;
+        };
+        if args.len() != inputs.len() {
+            continue;
+        }
+        if let Some(expected) = expected_output {
+            if !types_compatible_for_expected(&output, expected) {
+                continue;
+            }
+        }
+        let mut typed_args = Vec::new();
+        let mut cost = 0usize;
+        let mut ok = true;
+        for (arg, input_ty) in args.iter().zip(inputs.iter()) {
+            match infer_value_expr_for_type(arg, input_ty, env, lift_param) {
+                Ok(typed_arg) => {
+                    if ensure_type(&typed_arg.ty(), input_ty, &format!("call '{}(...)'", name))
+                        .is_err()
+                    {
+                        ok = false;
+                        break;
+                    }
+                    if matches!(typed_arg, ValueExpr::Neutral { .. }) {
+                        cost += 1;
+                    }
+                    typed_args.push(typed_arg);
+                }
+                Err(err) => {
+                    if first_arg_error.is_none() {
+                        first_arg_error = Some(err);
+                    }
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if ok && is_value_type(&output) {
+            candidates.push((cost, output, typed_args));
+        }
+    }
+
+    candidates.sort_by_key(|(cost, _, _)| *cost);
+    let Some((best_cost, best_output, best_args)) = candidates.first().cloned() else {
+        if overloads.len() == 1 {
+            if let Some(err) = first_arg_error {
+                return Err(err);
+            }
+        }
+        return Err(Error::new(format!(
+            "no overload of '{}' matches provided argument(s)",
+            name
+        )));
+    };
+    if candidates
+        .iter()
+        .skip(1)
+        .any(|(cost, _, _)| *cost == best_cost)
+    {
+        return Err(Error::new(format!(
+            "ambiguous overload for '{}' with provided argument(s)",
+            name
+        )));
+    }
+    Ok(ValueExpr::Call {
+        func: name.to_string(),
+        args: best_args,
+        ty: best_output,
+    })
+}
+
+fn call_inputs_and_output(ty: &Type) -> Result<(Vec<Type>, Type), Error> {
+    let (inputs, output) = flatten_func_type(ty);
+    if inputs.is_empty() {
+        return Err(Error::new(format!(
+            "expected function type, got {}",
+            format_type(ty)
+        )));
+    }
+    let mut flattened = Vec::new();
+    for input in inputs {
+        match input {
+            Type::Product(parts) => flattened.extend(parts.iter().cloned()),
+            other => flattened.push(other.clone()),
+        }
+    }
+    Ok((flattened, (*output).clone()))
+}
+
+fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
+    actual == expected
+        || matches!(
+            (actual, expected),
+            (Type::Vec2, Type::Complex)
+                | (Type::Complex, Type::Vec2)
+                | (Type::Vec4, Type::Quat)
+                | (Type::Quat, Type::Vec4)
+        )
+}
+
+fn is_value_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Float
+            | Type::Int
+            | Type::Complex
+            | Type::Quat
+            | Type::E2
+            | Type::E3
+            | Type::Custom { .. }
+            | Type::Vec2
+            | Type::Vec3
+            | Type::Vec4
+            | Type::Mat(_, _)
+            | Type::Array(_)
+    )
 }
 
 fn infer_int_expr(
@@ -1004,7 +1358,6 @@ fn is_array_element_type(ty: &Type) -> bool {
             | Type::Int
             | Type::Complex
             | Type::Quat
-            | Type::SE3
             | Type::E2
             | Type::E3
             | Type::Custom { .. }
@@ -1051,10 +1404,8 @@ fn infer_derivative_builtin(
     }
     let epsilon = infer_value_expr(args[0], env, None)?;
     ensure_type(&epsilon.ty(), &Type::Float, "derivative epsilon")?;
-    let func = infer_function_expr(args[1], env)?;
-    if func.input != Type::Float || func.output != Type::Float {
-        return Err(Error::new("derivative expects a func(float -> float)"));
-    }
+    let func = infer_function_expr_for_type(args[1], env, &Type::Float, &Type::Float)
+        .map_err(|_| Error::new("derivative expects a func(float -> float)"))?;
     let at = if let Some(expr) = args.get(2) {
         let at = infer_value_expr(expr, env, None)?;
         ensure_type(&at.ty(), &Type::Float, "derivative evaluation point")?;
@@ -1081,12 +1432,8 @@ fn infer_partial_builtin(args: &[&Expr], env: &Env<'_>, axis: usize) -> Result<V
     }
     let epsilon = infer_value_expr(args[0], env, None)?;
     ensure_type(&epsilon.ty(), &Type::Float, "partial derivative epsilon")?;
-    let func = infer_function_expr(args[1], env)?;
-    if func.input != Type::Vec3 || func.output != Type::Float {
-        return Err(Error::new(
-            "partial derivatives currently expect a func(vec3 -> float)",
-        ));
-    }
+    let func = infer_function_expr_for_type(args[1], env, &Type::Vec3, &Type::Float)
+        .map_err(|_| Error::new("partial derivatives currently expect a func(vec3 -> float)"))?;
     let at = infer_value_expr(args[2], env, None)?;
     ensure_type(&at.ty(), &Type::Vec3, "partial derivative evaluation point")?;
     Ok(ValueExpr::Partial {
@@ -1115,12 +1462,8 @@ fn infer_directional_derivative_builtin(args: &[&Expr], env: &Env<'_>) -> Result
         &Type::Vec3,
         "directional derivative direction",
     )?;
-    let func = infer_function_expr(args[2], env)?;
-    if func.input != Type::Vec3 || func.output != Type::Float {
-        return Err(Error::new(
-            "directionalDerivative currently expects a func(vec3 -> float)",
-        ));
-    }
+    let func = infer_function_expr_for_type(args[2], env, &Type::Vec3, &Type::Float)
+        .map_err(|_| Error::new("directionalDerivative currently expects a func(vec3 -> float)"))?;
     let at = infer_value_expr(args[3], env, None)?;
     ensure_type(
         &at.ty(),
@@ -1157,7 +1500,10 @@ fn infer_gradient_builtin(
         (ValueExpr::Float(0.01), args[0], None)
     };
     ensure_type(&epsilon.ty(), &Type::Float, "gradient epsilon")?;
-    let func = infer_function_expr(func_arg, env)?;
+    let func = match infer_function_expr_for_type(func_arg, env, &Type::Float, &Type::Float) {
+        Ok(func) => func,
+        Err(_) => infer_function_expr_for_type(func_arg, env, &Type::Vec3, &Type::Float)?,
+    };
     match (&func.input, &func.output) {
         (Type::Float, Type::Float) => {
             let at = if let Some(expr) = at_arg {
@@ -1205,12 +1551,8 @@ fn infer_divergence_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, 
     }
     let epsilon = infer_value_expr(args[0], env, None)?;
     ensure_type(&epsilon.ty(), &Type::Float, "divergence epsilon")?;
-    let func = infer_function_expr(args[1], env)?;
-    if func.input != Type::Vec3 || func.output != Type::Vec3 {
-        return Err(Error::new(
-            "divergence currently expects a func(vec3 -> vec3)",
-        ));
-    }
+    let func = infer_function_expr_for_type(args[1], env, &Type::Vec3, &Type::Vec3)
+        .map_err(|_| Error::new("divergence currently expects a func(vec3 -> vec3)"))?;
     let at = infer_value_expr(args[2], env, None)?;
     ensure_type(&at.ty(), &Type::Vec3, "divergence evaluation point")?;
     Ok(ValueExpr::Divergence {
@@ -1324,23 +1666,76 @@ fn infer_composed_value_expr(
 }
 
 fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error> {
+    let candidates = infer_function_expr_candidates(expr, env)?;
+    if candidates.len() == 1 {
+        return Ok(candidates.into_iter().next().unwrap());
+    }
+    Err(Error::new(format!(
+        "ambiguous function expression {}",
+        format_function_expr(expr)
+    )))
+}
+
+fn infer_function_expr_for_type(
+    expr: &Expr,
+    env: &Env<'_>,
+    expected_input: &Type,
+    expected_output: &Type,
+) -> Result<FunctionExpr, Error> {
+    let candidates = infer_function_expr_candidates(expr, env)?;
+    let matches = candidates
+        .into_iter()
+        .filter(|func| &func.input == expected_input && &func.output == expected_output)
+        .collect::<Vec<_>>();
+    if matches.len() == 1 {
+        return Ok(matches.into_iter().next().unwrap());
+    }
+    if matches.is_empty() {
+        return Err(Error::new(format!(
+            "function expression {} does not match Hom({}, {})",
+            format_function_expr(expr),
+            format_type(expected_input),
+            format_type(expected_output)
+        )));
+    }
+    Err(Error::new(format!(
+        "ambiguous function expression {}",
+        format_function_expr(expr)
+    )))
+}
+
+fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<FunctionExpr>, Error> {
     match expr {
         Expr::Ident(name) => {
+            if let Some(overloads) = env.function_overloads(name) {
+                let mut candidates = Vec::new();
+                for overload in overloads {
+                    if let Type::Func(input, output) = &overload.ty {
+                        candidates.push(FunctionExpr {
+                            input: (**input).clone(),
+                            output: (**output).clone(),
+                            kind: FunctionExprKind::Named(name.clone()),
+                        });
+                    }
+                }
+                if !candidates.is_empty() {
+                    return Ok(candidates);
+                }
+            }
             let ty = env
                 .get(name)
                 .cloned()
                 .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
             match ty {
-                Type::Func(input, output) => Ok(FunctionExpr {
+                Type::Func(input, output) => Ok(vec![FunctionExpr {
                     input: (*input).clone(),
                     output: (*output).clone(),
                     kind: FunctionExprKind::Named(name.clone()),
-                }),
+                }]),
                 Type::Float
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
-                | Type::SE3
                 | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
@@ -1362,22 +1757,31 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
             left,
             right,
         } => {
-            let outer = infer_function_expr(left, env)?;
-            let inner = infer_function_expr(right, env)?;
-            if inner.output != outer.input {
+            let outers = infer_function_expr_candidates(left, env)?;
+            let inners = infer_function_expr_candidates(right, env)?;
+            let mut candidates = Vec::new();
+            for outer in &outers {
+                for inner in &inners {
+                    if inner.output == outer.input {
+                        candidates.push(FunctionExpr {
+                            input: inner.input.clone(),
+                            output: outer.output.clone(),
+                            kind: FunctionExprKind::Compose(
+                                Box::new(outer.clone()),
+                                Box::new(inner.clone()),
+                            ),
+                        });
+                    }
+                }
+            }
+            if candidates.is_empty() {
                 return Err(Error::new(format!(
-                    "cannot compose {} @ {} because {} does not match {}",
+                    "cannot compose {} @ {}",
                     format_function_expr(left),
-                    format_function_expr(right),
-                    format_type(&inner.output),
-                    format_type(&outer.input)
+                    format_function_expr(right)
                 )));
             }
-            Ok(FunctionExpr {
-                input: inner.input.clone(),
-                output: outer.output.clone(),
-                kind: FunctionExprKind::Compose(Box::new(outer), Box::new(inner)),
-            })
+            Ok(candidates)
         }
         _ => Err(Error::new(
             "function composition currently only supports named unary functions",
@@ -1406,16 +1810,48 @@ fn infer_identifier_value(
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
-    let info = env
-        .get_value(name)
-        .cloned()
-        .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
+    let Some(info) = env.get_value(name).cloned() else {
+        if lift_param.is_none() {
+            return Err(Error::new(format!(
+                "function '{}' needs an explicit call outside function bodies",
+                name
+            )));
+        }
+        let param_name = lift_param.unwrap().to_string();
+        let overloads = env
+            .function_overloads(name)
+            .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
+        let mut candidates = Vec::new();
+        for overload in overloads {
+            let Ok((inputs, output)) = call_inputs_and_output(&overload.ty) else {
+                continue;
+            };
+            if inputs.len() == 1 && inputs[0] == Type::Float {
+                candidates.push((output, inputs[0].clone()));
+            }
+        }
+        if candidates.len() != 1 {
+            return Err(Error::new(format!(
+                "ambiguous function '{}' cannot be lifted implicitly",
+                name
+            )));
+        }
+        let (output, input) = candidates.remove(0);
+        return Ok(ValueExpr::Call {
+            func: name.to_string(),
+            args: vec![ValueExpr::Var {
+                name: param_name,
+                ty: input,
+                array_len: None,
+            }],
+            ty: output,
+        });
+    };
     match info.ty {
         Type::Float
         | Type::Int
         | Type::Complex
         | Type::Quat
-        | Type::SE3
         | Type::E2
         | Type::E3
         | Type::Custom { .. }
@@ -1465,10 +1901,23 @@ fn infer_rot_builtin(
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<Option<ValueExpr>, Error> {
-    if !matches!(callee, Expr::Ident(name) if name == "rot") {
+    let Expr::Ident(name) = callee else {
         return Ok(None);
+    };
+
+    if name == "rot2D" && args.len() == 2 {
+        let anchor = infer_value_expr_for_type(&args[0], &Type::Vec2, env, lift_param)?;
+        let angle = infer_value_expr(&args[1], env, lift_param)?;
+        ensure_type(&anchor.ty(), &Type::Vec2, "rot2D anchor")?;
+        ensure_type(&angle.ty(), &Type::Float, "rot2D angle")?;
+        return Ok(Some(ValueExpr::Call {
+            func: "rot2D".to_string(),
+            args: vec![anchor, angle],
+            ty: Type::E2,
+        }));
     }
-    if args.len() != 3 {
+
+    if name != "rot" || args.len() != 3 {
         return Ok(None);
     }
 
@@ -1514,7 +1963,7 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         let category = match op {
             BinOp::Add | BinOp::Sub => AlgebraicCategory::Ab,
             BinOp::Mul => AlgebraicCategory::Mon,
-            BinOp::Div => AlgebraicCategory::Grp,
+            BinOp::Div => AlgebraicCategory::Field,
             BinOp::Compose => unreachable!(),
         };
         if has_category(left, category) {
@@ -1555,6 +2004,19 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         op.symbol(),
         format_type(right)
     )))
+}
+
+fn try_neutral_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
+    let kind = match value {
+        ValueExpr::Float(value) if (*value - 0.0).abs() < f64::EPSILON => NeutralKind::Zero,
+        ValueExpr::Float(value) if (*value - 1.0).abs() < f64::EPSILON => NeutralKind::One,
+        ValueExpr::Neutral { .. } => return None,
+        _ => return None,
+    };
+    neutral_kind_for_type(expected_ty, kind).map(|kind| ValueExpr::Neutral {
+        kind,
+        ty: expected_ty.clone(),
+    })
 }
 
 fn zero_vec2() -> ValueExpr {

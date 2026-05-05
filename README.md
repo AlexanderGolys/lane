@@ -182,13 +182,16 @@ R2 uv = (0.5, 1)
 R3 offset = (sin(time), cos(time), 0)
 Mat3 identity = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 Func(R, R) wobble = pow2 @ sin + .5
+radius = 1 + time
+shape = Ball3D(r=radius) + offset
 ```
 
 Operators:
 
 - `-x` for unary negation.
-- `+`, `-`, `*`, `/` for supported scalar, complex, vector, and matrix value
-  combinations.
+- `+`, `-`, `*`, `/` for supported scalar, field, vector, and matrix value
+  combinations. Group values use `*` for composition; `/` is not accepted for
+  `Grp`.
 - `f @ g` for unary function composition.
 - `f(x)` for value function calls.
 - `rot(axis, anchor, angle)` constructs an `E3` isometry. `E3 * R3` applies an
@@ -204,10 +207,18 @@ functions, `E2` and `E3` emit their GLSL structs plus group multiplication and
 inverse helpers, and `R2`/`R3`/matrices share real vector-space scaling rules.
 `E2` and `E3` are Euclidean groups of 2D and 3D isometries.
 
+Local bindings may omit their type when the expression has one clear type.
+Neutral literals are cast in expected-type contexts: `0` is the additive
+neutral element, `1` is the multiplicative neutral element, and `e` or `I` is a
+group or square-matrix identity. For provided category types, generated GLSL
+expects globals named `zero_T`, `one_T`, and `e_T` for type `T`.
+
 User-defined function bodies currently support `R` inputs. Inside a
 `Func(R, T)` binding, bare unary function identifiers are implicitly applied to
 the generated parameter `t`, so `pow2 @ sin + .5` emits a function of `t`.
-Provided functions may use other function types, such as `Hom(R3, R)`.
+Provided functions may use other function types, such as `Hom(R3, R)`, and may
+be overloaded by distinct domains. Ambiguous overloads require an explicit
+binding type.
 
 Provided category types use the category names `Ab`, `Mon`, `Grp`, `Ring`,
 `Field`, `VectR`, and `AlgR`. For example:
@@ -217,13 +228,13 @@ provided Grp G
 provided G a
 provided G b
 provided Hom(G, R) measure
-R radius = measure((a * b) / a)
+R radius = measure(a * b)
 generate Ball3D(r=radius)
 ```
 
 This assumes the GLSL side defines type `G` and the relevant operations with
-Lane's suffix convention, such as `mult_G(a, b)` and `inv_G(a)` for group
-division. Category names are reserved and cannot be used as type names.
+Lane's suffix convention, such as `mult_G(a, b)` for group composition.
+Category names are reserved and cannot be used as type names.
 
 Tuple rules:
 
@@ -399,16 +410,16 @@ scene using most registered primitives and operators.
 | `Field` | `Cat` |
 | `VectR` | `Cat` |
 | `AlgR` | `Cat` |
-| `C` | `Field × AlgR` |
+| `C` | `Field, AlgR` |
 | `E2` | `Grp` |
 | `E3` | `Grp` |
-| `H` | `Field × AlgR` |
+| `H` | `Field, AlgR` |
 | `pow2` | `Hom(R, R)` |
 
 `lane --list-objects C`, `lane --list-objects H`, `lane --list-objects E2`,
 and `lane --list-objects E3` show the operation support required by those
 types, such as complex and quaternion multiplication or the `E2`/`E3` structs,
-multiplication, inverse, and division helpers. These structural operations are
+composition and inverse helpers. These structural operations are
 attached to the type definitions, not listed as separate arbitrary value
 functions.
 

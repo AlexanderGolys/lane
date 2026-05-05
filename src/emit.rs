@@ -96,7 +96,6 @@ impl TypedProgram {
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
-                | Type::SE3
                 | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
@@ -121,7 +120,6 @@ impl TypedProgram {
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
-                | Type::SE3
                 | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
@@ -295,7 +293,6 @@ impl TypedProgram {
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
-                | Type::SE3
                 | Type::E2
                 | Type::E3
                 | Type::Custom { .. }
@@ -397,7 +394,7 @@ impl TypedProgram {
 
 fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
     match ty {
-        Type::SE3 | Type::E2 | Type::E3 => {
+        Type::E2 | Type::E3 => {
             names.insert(ty.type_name());
         }
         Type::Custom { .. } => {}
@@ -572,7 +569,10 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
     }
 
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Var { .. } => {}
+        ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. }
+        | ValueExpr::Var { .. } => {}
         ValueExpr::Call { args, .. } => {
             for arg in args {
                 collect_concat_helpers(arg, helpers);
@@ -640,7 +640,7 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
 
 fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> bool {
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Int(_) => true,
+        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Neutral { .. } => true,
         ValueExpr::Var { name, .. } => names.contains(name),
         ValueExpr::Vec2(x, y) => {
             is_global_const_value_expr(x, names) && is_global_const_value_expr(y, names)
@@ -729,7 +729,7 @@ fn collect_object_value_refs(
 
 fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Int(_) => {}
+        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Neutral { .. } => {}
         ValueExpr::Var { name, .. } => {
             names.insert(name.clone());
         }
@@ -846,7 +846,14 @@ fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
 
 fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Var { .. } => {}
+        ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. }
+        | ValueExpr::Var { .. } => {
+            if let ValueExpr::Neutral { ty, .. } = expr {
+                collect_type_support(ty, names);
+            }
+        }
         ValueExpr::Call { func, args, ty } => {
             collect_type_support(ty, names);
             if ty == &Type::Complex && complex_overload_support_glsl(func).is_some() {
@@ -948,6 +955,7 @@ fn emit_value_expr(
     match expr {
         ValueExpr::Float(value) => format_float(*value),
         ValueExpr::Int(value) => value.to_string(),
+        ValueExpr::Neutral { kind, ty } => emit_neutral_value(*kind, ty),
         ValueExpr::Var { name, .. } => value_names
             .get(name)
             .cloned()
@@ -1075,13 +1083,9 @@ fn emit_binary_expr(
         (BinOp::Div, Type::Complex, Type::Complex) => format!("div_C({}, {})", left, right),
         (BinOp::Mul, Type::Quat, Type::Quat) => format!("mult_H({}, {})", left, right),
         (BinOp::Div, Type::Quat, Type::Quat) => format!("div_H({}, {})", left, right),
-        (BinOp::Mul, Type::SE3, Type::SE3) => format!("mult_SE3({}, {})", left, right),
-        (BinOp::Div, Type::SE3, Type::SE3) => format!("div_SE3({}, {})", left, right),
         (BinOp::Mul, Type::E2, Type::E2) => format!("mult_E2({}, {})", left, right),
-        (BinOp::Div, Type::E2, Type::E2) => format!("div_E2({}, {})", left, right),
         (BinOp::Mul, Type::E2, Type::Vec2) => format!("act_E2({}, {})", left, right),
         (BinOp::Mul, Type::E3, Type::E3) => format!("mult_E3({}, {})", left, right),
-        (BinOp::Div, Type::E3, Type::E3) => format!("div_E3({}, {})", left, right),
         (BinOp::Mul, Type::E3, Type::Vec3) => format!("act_E3({}, {})", left, right),
         (
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div,
@@ -1152,19 +1156,50 @@ fn scalar_to_algebra(ty: &Type, value: &str) -> String {
     }
 }
 
+fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
+    match (kind, ty) {
+        (NeutralKind::Zero, Type::Float) => "0.0".to_string(),
+        (NeutralKind::One, Type::Float) => "1.0".to_string(),
+        (NeutralKind::Zero, Type::Int) => "0".to_string(),
+        (NeutralKind::One, Type::Int) => "1".to_string(),
+        (NeutralKind::Zero, Type::Complex) => "vec2(0.0, 0.0)".to_string(),
+        (NeutralKind::One, Type::Complex) => "vec2(1.0, 0.0)".to_string(),
+        (NeutralKind::Zero, Type::Quat) => "vec4(0.0, 0.0, 0.0, 0.0)".to_string(),
+        (NeutralKind::One, Type::Quat) => "vec4(1.0, 0.0, 0.0, 0.0)".to_string(),
+        (NeutralKind::Zero, Type::Vec2) => "vec2(0.0)".to_string(),
+        (NeutralKind::Zero, Type::Vec3) => "vec3(0.0)".to_string(),
+        (NeutralKind::Zero, Type::Vec4) => "vec4(0.0)".to_string(),
+        (NeutralKind::Zero, Type::Mat(rows, columns)) => matrix_zero_expr(*rows, *columns),
+        (NeutralKind::Identity, Type::Mat(rows, columns)) if rows == columns => {
+            format!("mat{}(1.0)", rows)
+        }
+        (NeutralKind::Identity, Type::E2) => "E2(mat2(1.0), vec2(0.0))".to_string(),
+        (NeutralKind::Identity, Type::E3) => "E3(mat3(1.0), vec3(0.0))".to_string(),
+        (_, Type::Custom { name, .. }) => match kind {
+            NeutralKind::Zero => format!("zero_{name}"),
+            NeutralKind::One => format!("one_{name}"),
+            NeutralKind::Identity => format!("e_{name}"),
+        },
+        _ => unreachable!("unsupported neutral literal"),
+    }
+}
+
+fn matrix_zero_expr(rows: usize, columns: usize) -> String {
+    if rows == columns {
+        format!("mat{rows}(0.0)")
+    } else {
+        format!("{}(0.0)", matrix_glsl_type(rows, columns))
+    }
+}
+
 fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<&'static str> {
     match (op, left, right) {
         (BinOp::Mul | BinOp::Div, Type::Complex, Type::Complex)
         | (BinOp::Div, Type::Float, Type::Complex) => Some("C"),
         (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
         | (BinOp::Div, Type::Float, Type::Quat) => Some("H"),
-        (BinOp::Mul | BinOp::Div, Type::SE3, Type::SE3) => Some("SE3"),
-        (BinOp::Mul | BinOp::Div, Type::E2, Type::E2) | (BinOp::Mul, Type::E2, Type::Vec2) => {
-            Some("E2")
-        }
-        (BinOp::Mul | BinOp::Div, Type::E3, Type::E3) | (BinOp::Mul, Type::E3, Type::Vec3) => {
-            Some("E3")
-        }
+        (BinOp::Mul, Type::E2, Type::E2) | (BinOp::Mul, Type::E2, Type::Vec2) => Some("E2"),
+        (BinOp::Mul, Type::E3, Type::E3) | (BinOp::Mul, Type::E3, Type::Vec3) => Some("E3"),
         _ => None,
     }
 }

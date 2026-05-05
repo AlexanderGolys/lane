@@ -43,6 +43,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "inferred_binding_declaration"
+        },
+        {
+          "type": "SYMBOL",
           "name": "binding_declaration"
         }
       ]
@@ -58,8 +62,42 @@
           "type": "FIELD",
           "name": "category",
           "content": {
-            "type": "SYMBOL",
-            "name": "category_identifier"
+            "type": "ALIAS",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "Ab"
+                },
+                {
+                  "type": "STRING",
+                  "value": "Mon"
+                },
+                {
+                  "type": "STRING",
+                  "value": "Grp"
+                },
+                {
+                  "type": "STRING",
+                  "value": "Ring"
+                },
+                {
+                  "type": "STRING",
+                  "value": "Field"
+                },
+                {
+                  "type": "STRING",
+                  "value": "VectR"
+                },
+                {
+                  "type": "STRING",
+                  "value": "AlgR"
+                }
+              ]
+            },
+            "named": true,
+            "value": "type_identifier"
           }
         },
         {
@@ -149,6 +187,47 @@
             "type": "SYMBOL",
             "name": "_type"
           }
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        }
+      ]
+    },
+    "inferred_binding_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "modifier",
+              "content": {
+                "type": "SYMBOL",
+                "name": "gen_modifier"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "FIELD",
@@ -416,39 +495,6 @@
         {
           "type": "STRING",
           "value": ")"
-        }
-      ]
-    },
-    "category_identifier": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "Ab"
-        },
-        {
-          "type": "STRING",
-          "value": "Mon"
-        },
-        {
-          "type": "STRING",
-          "value": "Grp"
-        },
-        {
-          "type": "STRING",
-          "value": "Ring"
-        },
-        {
-          "type": "STRING",
-          "value": "Field"
-        },
-        {
-          "type": "STRING",
-          "value": "VectR"
-        },
-        {
-          "type": "STRING",
-          "value": "AlgR"
         }
       ]
     },

@@ -26,12 +26,21 @@ module.exports = grammar({
             $.provided_category_declaration,
             $.input_declaration,
             $.output_declaration,
+            $.inferred_binding_declaration,
             $.binding_declaration,
         ),
 
         provided_category_declaration: ($) => seq(
             'provided',
-            field('category', $.category_identifier),
+            field('category', alias(choice(
+                'Ab',
+                'Mon',
+                'Grp',
+                'Ring',
+                'Field',
+                'VectR',
+                'AlgR',
+            ), $.type_identifier)),
             field('name', $.identifier),
         ),
 
@@ -49,6 +58,13 @@ module.exports = grammar({
         binding_declaration: ($) => seq(
             optional(field('modifier', $.gen_modifier)),
             field('type', $._type),
+            field('name', $.identifier),
+            '=',
+            field('value', $._expression),
+        ),
+
+        inferred_binding_declaration: ($) => seq(
+            optional(field('modifier', $.gen_modifier)),
             field('name', $.identifier),
             '=',
             field('value', $._expression),
@@ -108,16 +124,6 @@ module.exports = grammar({
             '(',
             field('element', $._type),
             ')',
-        ),
-
-        category_identifier: () => choice(
-            'Ab',
-            'Mon',
-            'Grp',
-            'Ring',
-            'Field',
-            'VectR',
-            'AlgR',
         ),
 
         _expression: ($) => choice(

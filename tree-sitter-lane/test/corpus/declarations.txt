@@ -4,6 +4,9 @@ Declarations
 
 provided Float time
 construct Object shell = Ball3D(r=1 + time)
+radius = 1 + time
+shape = shell + (radius, 0, 0)
+construct generated = Ball3D(r=radius)
 Object moved = shell + (1, 2, 3)
 Func(Float, Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 Hom(Float, Float) warp = spin
@@ -25,9 +28,31 @@ generate spin(time) * moved
       (argument_list
         (named_argument
           (identifier)
-          (binary_expression
-            (number)
-            (identifier))))))
+            (binary_expression
+              (number)
+              (identifier))))))
+  (inferred_binding_declaration
+    (identifier)
+    (binary_expression
+      (number)
+      (identifier)))
+  (inferred_binding_declaration
+    (identifier)
+    (binary_expression
+      (identifier)
+      (tuple_expression
+        (identifier)
+        (number)
+        (number))))
+  (inferred_binding_declaration
+    (gen_modifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (named_argument
+          (identifier)
+          (identifier)))))
   (binding_declaration
     (type_identifier)
     (identifier)
@@ -146,7 +171,7 @@ G product = a * b
 
 (source_file
   (provided_category_declaration
-    (category_identifier)
+    (type_identifier)
     (identifier))
   (input_declaration
     (type_identifier)

@@ -35,6 +35,7 @@ impl<'a> Parser<'a> {
         let mut funcs = Vec::new();
         let mut value_bindings = Vec::new();
         let mut bindings = Vec::new();
+        let mut inferred_bindings = Vec::new();
         let mut output = None;
 
         for (line_index, raw_line) in self.source.lines().enumerate() {
@@ -74,6 +75,7 @@ impl<'a> Parser<'a> {
                 Decl::Func(func) => funcs.push(func),
                 Decl::ValueBinding(binding) => value_bindings.push(binding),
                 Decl::Binding(binding) => bindings.push(binding),
+                Decl::InferredBinding(binding) => inferred_bindings.push(binding),
                 Decl::Output(out) => {
                     if output.is_some() {
                         return Err(Error::new("multiple out declarations are not supported"));
@@ -90,6 +92,7 @@ impl<'a> Parser<'a> {
             funcs,
             value_bindings,
             bindings,
+            inferred_bindings,
             output,
         })
     }
@@ -149,7 +152,17 @@ impl<'a> Parser<'a> {
                 "use 'type name = value' for declarations instead of 'name : type = value'",
             ));
         }
-        let (ty_source, name) = split_type_name(left.trim())?;
+        let left = left.trim();
+        if !left.contains(char::is_whitespace) {
+            let expr = ExprParser::new(expr_source.trim()).parse()?;
+            return Ok(Decl::InferredBinding(InferredBindingDecl {
+                name: left.to_string(),
+                expr,
+                generated,
+                line: line_number,
+            }));
+        }
+        let (ty_source, name) = split_type_name(left)?;
         let ty = parse_type_with_custom_types(ty_source.trim(), custom_types)?;
         let expr = ExprParser::new(expr_source.trim()).parse()?;
         if matches!(ty, Type::Func(_, _)) {
