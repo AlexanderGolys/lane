@@ -273,6 +273,7 @@ fn complex_overload_support_glsl(name: &str) -> Option<&'static str> {
         "inv" => Some("vec2 inv(vec2 z) {\n    return vec2(z.x, -z.y) / dot(z, z);\n}"),
         "exp" => Some("vec2 exp(vec2 z) {\n    float scale = exp(z.x);\n    return scale * vec2(cos(z.y), sin(z.y));\n}"),
         "log" => Some("vec2 log(vec2 z) {\n    return vec2(log(length(z)), atan(z.y, z.x));\n}"),
+        "pow" => Some("vec2 pow(vec2 z, vec2 w) {\n    return exp(mult_C(w, log(z)));\n}"),
         "sqrt" => Some("vec2 sqrt(vec2 z) {\n    float r = length(z);\n    float a = sqrt(max((r + z.x) * 0.5, 0.0));\n    float b = sqrt(max((r - z.x) * 0.5, 0.0));\n    return vec2(a, sign(z.y) * b);\n}"),
         "sin" => Some("vec2 sin(vec2 z) {\n    return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y));\n}"),
         "cos" => Some("vec2 cos(vec2 z) {\n    return vec2(cos(z.x) * cosh(z.y), -sin(z.x) * sinh(z.y));\n}"),
@@ -874,6 +875,11 @@ enum ValueExpr {
         args: Vec<ValueExpr>,
         ty: Type,
     },
+    MonoidPow {
+        exponent: Box<ValueExpr>,
+        base: Box<ValueExpr>,
+        ty: Type,
+    },
     ObjectGetterCall {
         object: String,
         getter: ObjectGetter,
@@ -951,6 +957,7 @@ impl ValueExpr {
             Self::Neutral { ty, .. } => ty.clone(),
             Self::Var { ty, .. } => ty.clone(),
             Self::Call { ty, .. } => ty.clone(),
+            Self::MonoidPow { ty, .. } => ty.clone(),
             Self::ObjectGetterCall { ty, .. } => ty.clone(),
             Self::Array { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
             Self::Index { ty, .. } => ty.clone(),
@@ -1521,6 +1528,16 @@ fn listed_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
     (!overloads.is_empty()).then_some(overloads)
 }
 
+fn listed_builtin_value_func_overloads(name: &str) -> Option<String> {
+    if name == "pow" {
+        return Some(format!(
+            "Hom(Z × Mon, Mon) | {}",
+            format_overload_set(&listed_builtin_value_func_overload_types(name)?)
+        ));
+    }
+    listed_builtin_value_func_overload_types(name).map(|overloads| format_overload_set(&overloads))
+}
+
 fn glsl_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
     let mut result = Vec::new();
     for (candidate, overloads) in glsl_builtin_value_func_overloads() {
@@ -1574,6 +1591,10 @@ fn glsl_builtin_value_func_overloads() -> Vec<(&'static str, Vec<Type>)> {
         ("atan", same_type_float_gen_overloads(2)),
         ("atan", unary_float_gen_type_overloads()),
         ("pow", same_type_float_gen_overloads(2)),
+        (
+            "pow",
+            vec![func_type(vec![Type::Complex, Type::Complex], Type::Complex)],
+        ),
         ("mod", same_or_scalar_float_gen_overloads(2)),
         ("min", same_or_scalar_symmetric_float_gen_overloads()),
         ("max", same_or_scalar_symmetric_float_gen_overloads()),

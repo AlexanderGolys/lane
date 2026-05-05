@@ -317,6 +317,13 @@ fn lists_builtin_lane_objects() {
     assert!(objects
         .iter()
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
+    assert!(objects.iter().any(|object| {
+        object.name == "pow"
+            && object
+                .ty
+                .starts_with("Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)")
+            && object.ty.contains("Hom(C × C, C)")
+    }));
     assert!(objects
         .iter()
         .any(|object| object.name == "boolNot" && object.ty == "Hom(Bool, Bool)"));
@@ -388,6 +395,9 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(rot.body, "");
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
+    let pow = known_builtin_object("pow").unwrap();
+    assert!(pow.ty.starts_with("Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)"));
+    assert!(pow.ty.contains("Hom(C × C, C)"));
     assert_eq!(bool_ty.ty, "DivRing");
     assert_eq!(bool_ty.body, "");
     assert_eq!(bool_xor.ty, "Hom(Bool × Bool, Bool)");
@@ -568,6 +578,40 @@ fn supports_pointwise_function_arithmetic_support_dependencies() {
     assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
     assert!(glsl.contains("vec2 dsl_h(float t)"));
     assert!(glsl.contains("return mult_C(f(t), g(t));"));
+}
+
+#[test]
+fn supports_complex_pow_overload() {
+    let source = "provided C z\nprovided C w\nconst C y = pow(z, w)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
+    assert!(glsl.contains("vec2 exp(vec2 z)"));
+    assert!(glsl.contains("vec2 log(vec2 z)"));
+    assert!(glsl.contains("vec2 pow(vec2 z, vec2 w)"));
+    assert!(glsl.contains("return exp(mult_C(w, log(z)));"));
+}
+
+#[test]
+fn supports_monoid_pow_for_product_types() {
+    let source = "Mon Pair = R x Z\nprovided Pair p\nconst Pair q = pow(3, p)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("Pair one_Pair = Pair(1.0, 1);"));
+    assert!(glsl.contains("Pair mult_Pair(Pair a, Pair b)"));
+    assert!(glsl.contains("Pair pow_monoid_Pair(int exponent, Pair value)"));
+    assert!(glsl.contains("result = mult_Pair(result, factor);"));
+}
+
+#[test]
+fn supports_monoid_pow_for_provided_category_types() {
+    let source = "provided Grp G\nprovided G g\nprovided Hom(G, R) measure\nR radius = measure(pow(4, g))\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("G pow_monoid_G(int exponent, G value)"));
+    assert!(glsl.contains("G result = e_G;"));
+    assert!(glsl.contains("result = mult_G(result, factor);"));
+    assert!(glsl.contains("float radius = measure(pow_monoid_G(4, g));"));
 }
 
 #[test]

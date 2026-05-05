@@ -443,6 +443,19 @@ impl TypedProgram {
                 }
                 continue;
             }
+            if let Some(type_name) = name.strip_prefix("monoid-pow:") {
+                if let Some(ty) = self.monoid_pow_type_by_name(type_name) {
+                    emit_monoid_pow_support(
+                        &ty,
+                        &product_types,
+                        &mut emitted_builtin_support,
+                        &mut emitted_product_types,
+                        &mut emitted_product_ops,
+                        &mut blocks,
+                    );
+                }
+                continue;
+            }
             if let Some(primitive) = registry.primitives.get(name.as_str()) {
                 blocks.push(primitive.support_glsl.to_string());
                 continue;
@@ -505,6 +518,57 @@ impl TypedProgram {
         }
         helpers.into_values().collect()
     }
+
+    fn monoid_pow_type_by_name(&self, name: &str) -> Option<Type> {
+        if let Some(ty) = parse_builtin_type_name(name) {
+            return Some(ty);
+        }
+        if let Some(decl) = self.product_types.iter().find(|decl| decl.name == name) {
+            return Some(product_type_decl_type(decl));
+        }
+        for input in &self.inputs {
+            if let Some(ty) = find_custom_type_by_name(&input.ty, name) {
+                return Some(ty);
+            }
+        }
+        for binding in &self.value_bindings {
+            if let Some(ty) = find_custom_type_by_name(&binding.ty, name) {
+                return Some(ty);
+            }
+            if let Some(ty) = find_custom_type_by_name(&binding.expr.ty(), name) {
+                return Some(ty);
+            }
+        }
+        for func in &self.funcs {
+            if let Some(ty) = find_custom_type_by_name(&func.input, name) {
+                return Some(ty);
+            }
+            if let Some(ty) = find_custom_type_by_name(&func.output, name) {
+                return Some(ty);
+            }
+        }
+        None
+    }
+}
+
+fn find_custom_type_by_name(ty: &Type, name: &str) -> Option<Type> {
+    match ty {
+        Type::Custom {
+            name: ty_name,
+            categories,
+        } if ty_name == name => Some(Type::Custom {
+            name: ty_name.clone(),
+            categories: categories.clone(),
+        }),
+        Type::Array(element) => find_custom_type_by_name(element, name),
+        Type::Product(parts) => parts
+            .iter()
+            .find_map(|part| find_custom_type_by_name(part, name)),
+        Type::Func(input, output) => {
+            find_custom_type_by_name(input, name).or_else(|| find_custom_type_by_name(output, name))
+        }
+        _ => None,
+    }
 }
 
 fn collect_object_getter_object_refs(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
@@ -563,6 +627,10 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
             for arg in args {
                 collect_object_getter_value_refs(arg, names);
             }
+        }
+        ValueExpr::MonoidPow { exponent, base, .. } => {
+            collect_object_getter_value_refs(exponent, names);
+            collect_object_getter_value_refs(base, names);
         }
         ValueExpr::ObjectGetterCall {
             object,
@@ -761,6 +829,73 @@ fn parse_product_support_name(name: &str) -> Option<(&str, ProductSupport)> {
         _ => return None,
     };
     Some((product_name, support))
+}
+
+fn monoid_pow_support_name(ty: &Type) -> String {
+    format!("monoid-pow:{}", ty.type_name())
+}
+
+fn monoid_pow_function_name(ty: &Type) -> String {
+    format!("pow_monoid_{}", sanitize_glsl_name(&ty.type_name()))
+}
+
+fn sanitize_glsl_name(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn emit_monoid_pow_support(
+    ty: &Type,
+    product_types: &HashMap<&str, &ProductTypeDecl>,
+    emitted_builtin_support: &mut BTreeSet<String>,
+    emitted_product_types: &mut BTreeSet<String>,
+    emitted_product_ops: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    emit_component_type_dependency(
+        ty,
+        product_types,
+        emitted_builtin_support,
+        emitted_product_types,
+        blocks,
+    );
+    emit_component_op_dependency(
+        ty,
+        ProductOp::One,
+        product_types,
+        emitted_builtin_support,
+        emitted_product_types,
+        emitted_product_ops,
+        blocks,
+    );
+    emit_component_op_dependency(
+        ty,
+        ProductOp::Mult,
+        product_types,
+        emitted_builtin_support,
+        emitted_product_types,
+        emitted_product_ops,
+        blocks,
+    );
+    blocks.push(emit_monoid_pow_function(ty));
+}
+
+fn emit_monoid_pow_function(ty: &Type) -> String {
+    let name = monoid_pow_function_name(ty);
+    let glsl_ty = ty.glsl_name();
+    let one = emit_component_neutral(ProductOp::One, ty);
+    let multiply_result = emit_component_binary(ProductOp::Mult, ty, "result", "factor");
+    let multiply_factor = emit_component_binary(ProductOp::Mult, ty, "factor", "factor");
+    format!(
+        "{glsl_ty} {name}(int exponent, {glsl_ty} value) {{\n    {glsl_ty} result = {one};\n    {glsl_ty} factor = value;\n    int n = exponent;\n    while (n > 0) {{\n        if ((n % 2) == 1) {{\n            result = {multiply_result};\n        }}\n        factor = {multiply_factor};\n        n = n / 2;\n    }}\n    return result;\n}}"
+    )
 }
 
 fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
@@ -1075,6 +1210,9 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
         {
             emit_component_neutral(ProductOp::Identity, ty)
         }
+        ProductOp::One if matches!(ty, Type::Mat(rows, columns) if rows == columns) => {
+            emit_component_neutral(ProductOp::Identity, ty)
+        }
         ProductOp::One => emit_neutral_value(NeutralKind::One, ty),
         ProductOp::Identity => match ty {
             Type::Bool => "true".to_string(),
@@ -1302,6 +1440,10 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
                 collect_concat_helpers(arg, helpers);
             }
         }
+        ValueExpr::MonoidPow { exponent, base, .. } => {
+            collect_concat_helpers(exponent, helpers);
+            collect_concat_helpers(base, helpers);
+        }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
         } => {
@@ -1401,6 +1543,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         | ValueExpr::Index { .. }
         | ValueExpr::Concat { .. }
         | ValueExpr::Call { .. }
+        | ValueExpr::MonoidPow { .. }
         | ValueExpr::ObjectGetterCall { .. }
         | ValueExpr::Derivative { .. }
         | ValueExpr::Partial { .. }
@@ -1476,6 +1619,10 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             for arg in args {
                 collect_value_refs(arg, names);
             }
+        }
+        ValueExpr::MonoidPow { exponent, base, .. } => {
+            collect_value_refs(exponent, names);
+            collect_value_refs(base, names);
         }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
@@ -1557,6 +1704,10 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             for arg in args {
                 collect_value_function_refs(arg, names);
             }
+        }
+        ValueExpr::MonoidPow { exponent, base, .. } => {
+            collect_value_function_refs(exponent, names);
+            collect_value_function_refs(base, names);
         }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
@@ -1738,6 +1889,11 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_type_support(ty, names);
             if ty == &Type::Complex && complex_overload_support_glsl(func).is_some() {
                 names.insert(format!("complex:{func}"));
+                if func == "pow" {
+                    names.insert("C".to_string());
+                    names.insert("complex:exp".to_string());
+                    names.insert("complex:log".to_string());
+                }
             }
             if func != "rot" {
                 names.insert(func.clone());
@@ -1745,6 +1901,12 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             for arg in args {
                 collect_value_support(arg, names);
             }
+        }
+        ValueExpr::MonoidPow { exponent, base, ty } => {
+            collect_type_support(ty, names);
+            names.insert(monoid_pow_support_name(ty));
+            collect_value_support(exponent, names);
+            collect_value_support(base, names);
         }
         ValueExpr::ObjectGetterCall {
             point,
@@ -1888,6 +2050,12 @@ fn emit_value_expr(
                 rendered_args
             )
         }
+        ValueExpr::MonoidPow { exponent, base, ty } => format!(
+            "{}({}, {})",
+            monoid_pow_function_name(ty),
+            emit_value_expr(exponent, helper_names, value_names),
+            emit_value_expr(base, helper_names, value_names)
+        ),
         ValueExpr::ObjectGetterCall {
             object,
             getter,

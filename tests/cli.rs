@@ -181,6 +181,8 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("H: DivRing, RAlg"));
     assert!(stdout.contains("E2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
+    assert!(stdout.contains("pow: Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)"));
+    assert!(stdout.contains("Hom(C × C, C)"));
     assert!(stdout.contains("boolNot: Hom(Bool, Bool)"));
     assert!(stdout.contains("boolAnd: Hom(Bool × Bool, Bool)"));
     assert!(!stdout.contains("cexp: Hom(C, C)"));

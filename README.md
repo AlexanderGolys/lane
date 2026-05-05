@@ -664,6 +664,9 @@ Registered GLSL functions include:
 - Angle and trigonometry: `radians`, `degrees`, `sin`, `cos`, `tan`, `asin`,
   `acos`, `atan`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`.
 - Exponential: `pow`, `exp`, `log`, `exp2`, `log2`, `sqrt`, `inversesqrt`.
+  Besides GLSL-style `pow(Rn, Rn)`, `pow` has category overloads
+  `pow(Z, Mon)` for repeated monoid multiplication and `pow(C, C)` for complex
+  exponentiation.
 - Common math: `abs`, `sign`, `floor`, `trunc`, `round`, `roundEven`, `ceil`,
   `fract`, `mod`, `min`, `max`, `clamp`, `mix`, `step`, `smoothstep`, `fma`.
   `min` and `max` accept scalar/vector operands in either order.
@@ -685,12 +688,20 @@ parameter passing forms.
 R squared = pow2(y)
 ```
 
-Complex overloads are available for functions such as `exp`, `log`, and `sin`
-on `C` inputs. Their GLSL overloads are emitted only when used.
+Complex overloads are available for functions such as `exp`, `log`, `pow`, and
+`sin` on `C` inputs. Their GLSL overloads are emitted only when used.
 
 ```lane
 C seed = (1, 0)
 C z = exp(seed)
+```
+
+Monoid powers take the integer exponent first:
+
+```lane
+Mon Pair = R x Z
+provided Pair p
+const Pair cubed = pow(3, p)
 ```
 
 ### `rot`

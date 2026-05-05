@@ -1055,6 +1055,9 @@ fn infer_value_expr(
             if let Some(result) = infer_complex_overload_call(name, args, env, lift_param)? {
                 return Ok(result);
             }
+            if let Some(result) = infer_monoid_pow_call(name, args, env, lift_param)? {
+                return Ok(result);
+            }
             infer_value_call(name, args, env, lift_param, None)
         }
         Expr::Binary {
@@ -1210,6 +1213,11 @@ fn infer_value_expr_for_type(
                 ensure_type(&result.ty(), expected_ty, "constructor expression")?;
                 return Ok(result);
             }
+            if let Some(result) = infer_monoid_pow_call(name, args, env, lift_param)? {
+                if types_compatible_for_expected(&result.ty(), expected_ty) {
+                    return Ok(result);
+                }
+            }
             infer_value_call(name, args, env, lift_param, Some(expected_ty))
         }
         _ => infer_value_expr(expr, env, lift_param),
@@ -1264,6 +1272,10 @@ fn collect_lifted_param_type(
             for arg in args {
                 collect_lifted_param_type(arg, name, ty)?;
             }
+        }
+        ValueExpr::MonoidPow { exponent, base, .. } => {
+            collect_lifted_param_type(exponent, name, ty)?;
+            collect_lifted_param_type(base, name, ty)?;
         }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
@@ -1395,6 +1407,35 @@ fn infer_type_constructor_call(
     }))
 }
 
+fn infer_monoid_pow_call(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<Option<ValueExpr>, Error> {
+    if name != "pow" || args.len() != 2 {
+        return Ok(None);
+    }
+
+    let Ok(exponent) = infer_int_expr(&args[0], env, lift_param) else {
+        return Ok(None);
+    };
+    let base = infer_value_expr(&args[1], env, lift_param)?;
+    let ty = base.ty();
+    if !is_monoid_pow_type(&ty) {
+        return Ok(None);
+    }
+    Ok(Some(ValueExpr::MonoidPow {
+        exponent: Box::new(exponent),
+        base: Box::new(base),
+        ty,
+    }))
+}
+
+fn is_monoid_pow_type(ty: &Type) -> bool {
+    is_value_type(ty) && has_category(ty, AlgebraicCategory::Mon)
+}
+
 fn infer_value_call(
     name: &str,
     args: &[Expr],
@@ -1430,6 +1471,9 @@ fn infer_value_call(
                     {
                         ok = false;
                         break;
+                    }
+                    if typed_arg.ty() != *input_ty {
+                        cost += 1;
                     }
                     if matches!(typed_arg, ValueExpr::Neutral { .. }) {
                         cost += 1;

@@ -798,7 +798,7 @@ impl Registry {
             let ty = if let Some(func) = self.value_funcs.get(name).filter(|func| func.listed) {
                 format_object_type(&func.ty)
             } else {
-                format_overload_set(&listed_builtin_value_func_overload_types(name).unwrap())
+                listed_builtin_value_func_overloads(name).unwrap()
             };
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
@@ -811,7 +811,7 @@ impl Registry {
         op_names.sort_unstable();
         for name in op_names {
             if self.value_funcs.get(name).is_some_and(|func| func.listed)
-                || listed_builtin_value_func_overload_types(name).is_some()
+                || listed_builtin_value_func_overloads(name).is_some()
             {
                 continue;
             }
@@ -864,10 +864,10 @@ impl Registry {
             }
         }
 
-        if let Some(overloads) = listed_builtin_value_func_overload_types(name) {
+        if let Some(overloads) = listed_builtin_value_func_overloads(name) {
             return Some(KnownBuiltinObjectDetail {
                 name: name.to_string(),
-                ty: format_overload_set(&overloads),
+                ty: overloads,
                 kind: KnownBuiltinObjectKind::Function,
                 body: String::new(),
             });
