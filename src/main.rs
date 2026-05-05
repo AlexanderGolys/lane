@@ -7,6 +7,7 @@ const COLOR_FUNCTION: &str = "34";
 const COLOR_TYPE: &str = "33";
 const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
+const COLOR_ERROR: &str = "31";
 
 const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL.";
 
@@ -76,9 +77,32 @@ complete -c lane -s h -l help -d 'Show help'
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("{err}");
+        print_error(err.as_ref());
         process::exit(1);
     }
+}
+
+fn print_error(err: &(dyn std::error::Error + 'static)) {
+    let message = format_error(err);
+    if io::stderr().is_terminal() {
+        eprintln!("{}", color(COLOR_ERROR, &message));
+        return;
+    }
+    eprintln!("{message}");
+}
+
+fn format_error(err: &(dyn std::error::Error + 'static)) -> String {
+    format!("{}: {}", error_type(err), err)
+}
+
+fn error_type(err: &(dyn std::error::Error + 'static)) -> &'static str {
+    if err.is::<lane::Error>() {
+        return "lane::Error";
+    }
+    if err.is::<io::Error>() {
+        return "std::io::Error";
+    }
+    "error"
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -510,7 +534,7 @@ fn color<'a>(code: &'a str, text: &'a str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{highlight_builtin_object_line, highlight_glsl};
+    use super::{color, format_error, highlight_builtin_object_line, highlight_glsl, COLOR_ERROR};
 
     #[test]
     fn highlights_glsl_keywords_types_and_numbers() {
@@ -570,5 +594,20 @@ mod tests {
         assert!(highlighted.contains("\x1b[33mObject\x1b[0m"));
         assert!(highlighted.contains("\x1b[33mType\x1b[0m"));
         assert!(!highlighted.contains("\x1b[92mType\x1b[0m"));
+    }
+
+    #[test]
+    fn formats_lane_errors_with_error_type() {
+        let err = lane::compile_program("const Object output = Unknown3D(r=1)\n").unwrap_err();
+
+        assert!(format_error(&err).contains("lane::Error: line 1: unknown primitive 'Unknown3D'"));
+    }
+
+    #[test]
+    fn colors_error_messages_red() {
+        assert_eq!(
+            color(COLOR_ERROR, "lane::Error: bad"),
+            "\x1b[31mlane::Error: bad\x1b[0m"
+        );
     }
 }

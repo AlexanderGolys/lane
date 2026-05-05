@@ -69,6 +69,9 @@ Usage:
   omitted from this broad list.
 - `lane -pc SHELL` prints completion code for `bash`, `zsh`, or `fish`.
 - `lane help` is treated as an input path. Use `lane -h` or `lane --help`.
+- CLI failures are printed on stderr with an error type prefix such as
+  `lane::Error:` or `std::io::Error:`. In an interactive terminal, the whole
+  diagnostic is colored red.
 
 ## LSP
 
