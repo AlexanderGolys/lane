@@ -79,44 +79,9 @@ impl TypedProgram {
         lines.push(String::new());
         lines.push(format!("vec3 scene_grad({}) {{", signature.join(", ")));
         lines.push(format!("    float {} = 0.0005;", locals.eps));
-        let mut grad_args = vec![format!("{} + vec3({}, 0.0, 0.0)", locals.point, locals.eps)];
-        grad_args.extend(scene_input_names.iter().cloned());
         lines.push(format!(
-            "    float {} = scene_sdf({}) - scene_sdf({});",
-            locals.dx,
-            grad_args.join(", "),
-            std::iter::once(format!("{} - vec3({}, 0.0, 0.0)", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-        lines.push(format!(
-            "    float {} = scene_sdf({}) - scene_sdf({});",
-            locals.dy,
-            std::iter::once(format!("{} + vec3(0.0, {}, 0.0)", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", "),
-            std::iter::once(format!("{} - vec3(0.0, {}, 0.0)", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-        lines.push(format!(
-            "    float {} = scene_sdf({}) - scene_sdf({});",
-            locals.dz,
-            std::iter::once(format!("{} + vec3(0.0, 0.0, {})", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", "),
-            std::iter::once(format!("{} - vec3(0.0, 0.0, {})", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-        lines.push(format!(
-            "    return normalize(vec3({}, {}, {}));",
-            locals.dx, locals.dy, locals.dz
+            "    return normalize({});",
+            emit_sdf_gradient_expr("scene_sdf", &locals.point, &locals.eps, &scene_input_names)
         ));
         lines.push("}".to_string());
 
@@ -307,51 +272,14 @@ impl TypedProgram {
             signature.join(", ")
         ));
         lines.push(format!("    float {} = 0.0005;", locals.eps));
-        let forward_x =
-            std::iter::once(format!("{} + vec3({}, 0.0, 0.0)", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ");
-        let backward_x =
-            std::iter::once(format!("{} - vec3({}, 0.0, 0.0)", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ");
-        let forward_y =
-            std::iter::once(format!("{} + vec3(0.0, {}, 0.0)", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ");
-        let backward_y =
-            std::iter::once(format!("{} - vec3(0.0, {}, 0.0)", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ");
-        let forward_z =
-            std::iter::once(format!("{} + vec3(0.0, 0.0, {})", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ");
-        let backward_z =
-            std::iter::once(format!("{} - vec3(0.0, 0.0, {})", locals.point, locals.eps))
-                .chain(scene_input_names.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(", ");
         lines.push(format!(
-            "    float {} = sdf_{}({}) - sdf_{}({});",
-            locals.dx, binding.name, forward_x, binding.name, backward_x
-        ));
-        lines.push(format!(
-            "    float {} = sdf_{}({}) - sdf_{}({});",
-            locals.dy, binding.name, forward_y, binding.name, backward_y
-        ));
-        lines.push(format!(
-            "    float {} = sdf_{}({}) - sdf_{}({});",
-            locals.dz, binding.name, forward_z, binding.name, backward_z
-        ));
-        lines.push(format!(
-            "    return normalize(vec3({}, {}, {}));",
-            locals.dx, locals.dy, locals.dz
+            "    return normalize({});",
+            emit_sdf_gradient_expr(
+                &format!("sdf_{}", binding.name),
+                &locals.point,
+                &locals.eps,
+                scene_input_names,
+            )
         ));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -390,20 +318,11 @@ impl TypedProgram {
         let func_param = unique_local_name("t", &forbidden);
         forbidden.insert(func_param.clone());
         let eps = unique_local_name("eps", &forbidden);
-        forbidden.insert(eps.clone());
-        let dx = unique_local_name("dx", &forbidden);
-        forbidden.insert(dx.clone());
-        let dy = unique_local_name("dy", &forbidden);
-        forbidden.insert(dy.clone());
-        let dz = unique_local_name("dz", &forbidden);
 
         EmitLocals {
             point,
             func_param,
             eps,
-            dx,
-            dy,
-            dz,
         }
     }
 
@@ -1257,6 +1176,72 @@ fn emit_function_application(
     value_names: &HashMap<String, String>,
 ) -> String {
     emit_value_expr(&apply_function_expr(func, arg), helper_names, value_names)
+}
+
+fn emit_sdf_gradient_expr(
+    function_name: &str,
+    point_name: &str,
+    epsilon_name: &str,
+    scene_input_names: &[String],
+) -> String {
+    format!(
+        "vec3({}, {}, {})",
+        emit_sdf_partial_derivative(
+            function_name,
+            point_name,
+            epsilon_name,
+            scene_input_names,
+            0
+        ),
+        emit_sdf_partial_derivative(
+            function_name,
+            point_name,
+            epsilon_name,
+            scene_input_names,
+            1
+        ),
+        emit_sdf_partial_derivative(
+            function_name,
+            point_name,
+            epsilon_name,
+            scene_input_names,
+            2
+        ),
+    )
+}
+
+fn emit_sdf_partial_derivative(
+    function_name: &str,
+    point_name: &str,
+    epsilon_name: &str,
+    scene_input_names: &[String],
+    axis: usize,
+) -> String {
+    let offset = match axis {
+        0 => format!("vec3({}, 0.0, 0.0)", epsilon_name),
+        1 => format!("vec3(0.0, {}, 0.0)", epsilon_name),
+        2 => format!("vec3(0.0, 0.0, {})", epsilon_name),
+        _ => unreachable!(),
+    };
+    let forward = emit_sdf_call(
+        function_name,
+        &format!("{} + {}", point_name, offset),
+        scene_input_names,
+    );
+    let backward = emit_sdf_call(
+        function_name,
+        &format!("{} - {}", point_name, offset),
+        scene_input_names,
+    );
+    format!("(({} - {}) / (2.0 * {}))", forward, backward, epsilon_name)
+}
+
+fn emit_sdf_call(function_name: &str, point_expr: &str, scene_input_names: &[String]) -> String {
+    let args = std::iter::once(point_expr.to_string())
+        .chain(scene_input_names.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{}({})", function_name, args)
 }
 
 fn emit_scalar_derivative(

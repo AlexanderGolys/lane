@@ -995,9 +995,6 @@ struct EmitLocals {
     point: String,
     func_param: String,
     eps: String,
-    dx: String,
-    dy: String,
-    dz: String,
 }
 
 #[derive(Clone, Debug)]

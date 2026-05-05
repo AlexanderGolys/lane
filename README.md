@@ -279,7 +279,8 @@ Every compilation emits:
   and value functions;
 - user value helper functions named `dsl_name`;
 - `float scene_sdf(vec3 p, ...)`;
-- `vec3 scene_grad(vec3 p, ...)`, computed by finite differences.
+- `vec3 scene_grad(vec3 p, ...)`, computed by the same central-difference
+  gradient machinery exposed to Lane programs.
 
 Generated GLSL writes decimal and exponent float literals with an `f` suffix
 such as `1.0f` and `0.0005f` for shader compilers that require explicit float
@@ -425,11 +426,8 @@ type without a GLSL support body.
 | Object | Type | Shape |
 | --- | --- | --- |
 | `derivative` | `Hom(R, Hom(Hom(R, R), Hom(R, R)))` | `derivative(eps)(f)(x)` central derivative for `Hom(R, R)`. |
-| `partialX` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R)))` | `partialX(eps)(f)(p)` X partial derivative for `Hom(R3, R)`. |
-| `partialY` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R)))` | `partialY(eps)(f)(p)` Y partial derivative for `Hom(R3, R)`. |
-| `partialZ` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R)))` | `partialZ(eps)(f)(p)` Z partial derivative for `Hom(R3, R)`. |
 | `directionalDerivative` | `Hom(R, Hom(R3, Hom(Hom(R3, R), Hom(R3, R))))` | `directionalDerivative(eps)(dir)(f)(p)` directional derivative for `Hom(R3, R)`. |
-| `gradient` | `Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))` | `gradient(eps)(f)(p)` gradient of `Hom(R3, R)`. |
+| `gradient` | `Hom(Hom(R3, R), Hom(R3, R3))` | `gradient(f)(p)` uses default epsilon `0.01`; `gradient(eps)(f)(p)` overrides it. `grad` is an unlisted alias and also maps `Hom(R, R)` to scalar derivative. |
 | `divergence` | `Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))` | `divergence(eps)(f)(p)` divergence of `Hom(R3, R3)`. |
 
 Use the CLI for the authoritative generated GLSL definitions:

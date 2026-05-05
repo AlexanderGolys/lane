@@ -338,8 +338,11 @@ fn lists_builtin_lane_objects() {
         object.name == "derivative" && object.ty == "Hom(R, Hom(Hom(R, R), Hom(R, R)))"
     }));
     assert!(objects.iter().any(|object| {
-        object.name == "gradient" && object.ty == "Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))"
+        object.name == "gradient" && object.ty == "Hom(Hom(R3, R), Hom(R3, R3))"
     }));
+    assert!(!objects.iter().any(|object| object.name == "partialX"));
+    assert!(!objects.iter().any(|object| object.name == "partialY"));
+    assert!(!objects.iter().any(|object| object.name == "partialZ"));
     assert!(objects.iter().any(|object| {
         object.name == "divergence" && object.ty == "Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"
     }));
@@ -389,7 +392,7 @@ fn looks_up_builtin_object_detail() {
         .contains("E3 rot(vec3 binormal, vec3 anchor, float angle)"));
     assert_eq!(field.ty, "Cat");
     assert_eq!(field.body, "");
-    assert_eq!(gradient.ty, "Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))");
+    assert_eq!(gradient.ty, "Hom(Hom(R3, R), Hom(R3, R3))");
     assert_eq!(gradient.body, "");
 }
 
@@ -460,6 +463,26 @@ fn supports_derivative_operator_in_function_bodies() {
 
     assert!(glsl.contains("float dsl_slope(float t) {"));
     assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
+}
+
+#[test]
+fn supports_default_gradient_operator_for_scalar_functions() {
+    let source = "func(Float -> Float) slope = grad(sin)\ngenerate Ball3D(r=slope(0))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float dsl_slope(float t) {"));
+    assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
+}
+
+#[test]
+fn supports_default_gradient_operator_for_scalar_fields() {
+    let source =
+        "provided Hom(R3, R) density\nprovided Hom(R3, R) measure\nprovided R3 p\nR3 normal = gradient(density)(p)\ngenerate Ball3D(r=measure(normal))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec3 normal = vec3("));
+    assert!(glsl.contains("density((p + vec3(0.01, 0.0, 0.0)))"));
+    assert!(glsl.contains("density((p - vec3(0.0, 0.0, 0.01)))"));
 }
 
 #[test]
@@ -642,7 +665,7 @@ fn generated_helpers_capture_scene_inputs_in_their_signatures() {
 
     assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
     assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p, float time) {"));
-    assert!(glsl.contains("float dx = sdf_shell(p + vec3(eps, 0.0, 0.0), time) - sdf_shell(p - vec3(eps, 0.0, 0.0), time);"));
+    assert!(glsl.contains("return normalize(vec3(((sdf_shell(p + vec3(eps, 0.0, 0.0), time) - sdf_shell(p - vec3(eps, 0.0, 0.0), time)) / (2.0 * eps))"));
 }
 
 #[test]

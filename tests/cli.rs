@@ -188,7 +188,7 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("rot: Hom(R3 × R3 × R, Hom(Object, Object))"));
     assert!(stdout.contains("rot2D: Hom(R2 × R, Hom(Object, Object))"));
     assert!(stdout.contains("derivative: Hom(R, Hom(Hom(R, R), Hom(R, R)))"));
-    assert!(stdout.contains("gradient: Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))"));
+    assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
     assert!(stdout.contains("divergence: Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"));
     assert!(!stdout.contains(" sin"));
     assert!(!stdout.contains("sdf0_Ball3D"));
@@ -204,9 +204,9 @@ fn lists_known_builtin_objects_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("partialX: Hom(R, Hom(Hom(R3, R), Hom(R3, R)))"));
     assert!(stdout.contains("E3: Grp"));
     assert!(stdout.contains("AlgR: Cat"));
+    assert!(!stdout.contains("partialX: Hom(R, Hom(Hom(R3, R), Hom(R3, R)))"));
     assert!(!stdout.contains("ctanh: Hom(C, C)"));
 }
 
@@ -262,7 +262,7 @@ fn shows_differential_builtin_object_detail_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(stdout, "gradient: Hom(R, Hom(Hom(R3, R), Hom(R3, R3)))\n");
+    assert_eq!(stdout, "gradient: Hom(Hom(R3, R), Hom(R3, R3))\n");
 }
 
 #[test]

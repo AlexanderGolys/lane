@@ -82,10 +82,7 @@ float scene_sdf(vec3 p, float time) {
 
 vec3 scene_grad(vec3 p, float time) {
     float eps = 0.0005;
-    float dx = scene_sdf(p + vec3(eps, 0.0, 0.0), time) - scene_sdf(p - vec3(eps, 0.0, 0.0), time);
-    float dy = scene_sdf(p + vec3(0.0, eps, 0.0), time) - scene_sdf(p - vec3(0.0, eps, 0.0), time);
-    float dz = scene_sdf(p + vec3(0.0, 0.0, eps), time) - scene_sdf(p - vec3(0.0, 0.0, eps), time);
-    return normalize(vec3(dx, dy, dz));
+    return normalize(vec3(((scene_sdf(p + vec3(eps, 0.0, 0.0), time) - scene_sdf(p - vec3(eps, 0.0, 0.0), time)) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, eps, 0.0), time) - scene_sdf(p - vec3(0.0, eps, 0.0), time)) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, 0.0, eps), time) - scene_sdf(p - vec3(0.0, 0.0, eps), time)) / (2.0 * eps))));
 }"#;
 
     assert_eq!(glsl, expected);

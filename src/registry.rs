@@ -593,7 +593,7 @@ impl Default for Registry {
                         ),
                     ),
                     support_glsl: None,
-                    listed: true,
+                    listed: false,
                 },
             ),
             (
@@ -607,7 +607,7 @@ impl Default for Registry {
                         ),
                     ),
                     support_glsl: None,
-                    listed: true,
+                    listed: false,
                 },
             ),
             (
@@ -621,7 +621,7 @@ impl Default for Registry {
                         ),
                     ),
                     support_glsl: None,
-                    listed: true,
+                    listed: false,
                 },
             ),
             (
@@ -645,10 +645,10 @@ impl Default for Registry {
                 "gradient",
                 ValueFuncDef {
                     ty: Type::func(
-                        Type::Float,
+                        Type::func(Type::Vec3, Type::Float),
                         Type::func(
-                            Type::func(Type::Vec3, Type::Float),
-                            Type::func(Type::Vec3, Type::Vec3),
+                            Type::Vec3,
+                            Type::Vec3,
                         ),
                     ),
                     support_glsl: None,

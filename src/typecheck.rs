@@ -1031,7 +1031,7 @@ fn infer_differential_builtin(
         "partialY" => Some(infer_partial_builtin(&args, env, 1)?),
         "partialZ" => Some(infer_partial_builtin(&args, env, 2)?),
         "directionalDerivative" => Some(infer_directional_derivative_builtin(&args, env)?),
-        "gradient" => Some(infer_gradient_builtin(&args, env)?),
+        "gradient" | "grad" => Some(infer_gradient_builtin(&args, env, lift_param)?),
         "divergence" => Some(infer_divergence_builtin(&args, env)?),
         _ => None,
     };
@@ -1135,27 +1135,66 @@ fn infer_directional_derivative_builtin(args: &[&Expr], env: &Env<'_>) -> Result
     })
 }
 
-fn infer_gradient_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, Error> {
-    if args.len() != 3 {
+fn infer_gradient_builtin(
+    args: &[&Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    if args.len() != 2 && args.len() != 3 && !(args.len() == 1 && lift_param.is_some()) {
         return Err(Error::new(
-            "gradient expects epsilon, a scalar field, and an evaluation point",
+            "gradient expects a scalar field and an evaluation point, optionally preceded by epsilon",
         ));
     }
-    let epsilon = infer_value_expr(args[0], env, None)?;
+    let (epsilon, func_arg, at_arg) = if args.len() == 3 {
+        (
+            infer_value_expr(args[0], env, None)?,
+            args[1],
+            Some(args[2]),
+        )
+    } else if args.len() == 2 {
+        (ValueExpr::Float(0.01), args[0], Some(args[1]))
+    } else {
+        (ValueExpr::Float(0.01), args[0], None)
+    };
     ensure_type(&epsilon.ty(), &Type::Float, "gradient epsilon")?;
-    let func = infer_function_expr(args[1], env)?;
-    if func.input != Type::Vec3 || func.output != Type::Float {
-        return Err(Error::new(
-            "gradient currently expects a func(vec3 -> float)",
-        ));
+    let func = infer_function_expr(func_arg, env)?;
+    match (&func.input, &func.output) {
+        (Type::Float, Type::Float) => {
+            let at = if let Some(expr) = at_arg {
+                let at = infer_value_expr(expr, env, None)?;
+                ensure_type(&at.ty(), &Type::Float, "gradient evaluation point")?;
+                at
+            } else {
+                ValueExpr::Var {
+                    name: lift_param.unwrap().to_string(),
+                    ty: Type::Float,
+                    array_len: None,
+                }
+            };
+            Ok(ValueExpr::Derivative {
+                epsilon: Box::new(epsilon),
+                func,
+                at: Box::new(at),
+            })
+        }
+        (Type::Vec3, Type::Float) => {
+            let Some(expr) = at_arg else {
+                return Err(Error::new(
+                    "gradient of a scalar field needs an explicit evaluation point",
+                ));
+            };
+            let at = infer_value_expr(expr, env, None)?;
+            ensure_type(&at.ty(), &Type::Vec3, "gradient evaluation point")?;
+            Ok(ValueExpr::Gradient {
+                epsilon: Box::new(epsilon),
+                func,
+                at: Box::new(at),
+            })
+        }
+        _ => Err(Error::new(
+            "gradient expects a func(float -> float) or func(vec3 -> float)",
+        )),
     }
-    let at = infer_value_expr(args[2], env, None)?;
-    ensure_type(&at.ty(), &Type::Vec3, "gradient evaluation point")?;
-    Ok(ValueExpr::Gradient {
-        epsilon: Box::new(epsilon),
-        func,
-        at: Box::new(at),
-    })
 }
 
 fn infer_divergence_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, Error> {
