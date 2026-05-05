@@ -68,16 +68,16 @@ float op_smooth_union(float a, float b, float k) {
     return op_smooth_union_min(a, b, k);
 }
 
-float dsl_hardness(float t) {
+float hardness(float t) {
     return (pow2(sin(t)) + 0.5);
 }
 
-vec3 dsl_centerB(float t) {
+vec3 centerB(float t) {
     return (vec3(1.0, sin(t), cos(t)) + (centerA(t) / 2.0));
 }
 
 float sdf_output(vec3 p) {
-    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time))), dsl_hardness(time));
+    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - centerB(time)), ParamBall3D(rB(time))), hardness(time));
 }
 
 vec3 grad_sdf_output(vec3 p) {
@@ -86,7 +86,7 @@ vec3 grad_sdf_output(vec3 p) {
 }
 
 float scene_sdf(vec3 p) {
-    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time))), dsl_hardness(time));
+    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - centerB(time)), ParamBall3D(rB(time))), hardness(time));
 }
 
 vec3 scene_grad(vec3 p) {
@@ -104,7 +104,7 @@ fn compiles_showcase_program_to_glsl() {
 
     assert!(glsl.contains("float op_union(float a, float b) {"));
     assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
-    assert!(glsl.contains("mat3 dsl_spin(float t) {"));
+    assert!(glsl.contains("mat3 spin(float t) {"));
     assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("vec3 scene_grad(vec3 p) {"));
 }

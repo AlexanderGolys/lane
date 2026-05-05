@@ -493,7 +493,7 @@ fn composes_unary_functions_in_function_bodies() {
         "Func(Float, Float) wobble = sin @ sin\nconst Object output = Ball3D(r=wobble(0))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float dsl_wobble(float t) {"));
+    assert!(glsl.contains("float wobble(float t) {"));
     assert!(glsl.contains("return sin(sin(t));"));
 }
 
@@ -515,7 +515,7 @@ fn supports_derivative_operator_in_function_bodies() {
     let source = "Func(Float, Float) slope = derivative(0.01)(sin)\nconst Object output = Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float dsl_slope(float t) {"));
+    assert!(glsl.contains("float slope(float t) {"));
     assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
 }
 
@@ -524,7 +524,7 @@ fn supports_default_gradient_operator_for_scalar_functions() {
     let source = "Func(Float, Float) slope = grad(sin)\nconst Object output = Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float dsl_slope(float t) {"));
+    assert!(glsl.contains("float slope(float t) {"));
     assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
 }
 
@@ -554,9 +554,9 @@ fn supports_same_domain_function_products() {
     let source = "provided Hom(R2, R) f\nprovided Hom(R x R, R) g\nHom(R2, R2) h = (f, g)\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 dsl_h(vec2 t)"));
+    assert!(glsl.contains("vec2 h(vec2 t)"));
     assert!(glsl.contains("return vec2(f(t), g(t));"));
-    assert!(glsl.contains("length(dsl_h(uv))"));
+    assert!(glsl.contains("length(h(uv))"));
 }
 
 #[test]
@@ -564,7 +564,7 @@ fn supports_tensor_function_products() {
     let source = "Hom(R2, R2) h = sin x cos\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 dsl_h(vec2 t)"));
+    assert!(glsl.contains("vec2 h(vec2 t)"));
     assert!(glsl.contains("return vec2(sin(t[0]), cos(t[1]));"));
 }
 
@@ -573,7 +573,7 @@ fn supports_pointwise_function_arithmetic() {
     let source = "provided Hom(R2, R) f\nprovided Hom(R x R, R) g\nHom(R2, R) h = f + g\nprovided R2 uv\nconst Object output = Ball3D(r=h(uv))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float dsl_h(vec2 t)"));
+    assert!(glsl.contains("float h(vec2 t)"));
     assert!(glsl.contains("return (f(t) + g(t));"));
 }
 
@@ -583,7 +583,7 @@ fn supports_pointwise_function_arithmetic_support_dependencies() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert!(glsl.contains("vec2 dsl_h(float t)"));
+    assert!(glsl.contains("vec2 h(float t)"));
     assert!(glsl.contains("return mult_C(f(t), g(t));"));
 }
 
@@ -954,7 +954,7 @@ fn const_value_and_function_declarations_emit_even_when_unused() {
 
     assert!(glsl.contains("const float radius = 1.0;"));
     assert!(glsl.contains("const vec4 tint = vec4(0.5, 0.5, 0.9, 1.0);"));
-    assert!(glsl.contains("float dsl_wave(float t) {"));
+    assert!(glsl.contains("float wave(float t) {"));
     assert!(glsl.contains("return sin(t);"));
 }
 
@@ -963,7 +963,7 @@ fn const_value_expressions_lift_object_getters_over_points() {
     let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\nconst color = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec4 dsl_color(vec2 t) {"));
+    assert!(glsl.contains("vec4 color(vec2 t) {"));
     assert!(glsl.contains("sdf_rect(t) * color1"));
     assert!(glsl.contains("sdf_ball(t) * color2"));
     assert!(glsl.contains("float sdf_scene(vec2 p) {"));
@@ -974,8 +974,8 @@ fn omits_non_const_functions_not_used_by_const_outputs() {
     let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\ncolor = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 dsl_center(float t)"));
-    assert!(!glsl.contains("vec4 dsl_color(vec2 t)"));
+    assert!(glsl.contains("vec2 center(float t)"));
+    assert!(!glsl.contains("vec4 color(vec2 t)"));
     assert!(glsl.contains("float sdf_scene(vec2 p) {"));
 }
 
@@ -1633,11 +1633,11 @@ fn emits_mat3_helpers_and_uses_them_in_object_actions() {
     let source = "provided Float time\nFunc(Float, Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))\nconst Object output = spin(time) * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("mat3 dsl_spin(float t) {"));
+    assert!(glsl.contains("mat3 spin(float t) {"));
     assert!(glsl.contains(
         "return transpose(mat3(vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0)));"
     ));
-    assert!(glsl.contains("sdf0_Ball3D((transpose(dsl_spin(time)) * p), ParamBall3D(1.0))"));
+    assert!(glsl.contains("sdf0_Ball3D((transpose(spin(time)) * p), ParamBall3D(1.0))"));
 }
 
 #[test]
@@ -1811,10 +1811,10 @@ fn emits_array_types_for_inputs_and_function_returns() {
     let source = "provided Array(R) weights\nFunc(Float, Array(R)) pair = [sin, cos]\nR radius = weights[0] + pair(0)[1]\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float[] dsl_pair(float t) {"));
+    assert!(glsl.contains("float[] pair(float t) {"));
     assert!(glsl.contains("return float[2](sin(t), cos(t));"));
     assert!(glsl.contains("float scene_sdf(vec3 p) {"));
-    assert!(glsl.contains("float radius = (weights[0] + dsl_pair(0.0)[1]);"));
+    assert!(glsl.contains("float radius = (weights[0] + pair(0.0)[1]);"));
 }
 
 #[test]

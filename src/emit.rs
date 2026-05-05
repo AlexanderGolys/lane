@@ -3047,7 +3047,7 @@ fn emitted_function_name(name: &str, helper_names: &HashMap<String, String>) -> 
 }
 
 fn helper_name(name: &str) -> String {
-    format!("dsl_{}", name)
+    name.to_string()
 }
 
 fn unique_local_name(base: &str, forbidden: &BTreeSet<String>) -> String {

@@ -898,7 +898,7 @@ Every compilation emits:
 
 - support structs and helper functions for used primitives, operators, value
   functions, built-in algebraic types, and constructed product types;
-- user value functions named `dsl_name`;
+- user value functions emitted with their Lane name;
 - generated object helpers for `construct` or `const Object` bindings:
   `sdf_name` and `grad_sdf_name` for 3D objects, and `sdf_name` for 2D objects;
 - legacy `float scene_sdf(vec3 p)` and `vec3 scene_grad(vec3 p)` entrypoints

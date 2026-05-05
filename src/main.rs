@@ -521,7 +521,6 @@ fn highlight_ident(token: &str) -> String {
         || token.starts_with("op_")
         || token.starts_with("scene_")
         || token.starts_with("Param")
-        || token.starts_with("dsl_")
     {
         return color("33", token).to_string();
     }
