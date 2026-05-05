@@ -31,11 +31,11 @@ fn strip_glsl_float_suffixes(source: &str) -> String {
 fn compiles_sample_program_to_glsl() {
     let source = r#"
 provided Float time
-provided func(Float -> Float) rB
-provided func(Float -> Vec3) centerA
+provided Func(Float, Float) rB
+provided Func(Float, Vec3) centerA
 
-    func(Float -> Float) hardness = pow2 @ sin + .5
-    func(Float -> Vec3) centerB = (1, sin, cos) + centerA / 2
+    Func(Float, Float) hardness = pow2 @ sin + .5
+    Func(Float, Vec3) centerB = (1, sin, cos) + centerA / 2
 
     Object A = Ball3D(r=3) + centerA(time)
     Object B = Ball3D(r=rB(time)) + centerB(time)
@@ -110,4 +110,19 @@ fn compiles_example1_orbit_scene_to_glsl() {
     assert!(glsl.contains("E3 r2 = rot(cross(c, p1), c, (time * v2));"));
     assert!(glsl.contains("vec3 p = act_E3(r2, p1);"));
     assert!(glsl.contains("float scene_sdf(vec3 p_"));
+}
+
+#[test]
+fn compiles_all_features_samples_to_glsl() {
+    let source = fs::read_to_string("all_features.lane").unwrap();
+    let glsl = compile_program(&source).unwrap();
+
+    assert!(glsl.contains("struct Motion"));
+    assert!(glsl.contains("float scene_sdf(vec3 p, float time"));
+
+    let source_2d = fs::read_to_string("all_features_2d.lane").unwrap();
+    let glsl_2d = compile_program(&source_2d).unwrap();
+
+    assert!(glsl_2d.contains("float scene_sdf(vec2"));
+    assert!(glsl_2d.contains("vec2 scene_grad(vec2"));
 }

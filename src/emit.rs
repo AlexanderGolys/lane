@@ -341,8 +341,13 @@ impl TypedProgram {
         }
     }
 
-    fn support_blocks(&self, registry: &Registry) -> Vec<&'static str> {
+    fn support_blocks(&self, registry: &Registry) -> Vec<String> {
         let mut names = BTreeSet::new();
+        let product_types = self
+            .product_types
+            .iter()
+            .map(|decl| (decl.name.as_str(), decl))
+            .collect::<HashMap<_, _>>();
         for input in &self.inputs {
             collect_type_support(&input.ty, &mut names);
         }
@@ -358,29 +363,56 @@ impl TypedProgram {
             collect_object_support(&binding.expr, &mut names);
         }
         collect_object_support(&self.output, &mut names);
+        for product_type in &self.product_types {
+            if product_type.eager_ops {
+                names.insert(product_type_type_support_name(&product_type.name));
+                for &op in product_category_ops(product_type.category) {
+                    names.insert(product_type_op_support_name(&product_type.name, op));
+                }
+            }
+        }
 
         let mut blocks = Vec::new();
+        let mut emitted_builtin_support = BTreeSet::new();
+        let mut emitted_product_types = BTreeSet::new();
+        let mut emitted_product_ops = BTreeSet::new();
         for name in names {
+            if let Some((product_name, support)) = parse_product_support_name(&name) {
+                if let Some(product_type) = product_types.get(product_name) {
+                    emit_product_support(
+                        product_type,
+                        support,
+                        &product_types,
+                        &mut emitted_builtin_support,
+                        &mut emitted_product_types,
+                        &mut emitted_product_ops,
+                        &mut blocks,
+                    );
+                }
+                continue;
+            }
             if let Some(func) = name.strip_prefix("complex:") {
                 if let Some(support_glsl) = complex_overload_support_glsl(func) {
-                    blocks.push(support_glsl);
+                    blocks.push(support_glsl.to_string());
                 }
                 continue;
             }
             if let Some(primitive) = registry.primitives.get(name.as_str()) {
-                blocks.push(primitive.support_glsl);
+                blocks.push(primitive.support_glsl.to_string());
                 continue;
             }
             if let Some(op) = registry.object_ops.get(name.as_str()) {
-                blocks.push(op.support_glsl);
+                blocks.push(op.support_glsl.to_string());
             }
             if let Some(support_glsl) = builtin_type_support_glsl(name.as_str()) {
-                blocks.push(support_glsl);
+                if emitted_builtin_support.insert(name.clone()) {
+                    blocks.push(support_glsl.to_string());
+                }
                 continue;
             }
             if let Some(func) = registry.value_funcs.get(name.as_str()) {
                 if let Some(support_glsl) = func.support_glsl {
-                    blocks.push(support_glsl);
+                    blocks.push(support_glsl.to_string());
                 }
             }
         }
@@ -415,7 +447,9 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
         Type::E2 | Type::E3 => {
             names.insert(ty.type_name());
         }
-        Type::Custom { .. } => {}
+        Type::Custom { name, .. } => {
+            names.insert(product_type_type_support_name(name));
+        }
         Type::Array(element) => collect_type_support(element, names),
         Type::Product(parts) => {
             for part in parts {
@@ -436,6 +470,441 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
         | Type::Mat(_, _)
         | Type::Object
         | Type::Object2D => {}
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum ProductOp {
+    Zero,
+    One,
+    Identity,
+    Add,
+    Sub,
+    Mult,
+    Inv,
+    Scale,
+}
+
+impl ProductOp {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Zero => "zero",
+            Self::One => "one",
+            Self::Identity => "e",
+            Self::Add => "add",
+            Self::Sub => "sub",
+            Self::Mult => "mult",
+            Self::Inv => "inv",
+            Self::Scale => "scale",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ProductSupport {
+    Type,
+    Op(ProductOp),
+}
+
+fn product_type_type_support_name(name: &str) -> String {
+    format!("product:{name}:type")
+}
+
+fn product_type_op_support_name(name: &str, op: ProductOp) -> String {
+    format!("product:{name}:{}", op.as_str())
+}
+
+fn parse_product_support_name(name: &str) -> Option<(&str, ProductSupport)> {
+    let rest = name.strip_prefix("product:")?;
+    let (product_name, support_name) = rest.rsplit_once(':')?;
+    let support = match support_name {
+        "type" => ProductSupport::Type,
+        "zero" => ProductSupport::Op(ProductOp::Zero),
+        "one" => ProductSupport::Op(ProductOp::One),
+        "e" => ProductSupport::Op(ProductOp::Identity),
+        "add" => ProductSupport::Op(ProductOp::Add),
+        "sub" => ProductSupport::Op(ProductOp::Sub),
+        "mult" => ProductSupport::Op(ProductOp::Mult),
+        "inv" => ProductSupport::Op(ProductOp::Inv),
+        "scale" => ProductSupport::Op(ProductOp::Scale),
+        _ => return None,
+    };
+    Some((product_name, support))
+}
+
+fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
+    match category {
+        AlgebraicCategory::Ab => &[ProductOp::Zero, ProductOp::Add, ProductOp::Sub],
+        AlgebraicCategory::Mon => &[ProductOp::One, ProductOp::Mult],
+        AlgebraicCategory::Grp => &[ProductOp::Identity, ProductOp::Mult, ProductOp::Inv],
+        AlgebraicCategory::Ring => &[
+            ProductOp::Zero,
+            ProductOp::One,
+            ProductOp::Add,
+            ProductOp::Sub,
+            ProductOp::Mult,
+        ],
+        AlgebraicCategory::VectR => &[
+            ProductOp::Zero,
+            ProductOp::Add,
+            ProductOp::Sub,
+            ProductOp::Scale,
+        ],
+        AlgebraicCategory::RAlg => &[
+            ProductOp::Zero,
+            ProductOp::One,
+            ProductOp::Add,
+            ProductOp::Sub,
+            ProductOp::Mult,
+            ProductOp::Scale,
+        ],
+        AlgebraicCategory::Field | AlgebraicCategory::Set => &[],
+    }
+}
+
+fn product_op_for_binary(op: BinOp) -> Option<ProductOp> {
+    match op {
+        BinOp::Add => Some(ProductOp::Add),
+        BinOp::Sub => Some(ProductOp::Sub),
+        BinOp::Mul => Some(ProductOp::Mult),
+        BinOp::Div => Some(ProductOp::Inv),
+        BinOp::Compose => None,
+    }
+}
+
+fn product_op_for_neutral(kind: NeutralKind) -> Option<ProductOp> {
+    match kind {
+        NeutralKind::Zero => Some(ProductOp::Zero),
+        NeutralKind::One => Some(ProductOp::One),
+        NeutralKind::Identity => Some(ProductOp::Identity),
+    }
+}
+
+fn emit_product_support(
+    decl: &ProductTypeDecl,
+    support: ProductSupport,
+    product_types: &HashMap<&str, &ProductTypeDecl>,
+    emitted_builtin_support: &mut BTreeSet<String>,
+    emitted_product_types: &mut BTreeSet<String>,
+    emitted_product_ops: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    match support {
+        ProductSupport::Type => emit_product_type_support(
+            decl,
+            product_types,
+            emitted_builtin_support,
+            emitted_product_types,
+            blocks,
+        ),
+        ProductSupport::Op(op) => emit_product_op_support(
+            decl,
+            op,
+            product_types,
+            emitted_builtin_support,
+            emitted_product_types,
+            emitted_product_ops,
+            blocks,
+        ),
+    }
+}
+
+fn emit_product_type_support(
+    decl: &ProductTypeDecl,
+    product_types: &HashMap<&str, &ProductTypeDecl>,
+    emitted_builtin_support: &mut BTreeSet<String>,
+    emitted_product_types: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    if !emitted_product_types.insert(decl.name.clone()) {
+        return;
+    }
+    for component in &decl.components {
+        emit_component_type_dependency(
+            component,
+            product_types,
+            emitted_builtin_support,
+            emitted_product_types,
+            blocks,
+        );
+    }
+    let fields = decl
+        .components
+        .iter()
+        .zip(&decl.field_names)
+        .map(|(ty, field)| format!("    {} {};", ty.glsl_name(), field))
+        .collect::<Vec<_>>()
+        .join("\n");
+    blocks.push(format!("struct {} {{\n{}\n}};", decl.name, fields));
+}
+
+fn emit_product_op_support(
+    decl: &ProductTypeDecl,
+    op: ProductOp,
+    product_types: &HashMap<&str, &ProductTypeDecl>,
+    emitted_builtin_support: &mut BTreeSet<String>,
+    emitted_product_types: &mut BTreeSet<String>,
+    emitted_product_ops: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    let op_key = format!("{}:{}", decl.name, op.as_str());
+    if !emitted_product_ops.insert(op_key) {
+        return;
+    }
+    emit_product_type_support(
+        decl,
+        product_types,
+        emitted_builtin_support,
+        emitted_product_types,
+        blocks,
+    );
+    for component in &decl.components {
+        emit_component_op_dependency(
+            component,
+            op,
+            product_types,
+            emitted_builtin_support,
+            emitted_product_types,
+            emitted_product_ops,
+            blocks,
+        );
+    }
+    blocks.push(emit_product_op(decl, op));
+}
+
+fn emit_component_type_dependency(
+    ty: &Type,
+    product_types: &HashMap<&str, &ProductTypeDecl>,
+    emitted_builtin_support: &mut BTreeSet<String>,
+    emitted_product_types: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    match ty {
+        Type::E2 | Type::E3 => {
+            emit_builtin_support_once(&ty.type_name(), emitted_builtin_support, blocks)
+        }
+        Type::Custom { name, .. } => {
+            if let Some(decl) = product_types.get(name.as_str()) {
+                emit_product_type_support(
+                    decl,
+                    product_types,
+                    emitted_builtin_support,
+                    emitted_product_types,
+                    blocks,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn emit_component_op_dependency(
+    ty: &Type,
+    op: ProductOp,
+    product_types: &HashMap<&str, &ProductTypeDecl>,
+    emitted_builtin_support: &mut BTreeSet<String>,
+    emitted_product_types: &mut BTreeSet<String>,
+    emitted_product_ops: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    match ty {
+        Type::Complex if matches!(op, ProductOp::Mult | ProductOp::Inv) => {
+            emit_builtin_support_once("C", emitted_builtin_support, blocks);
+        }
+        Type::Quat if matches!(op, ProductOp::Mult | ProductOp::Inv) => {
+            emit_builtin_support_once("H", emitted_builtin_support, blocks);
+        }
+        Type::E2 | Type::E3 => {
+            emit_builtin_support_once(&ty.type_name(), emitted_builtin_support, blocks)
+        }
+        Type::Custom { name, .. } => {
+            if let Some(decl) = product_types.get(name.as_str()) {
+                let component_op =
+                    if matches!(op, ProductOp::One) && has_category(ty, AlgebraicCategory::Grp) {
+                        ProductOp::Identity
+                    } else {
+                        op
+                    };
+                emit_product_op_support(
+                    decl,
+                    component_op,
+                    product_types,
+                    emitted_builtin_support,
+                    emitted_product_types,
+                    emitted_product_ops,
+                    blocks,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn emit_builtin_support_once(
+    name: &str,
+    emitted_builtin_support: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    if emitted_builtin_support.insert(name.to_string()) {
+        if let Some(support_glsl) = builtin_type_support_glsl(name) {
+            blocks.push(support_glsl.to_string());
+        }
+    }
+}
+
+fn emit_product_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
+    match op {
+        ProductOp::Zero | ProductOp::One | ProductOp::Identity => emit_product_neutral(decl, op),
+        ProductOp::Add | ProductOp::Sub | ProductOp::Mult => emit_product_binary_op(decl, op),
+        ProductOp::Inv => emit_product_unary_op(decl, op),
+        ProductOp::Scale => emit_product_scale_op(decl),
+    }
+}
+
+fn emit_product_neutral(decl: &ProductTypeDecl, op: ProductOp) -> String {
+    let fields = decl
+        .components
+        .iter()
+        .map(|ty| emit_component_neutral(op, ty))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{} {}_{} = {}({});",
+        decl.name,
+        op.as_str(),
+        decl.name,
+        decl.name,
+        fields
+    )
+}
+
+fn emit_product_binary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
+    let fields = decl
+        .components
+        .iter()
+        .zip(&decl.field_names)
+        .map(|(ty, field)| {
+            emit_component_binary(op, ty, &format!("a.{field}"), &format!("b.{field}"))
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{} {}_{}({} a, {} b) {{\n    return {}({});\n}}",
+        decl.name,
+        op.as_str(),
+        decl.name,
+        decl.name,
+        decl.name,
+        decl.name,
+        fields
+    )
+}
+
+fn emit_product_unary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
+    let fields = decl
+        .components
+        .iter()
+        .zip(&decl.field_names)
+        .map(|(ty, field)| emit_component_unary(op, ty, &format!("value.{field}")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{} {}_{}({} value) {{\n    return {}({});\n}}",
+        decl.name,
+        op.as_str(),
+        decl.name,
+        decl.name,
+        decl.name,
+        fields
+    )
+}
+
+fn emit_product_scale_op(decl: &ProductTypeDecl) -> String {
+    let fields = decl
+        .components
+        .iter()
+        .zip(&decl.field_names)
+        .map(|(ty, field)| emit_component_scale(ty, &format!("value.{field}"), "scalar"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{} scale_{}({} value, float scalar) {{\n    return {}({});\n}}",
+        decl.name, decl.name, decl.name, decl.name, fields
+    )
+}
+
+fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
+    match op {
+        ProductOp::Zero => emit_neutral_value(NeutralKind::Zero, ty),
+        ProductOp::One
+            if has_category(ty, AlgebraicCategory::Grp)
+                && !has_category(ty, AlgebraicCategory::Ring)
+                && !has_category(ty, AlgebraicCategory::Field)
+                && !has_category(ty, AlgebraicCategory::RAlg) =>
+        {
+            emit_component_neutral(ProductOp::Identity, ty)
+        }
+        ProductOp::One => emit_neutral_value(NeutralKind::One, ty),
+        ProductOp::Identity => match ty {
+            Type::Float => "1.0".to_string(),
+            Type::Int => "1".to_string(),
+            Type::Complex => "vec2(1.0, 0.0)".to_string(),
+            Type::Quat => "vec4(1.0, 0.0, 0.0, 0.0)".to_string(),
+            Type::E2 => "E2(mat2(1.0), vec2(0.0))".to_string(),
+            Type::E3 => "E3(mat3(1.0), vec3(0.0))".to_string(),
+            Type::Custom { name, .. } => format!("e_{name}"),
+            _ => emit_neutral_value(NeutralKind::Identity, ty),
+        },
+        ProductOp::Add | ProductOp::Sub | ProductOp::Mult | ProductOp::Inv | ProductOp::Scale => {
+            unreachable!()
+        }
+    }
+}
+
+fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> String {
+    match (op, ty) {
+        (ProductOp::Add, Type::Custom { name, .. }) => format!("add_{}({}, {})", name, left, right),
+        (ProductOp::Sub, Type::Custom { name, .. }) => format!("sub_{}({}, {})", name, left, right),
+        (ProductOp::Mult, Type::Complex) => format!("mult_C({}, {})", left, right),
+        (ProductOp::Mult, Type::Quat) => format!("mult_H({}, {})", left, right),
+        (ProductOp::Mult, Type::E2) => format!("mult_E2({}, {})", left, right),
+        (ProductOp::Mult, Type::E3) => format!("mult_E3({}, {})", left, right),
+        (ProductOp::Mult, Type::Custom { name, .. }) => {
+            format!("mult_{}({}, {})", name, left, right)
+        }
+        (ProductOp::Add | ProductOp::Sub | ProductOp::Mult, _) => {
+            format!("({} {} {})", left, product_binary_symbol(op), right)
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
+    match (op, ty) {
+        (ProductOp::Inv, Type::Float) => format!("(1.0 / {value})"),
+        (ProductOp::Inv, Type::Int) => format!("(1 / {value})"),
+        (ProductOp::Inv, Type::Complex) => format!("div_C(vec2(1.0, 0.0), {value})"),
+        (ProductOp::Inv, Type::Quat) => format!("inv_H({value})"),
+        (ProductOp::Inv, Type::E2) => format!("inv_E2({value})"),
+        (ProductOp::Inv, Type::E3) => format!("inv_E3({value})"),
+        (ProductOp::Inv, Type::Custom { name, .. }) => format!("inv_{name}({value})"),
+        _ => unreachable!(),
+    }
+}
+
+fn emit_component_scale(ty: &Type, value: &str, scalar: &str) -> String {
+    match ty {
+        Type::Custom { name, .. } => format!("scale_{name}({value}, {scalar})"),
+        _ => format!("({value} * {scalar})"),
+    }
+}
+
+fn product_binary_symbol(op: ProductOp) -> &'static str {
+    match op {
+        ProductOp::Add => "+",
+        ProductOp::Sub => "-",
+        ProductOp::Mult => "*",
+        _ => unreachable!(),
     }
 }
 
@@ -869,8 +1338,13 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         | ValueExpr::Int(_)
         | ValueExpr::Neutral { .. }
         | ValueExpr::Var { .. } => {
-            if let ValueExpr::Neutral { ty, .. } = expr {
+            if let ValueExpr::Neutral { kind, ty } = expr {
                 collect_type_support(ty, names);
+                if let Type::Custom { name, .. } = ty {
+                    if let Some(op) = product_op_for_neutral(*kind) {
+                        names.insert(product_type_op_support_name(name, op));
+                    }
+                }
             }
         }
         ValueExpr::Call { func, args, ty } => {
@@ -902,7 +1376,7 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             op, left, right, ..
         } => {
             if let Some(name) = binary_support_name(*op, &left.ty(), &right.ty()) {
-                names.insert(name.to_string());
+                names.insert(name);
             }
             collect_value_support(left, names);
             collect_value_support(right, names);
@@ -1211,14 +1685,30 @@ fn matrix_zero_expr(rows: usize, columns: usize) -> String {
     }
 }
 
-fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<&'static str> {
+fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
     match (op, left, right) {
         (BinOp::Mul | BinOp::Div, Type::Complex, Type::Complex)
-        | (BinOp::Div, Type::Float, Type::Complex) => Some("C"),
+        | (BinOp::Div, Type::Float, Type::Complex) => Some("C".to_string()),
         (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
-        | (BinOp::Div, Type::Float, Type::Quat) => Some("H"),
-        (BinOp::Mul, Type::E2, Type::E2) | (BinOp::Mul, Type::E2, Type::Vec2) => Some("E2"),
-        (BinOp::Mul, Type::E3, Type::E3) | (BinOp::Mul, Type::E3, Type::Vec3) => Some("E3"),
+        | (BinOp::Div, Type::Float, Type::Quat) => Some("H".to_string()),
+        (BinOp::Mul, Type::E2, Type::E2) | (BinOp::Mul, Type::E2, Type::Vec2) => {
+            Some("E2".to_string())
+        }
+        (BinOp::Mul, Type::E3, Type::E3) | (BinOp::Mul, Type::E3, Type::Vec3) => {
+            Some("E3".to_string())
+        }
+        (
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div,
+            Type::Custom { name, .. },
+            Type::Custom { .. },
+        ) if left == right => product_op_for_binary(op)
+            .map(|product_op| product_type_op_support_name(name, product_op)),
+        (BinOp::Mul | BinOp::Div, Type::Custom { name, .. }, Type::Float) => {
+            Some(product_type_op_support_name(name, ProductOp::Scale))
+        }
+        (BinOp::Mul, Type::Float, Type::Custom { name, .. }) => {
+            Some(product_type_op_support_name(name, ProductOp::Scale))
+        }
         _ => None,
     }
 }

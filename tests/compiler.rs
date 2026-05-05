@@ -411,6 +411,14 @@ fn rejects_removed_constraint_type_alias() {
 }
 
 #[test]
+fn rejects_legacy_arrow_function_type_syntax() {
+    let source = "func(Float -> Float) wobble = sin\ngenerate Ball3D(r=1)\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("unsupported type 'func(Float -> Float)'"));
+}
+
+#[test]
 fn rejects_lowercase_builtin_type_names() {
     let source = "provided float time\ngenerate Ball3D(r=1)\n";
     let error = compile_program(source).unwrap_err().to_string();
@@ -434,7 +442,7 @@ fn looks_up_preregistered_body_by_name() {
 
 #[test]
 fn composes_unary_functions_in_function_bodies() {
-    let source = "func(Float -> Float) wobble = sin @ sin\ngenerate Ball3D(r=wobble(0))\n";
+    let source = "Func(Float, Float) wobble = sin @ sin\ngenerate Ball3D(r=wobble(0))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float dsl_wobble(float t) {"));
@@ -455,8 +463,7 @@ fn emits_glsl_float_literals_with_f_suffixes() {
 
 #[test]
 fn supports_derivative_operator_in_function_bodies() {
-    let source =
-        "func(Float -> Float) slope = derivative(0.01)(sin)\ngenerate Ball3D(r=slope(0))\n";
+    let source = "Func(Float, Float) slope = derivative(0.01)(sin)\ngenerate Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float dsl_slope(float t) {"));
@@ -465,7 +472,7 @@ fn supports_derivative_operator_in_function_bodies() {
 
 #[test]
 fn supports_default_gradient_operator_for_scalar_functions() {
-    let source = "func(Float -> Float) slope = grad(sin)\ngenerate Ball3D(r=slope(0))\n";
+    let source = "Func(Float, Float) slope = grad(sin)\ngenerate Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float dsl_slope(float t) {"));
@@ -485,8 +492,7 @@ fn supports_default_gradient_operator_for_scalar_fields() {
 
 #[test]
 fn emits_support_for_custom_complex_functions() {
-    let source =
-        "Complex seed = (1, 0)\nfunc(Float -> C) orbit = exp(seed)\ngenerate Ball3D(r=1)\n";
+    let source = "Complex seed = (1, 0)\nFunc(Float, C) orbit = exp(seed)\ngenerate Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 exp(vec2 z) {"));
@@ -531,6 +537,81 @@ fn supports_provided_group_category_types() {
 
     assert!(glsl.contains("float scene_sdf(vec3 p, G a, G b) {"));
     assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
+}
+
+#[test]
+fn supports_product_group_types_with_named_fields() {
+    let source = "Grp G = E3 x E2 {m, n}\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct G {\n    E3 m;\n    E2 n;\n};"));
+    assert!(glsl
+        .contains("G mult_G(G a, G b) {\n    return G(mult_E3(a.m, b.m), mult_E2(a.n, b.n));\n}"));
+    assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
+}
+
+#[test]
+fn supports_product_value_constructors_with_default_fields() {
+    let source = "Ab Pair = R2 x R3\nPair p = Pair((1, 2), 0)\nprovided Hom(Pair, R) measure\nR radius = measure(p + p)\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct Pair {\n    vec2 x;\n    vec3 y;\n};"));
+    assert!(glsl.contains("Pair p = Pair(vec2(1.0, 2.0), vec3(0.0));"));
+    assert!(glsl.contains(
+        "Pair add_Pair(Pair a, Pair b) {\n    return Pair((a.x + b.x), (a.y + b.y));\n}"
+    ));
+}
+
+#[test]
+fn supports_product_set_types_without_operations() {
+    let source = "Set Pair = R x R3\nPair p = Pair(1, (0, 0, 0))\nprovided Hom(Pair, R) measure\nR radius = measure(p)\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct Pair {\n    float x;\n    vec3 y;\n};"));
+    assert!(!glsl.contains("add_Pair"));
+    assert!(!glsl.contains("mult_Pair"));
+}
+
+#[test]
+fn emits_all_product_ops_for_const_product_types() {
+    let source = "const Grp G = E3 x E2\nprovided G a\nprovided Hom(G, R) measure\nR radius = measure(a)\ngenerate Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("G e_G = G(E3(mat3(1.0), vec3(0.0)), E2(mat2(1.0), vec2(0.0)));"));
+    assert!(glsl.contains("G mult_G(G a, G b)"));
+    assert!(glsl.contains("G inv_G(G value)"));
+}
+
+#[test]
+fn rejects_product_field_count_mismatches() {
+    let source = "Grp G = E3 x E2 {m}\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("product type 'G' has 2 component(s) but 1 field name(s)"));
+}
+
+#[test]
+fn rejects_duplicate_product_field_names() {
+    let source = "Grp G = E3 x E2 {m, m}\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("product type 'G' has duplicate field name 'm'"));
+}
+
+#[test]
+fn rejects_product_field_types() {
+    let source = "Field G = C x H\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("product type 'G' cannot be declared as Field"));
+}
+
+#[test]
+fn rejects_product_components_outside_category() {
+    let source = "Grp G = E3 x R3\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("product type 'G' component R3 does not satisfy Grp"));
 }
 
 #[test]
@@ -635,7 +716,7 @@ fn allows_vector_space_scaling_by_category() {
 
 #[test]
 fn rejects_invalid_function_composition() {
-    let source = "provided func(Float -> Vec3) center\nfunc(Float -> Float) wobble = sin @ center\ngenerate Ball3D(r=1)\n";
+    let source = "provided Func(Float, Vec3) center\nFunc(Float, Float) wobble = sin @ center\ngenerate Ball3D(r=1)\n";
     let error = compile_program(source).unwrap_err().to_string();
 
     assert!(error.contains("cannot compose sin @ center"));
@@ -1218,7 +1299,7 @@ fn emits_builtin_2d_rotation_operator_defaults() {
 
 #[test]
 fn emits_mat3_helpers_and_uses_them_in_object_actions() {
-    let source = "provided Float time\nfunc(Float -> Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))\ngenerate spin(time) * Ball3D(r=1)\n";
+    let source = "provided Float time\nFunc(Float, Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))\ngenerate spin(time) * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("mat3 dsl_spin(float t) {"));
@@ -1395,7 +1476,7 @@ fn emits_array_literals_index_size_and_concat() {
 
 #[test]
 fn emits_array_types_for_inputs_and_function_returns() {
-    let source = "provided Array(R) weights\nfunc(Float -> Array(R)) pair = [sin, cos]\nR radius = weights[0] + pair(0)[1]\ngenerate Ball3D(r=radius)\n";
+    let source = "provided Array(R) weights\nFunc(Float, Array(R)) pair = [sin, cos]\nR radius = weights[0] + pair(0)[1]\ngenerate Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float[] dsl_pair(float t) {"));

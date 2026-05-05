@@ -55,6 +55,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "product_type_declaration"
+        },
+        {
+          "type": "SYMBOL",
           "name": "input_declaration"
         },
         {
@@ -113,6 +117,10 @@
                 {
                   "type": "STRING",
                   "value": "RAlg"
+                },
+                {
+                  "type": "STRING",
+                  "value": "Set"
                 }
               ]
             },
@@ -127,6 +135,167 @@
             "type": "SYMBOL",
             "name": "identifier"
           }
+        }
+      ]
+    },
+    "product_type_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "modifier",
+              "content": {
+                "type": "SYMBOL",
+                "name": "gen_modifier"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "FIELD",
+          "name": "category",
+          "content": {
+            "type": "SYMBOL",
+            "name": "category_type"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
+          "type": "FIELD",
+          "name": "type",
+          "content": {
+            "type": "SYMBOL",
+            "name": "product_type"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "product_field_list"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
+    "category_type": {
+      "type": "ALIAS",
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "Ab"
+          },
+          {
+            "type": "STRING",
+            "value": "Mon"
+          },
+          {
+            "type": "STRING",
+            "value": "Grp"
+          },
+          {
+            "type": "STRING",
+            "value": "Ring"
+          },
+          {
+            "type": "STRING",
+            "value": "Field"
+          },
+          {
+            "type": "STRING",
+            "value": "VectR"
+          },
+          {
+            "type": "STRING",
+            "value": "RAlg"
+          },
+          {
+            "type": "STRING",
+            "value": "Set"
+          }
+        ]
+      },
+      "named": true,
+      "value": "type_identifier"
+    },
+    "product_field_list": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "name",
+              "content": {
+                "type": "SYMBOL",
+                "name": "identifier"
+              }
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": ","
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "name",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "identifier"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": ","
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "}"
         }
       ]
     },

@@ -1,0 +1,94 @@
+// Comprehensive 3D Lane syntax sample.
+// The 2D ambient directive is demonstrated in all_features_2d.lane.
+
+provided R time
+provided Func(R, R) drive
+provided Hom(R3, R) density
+provided Hom(R3, R3) flow
+provided Hom(R3 x R3, R3) cross
+provided Hom(R3 × R3, R3) crossUnicode
+provided End(R) loop
+provided Mat3 hostRotation
+
+provided Grp ExtMotion
+provided ExtMotion externalA
+provided ExtMotion externalB
+provided Hom(ExtMotion, R) extMeasure
+
+const Grp Motion = E3 x E2 {space, plane}
+Set Bundle = R x R3
+
+provided Hom(Motion, R) motionMeasure
+provided Hom(Bundle, R) bundleMeasure
+
+R negative = -1
+R small = 1e-2
+R radius = 1 + sin(time) + cos(time) + pow2(drive(time))
+R looped = loop(time)
+
+C z = (1, 2)
+C z2 = exp(z) + log(z) + sin(z) + (z * z) - (z / z)
+H q = (1, 0, 0, 0)
+H q_inv = 1 / q
+
+R3 zeroPoint = 0
+Mat3 identityMatrix = e
+Mat2 m2 = ((1, 2), (3, 4))
+Mat4 m4 = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+Mat2x3 wide = ((1, 2, 3), (4, 5, 6))
+Mat3x2 tall = ((1, 2), (3, 4), (5, 6))
+
+R3 axis = (0, 0, 1)
+R3 probe = (1, 2, 3)
+R3 crossed = cross(axis, probe) + crossUnicode(axis, probe)
+R3 scaled = 2 * (probe / 3)
+
+E3 spin = rot(axis, zeroPoint, time)
+E2 turn = rot2D((0, 0), time)
+Motion motion = Motion(spin, turn) * Motion(E3(e, 0), E2(e, 0))
+Bundle bundle = Bundle(radius, probe)
+ExtMotion externalProduct = externalA * externalB
+
+R measured = density(probe) + motionMeasure(motion) + bundleMeasure(bundle) + extMeasure(externalProduct)
+
+Func(R, R) wave = pow2 @ sin + .5
+Func(R, R) slope = derivative(0.01)(sin)
+Func(R, R) defaultSlope = grad(sin)
+Func(R, Array(R)) wavePair = [sin, cos]
+Func(R, Mat3) spinMatrix = ((cos, 0 - sin, 0), (sin, cos, 0), (0, 0, 1))
+
+Array(R) weights = [1, 2, 3]
+Array(R) moreWeights = concat(weights, [4, 5])
+Z count = size(weights)
+R picked = moreWeights[1] + wavePair(time)[0]
+
+R3 gradDensity = gradient(density)(probe)
+R3 gradDensityFine = gradient(0.001)(density)(probe)
+R alongAxis = directionalDerivative(0.01)(axis)(density)(probe)
+R outflow = divergence(0.01)(flow)(probe)
+
+Object2D profile = Segment2D(a=(0, -1), b=(0, 1))
+Object2D polygon = Polygon2D(points=((0, 0), (1, 0), (1, 1), (0, 1)))
+
+construct Object reusableBall = Ball3D(r=radius)
+const Object cachedBox = Box3D(1, .5, .25) + crossed
+
+Object namedPrimitive = Torus3D(major=2, minor=.2)
+Object positionalPrimitive = Box3D(1, 2, 3)
+Object segmentByLength = Segment3D(2)
+Object revolved = revolution(1.5)(profile)
+Object extruded = extrude(.25)(polygon)
+Object rotatedObject = rot(axis, zeroPoint, time)(reusableBall)
+Object rotated2DObject = rot2D((0, 0), time)(Box2D(a=1, b=.5))
+Object matrixAction = hostRotation * Ball3D(r=1)
+Object isometryAction = spin * cachedBox
+
+Object bools = union(namedPrimitive, positionalPrimitive, segmentByLength)
+Object cuts = diff(bools, Ball3D(r=.5))
+Object overlap = intersect(cuts, matrixAction)
+Object toggled = xor(overlap, isometryAction)
+Object smooths = smoothXor(.1)(smoothDiff(.1)(smoothIntersect(.1)(smoothUnion(.1)(revolved, extruded), rotatedObject), rotated2DObject), Ball3D(r=small + measured + picked + alongAxis + outflow + looped + slope(time) + defaultSlope(time)))
+
+scene = union(toggled, smooths)
+
+gen scene

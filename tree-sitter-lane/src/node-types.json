@@ -410,6 +410,21 @@
     }
   },
   {
+    "type": "category_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "type_identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "end_type",
     "named": true,
     "fields": {
@@ -1000,6 +1015,22 @@
     }
   },
   {
+    "type": "product_field_list",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "product_type",
     "named": true,
     "fields": {
@@ -1066,6 +1097,62 @@
     }
   },
   {
+    "type": "product_type_declaration",
+    "named": true,
+    "fields": {
+      "category": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "category_type",
+            "named": true
+          }
+        ]
+      },
+      "modifier": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "gen_modifier",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "product_type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "product_field_list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "provided_category_declaration",
     "named": true,
     "fields": {
@@ -1118,6 +1205,10 @@
         },
         {
           "type": "output_declaration",
+          "named": true
+        },
+        {
+          "type": "product_type_declaration",
           "named": true
         },
         {
@@ -1420,6 +1511,14 @@
   },
   {
     "type": "x",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
     "named": false
   },
   {

@@ -27,6 +27,7 @@ module.exports = grammar({
         _declaration: ($) => choice(
             $.directive,
             $.provided_category_declaration,
+            $.product_type_declaration,
             $.input_declaration,
             $.output_declaration,
             $.inferred_binding_declaration,
@@ -43,8 +44,36 @@ module.exports = grammar({
                 'Field',
                 'VectR',
                 'RAlg',
+                'Set',
             ), $.type_identifier)),
             field('name', $.identifier),
+        ),
+
+        product_type_declaration: ($) => seq(
+            optional(field('modifier', $.gen_modifier)),
+            field('category', $.category_type),
+            field('name', $.identifier),
+            '=',
+            field('type', $.product_type),
+            optional($.product_field_list),
+        ),
+
+        category_type: ($) => alias(choice(
+            'Ab',
+            'Mon',
+            'Grp',
+            'Ring',
+            'Field',
+            'VectR',
+            'RAlg',
+            'Set',
+        ), $.type_identifier),
+
+        product_field_list: ($) => seq(
+            '{',
+            commaSep1(field('name', $.identifier)),
+            optional(','),
+            '}',
         ),
 
         input_declaration: ($) => seq(

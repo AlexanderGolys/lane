@@ -4,7 +4,7 @@
 
 ["+" "-" "*" "/" "@" "=" "×" "x"] @operator
 
-["(" ")" "[" "]"] @punctuation.bracket
+["(" ")" "[" "]" "{" "}"] @punctuation.bracket
 [","] @punctuation.delimiter
 
 (comment) @comment
@@ -12,7 +12,7 @@
 (number) @number
 
 ((type_identifier) @constant.builtin
-  (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "Field" "VectR" "RAlg")
+  (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "Field" "VectR" "RAlg" "Set")
   (#set! priority 110))
 
 (type_identifier) @type
@@ -20,6 +20,13 @@
 
 (input_declaration
   name: (identifier) @variable.parameter)
+
+(product_type_declaration
+  category: (category_type (type_identifier) @constant.builtin)
+  name: (identifier) @type)
+
+(product_field_list
+  name: (identifier) @property)
 
 (named_argument
   name: (identifier) @property)

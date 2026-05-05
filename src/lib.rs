@@ -298,6 +298,7 @@ enum AlgebraicCategory {
     Field,
     VectR,
     RAlg,
+    Set,
 }
 
 struct AlgebraicCategoryDef {
@@ -305,7 +306,7 @@ struct AlgebraicCategoryDef {
     name: &'static str,
 }
 
-const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 7] = [
+const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 8] = [
     AlgebraicCategoryDef {
         category: AlgebraicCategory::Ab,
         name: "Ab",
@@ -333,6 +334,10 @@ const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 7] = [
     AlgebraicCategoryDef {
         category: AlgebraicCategory::RAlg,
         name: "RAlg",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::Set,
+        name: "Set",
     },
 ];
 
@@ -603,6 +608,10 @@ fn custom_type(name: &str, category: AlgebraicCategory) -> Type {
     }
 }
 
+fn product_type_decl_type(decl: &ProductTypeDecl) -> Type {
+    custom_type(&decl.name, decl.category)
+}
+
 fn parse_matrix_type_name(name: &str) -> Option<Type> {
     let suffix = name.strip_prefix("Mat")?;
     if suffix.len() == 1 {
@@ -651,6 +660,9 @@ fn matrix_constructor_type(rows: usize, columns: usize) -> String {
 }
 
 fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
+    if category == AlgebraicCategory::Set {
+        return !matches!(ty, Type::Object | Type::Object2D | Type::Func(_, _));
+    }
     if let Type::Mat(rows, columns) = ty {
         return category == AlgebraicCategory::VectR
             || (rows == columns
@@ -685,6 +697,13 @@ fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> boo
             | (AlgebraicCategory::Field, AlgebraicCategory::Mon)
             | (AlgebraicCategory::Grp, AlgebraicCategory::Mon)
             | (AlgebraicCategory::VectR, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::Ab, AlgebraicCategory::Set)
+            | (AlgebraicCategory::Mon, AlgebraicCategory::Set)
+            | (AlgebraicCategory::Grp, AlgebraicCategory::Set)
+            | (AlgebraicCategory::Ring, AlgebraicCategory::Set)
+            | (AlgebraicCategory::Field, AlgebraicCategory::Set)
+            | (AlgebraicCategory::VectR, AlgebraicCategory::Set)
+            | (AlgebraicCategory::RAlg, AlgebraicCategory::Set)
     )
 }
 
@@ -699,6 +718,16 @@ struct InputDecl {
 struct ProvidedTypeDecl {
     name: String,
     category: AlgebraicCategory,
+}
+
+#[derive(Clone, Debug)]
+struct ProductTypeDecl {
+    name: String,
+    category: AlgebraicCategory,
+    components: Vec<Type>,
+    field_names: Vec<String>,
+    eager_ops: bool,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -743,6 +772,7 @@ struct OutputDecl {
 #[derive(Clone, Debug)]
 struct Program {
     ambient_dimension: ShapeDimension,
+    product_types: Vec<ProductTypeDecl>,
     inputs: Vec<InputDecl>,
     funcs: Vec<FuncDecl>,
     value_bindings: Vec<ValueBindingDecl>,
@@ -754,6 +784,7 @@ struct Program {
 #[derive(Clone, Debug)]
 enum Decl {
     ProvidedType(ProvidedTypeDecl),
+    ProductType(ProductTypeDecl),
     Input(InputDecl),
     Func(FuncDecl),
     ValueBinding(ValueBindingDecl),
@@ -1004,6 +1035,7 @@ struct TypedValueBinding {
 #[derive(Clone, Debug)]
 struct TypedProgram {
     ambient_dimension: ShapeDimension,
+    product_types: Vec<ProductTypeDecl>,
     inputs: Vec<InputDecl>,
     funcs: Vec<TypedFunc>,
     value_bindings: Vec<TypedValueBinding>,

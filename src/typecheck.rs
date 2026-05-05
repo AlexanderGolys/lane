@@ -2,7 +2,11 @@ use super::*;
 
 impl TypedProgram {
     pub(super) fn from_program(program: &Program, registry: &Registry) -> Result<Self, Error> {
-        let mut env = Env::new(registry, program.ambient_dimension);
+        for product_type in &program.product_types {
+            validate_product_type_decl(product_type)
+                .map_err(|err| err.with_line(product_type.line))?;
+        }
+        let mut env = Env::new(registry, program.ambient_dimension, &program.product_types);
 
         for input in &program.inputs {
             validate_user_type(&input.ty).map_err(|err| err.with_line(input.line))?;
@@ -221,6 +225,7 @@ impl TypedProgram {
 
         Ok(Self {
             ambient_dimension: program.ambient_dimension,
+            product_types: program.product_types.clone(),
             inputs: program.inputs.clone(),
             funcs: typed_funcs,
             value_bindings: typed_value_bindings,
@@ -234,6 +239,7 @@ impl TypedProgram {
 struct Env<'a> {
     registry: &'a Registry,
     ambient_dimension: ShapeDimension,
+    product_types: HashMap<String, ProductTypeDecl>,
     values: HashMap<String, ValueInfo>,
     funcs: HashMap<String, Vec<FunctionInfo>>,
     object_dimensions: HashMap<String, ShapeDimension>,
@@ -251,7 +257,11 @@ struct FunctionInfo {
 }
 
 impl<'a> Env<'a> {
-    fn new(registry: &'a Registry, ambient_dimension: ShapeDimension) -> Self {
+    fn new(
+        registry: &'a Registry,
+        ambient_dimension: ShapeDimension,
+        product_types: &[ProductTypeDecl],
+    ) -> Self {
         let values = HashMap::new();
         let mut funcs: HashMap<String, Vec<FunctionInfo>> = HashMap::new();
         for (name, func) in &registry.value_funcs {
@@ -281,6 +291,10 @@ impl<'a> Env<'a> {
         Self {
             registry,
             ambient_dimension,
+            product_types: product_types
+                .iter()
+                .map(|decl| (decl.name.clone(), decl.clone()))
+                .collect(),
             values,
             funcs,
             object_dimensions: HashMap::new(),
@@ -361,6 +375,50 @@ impl<'a> Env<'a> {
     fn object_dimension(&self, name: &str) -> Option<ShapeDimension> {
         self.object_dimensions.get(name).copied()
     }
+
+    fn product_type(&self, name: &str) -> Option<&ProductTypeDecl> {
+        self.product_types.get(name)
+    }
+}
+
+fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
+    if decl.category == AlgebraicCategory::Field {
+        return Err(Error::new(format!(
+            "product type '{}' cannot be declared as Field",
+            decl.name
+        )));
+    }
+    if !product_category_supported(decl.category) {
+        return Err(Error::new(format!(
+            "product type '{}' does not support category {}",
+            decl.name,
+            category_name(decl.category)
+        )));
+    }
+    for component in &decl.components {
+        if !has_category(component, decl.category) {
+            return Err(Error::new(format!(
+                "product type '{}' component {} does not satisfy {}",
+                decl.name,
+                format_type(component),
+                category_name(decl.category)
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn product_category_supported(category: AlgebraicCategory) -> bool {
+    matches!(
+        category,
+        AlgebraicCategory::Ab
+            | AlgebraicCategory::Mon
+            | AlgebraicCategory::Grp
+            | AlgebraicCategory::Ring
+            | AlgebraicCategory::VectR
+            | AlgebraicCategory::RAlg
+            | AlgebraicCategory::Set
+    )
 }
 
 fn object_type_dimension(ty: &Type) -> Option<ShapeDimension> {
@@ -1088,7 +1146,15 @@ fn infer_type_constructor_call(
     let (ty, arg_types) = match name {
         "E2" => (Type::E2, vec![Type::Mat(2, 2), Type::Vec2]),
         "E3" => (Type::E3, vec![Type::Mat(3, 3), Type::Vec3]),
-        _ => return Ok(None),
+        _ => {
+            let Some(product_type) = env.product_type(name) else {
+                return Ok(None);
+            };
+            (
+                product_type_decl_type(product_type),
+                product_type.components.clone(),
+            )
+        }
     };
     if args.len() != arg_types.len() {
         return Err(Error::new(format!(
@@ -1546,7 +1612,7 @@ fn infer_derivative_builtin(
     let epsilon = infer_value_expr(args[0], env, None)?;
     ensure_type(&epsilon.ty(), &Type::Float, "derivative epsilon")?;
     let func = infer_function_expr_for_type(args[1], env, &Type::Float, &Type::Float)
-        .map_err(|_| Error::new("derivative expects a func(float -> float)"))?;
+        .map_err(|_| Error::new("derivative expects a Func(R, R)"))?;
     let at = if let Some(expr) = args.get(2) {
         let at = infer_value_expr(expr, env, None)?;
         ensure_type(&at.ty(), &Type::Float, "derivative evaluation point")?;
@@ -1574,7 +1640,7 @@ fn infer_partial_builtin(args: &[&Expr], env: &Env<'_>, axis: usize) -> Result<V
     let epsilon = infer_value_expr(args[0], env, None)?;
     ensure_type(&epsilon.ty(), &Type::Float, "partial derivative epsilon")?;
     let func = infer_function_expr_for_type(args[1], env, &Type::Vec3, &Type::Float)
-        .map_err(|_| Error::new("partial derivatives currently expect a func(vec3 -> float)"))?;
+        .map_err(|_| Error::new("partial derivatives currently expect a Hom(R3, R)"))?;
     let at = infer_value_expr(args[2], env, None)?;
     ensure_type(&at.ty(), &Type::Vec3, "partial derivative evaluation point")?;
     Ok(ValueExpr::Partial {
@@ -1604,7 +1670,7 @@ fn infer_directional_derivative_builtin(args: &[&Expr], env: &Env<'_>) -> Result
         "directional derivative direction",
     )?;
     let func = infer_function_expr_for_type(args[2], env, &Type::Vec3, &Type::Float)
-        .map_err(|_| Error::new("directionalDerivative currently expects a func(vec3 -> float)"))?;
+        .map_err(|_| Error::new("directionalDerivative currently expects a Hom(R3, R)"))?;
     let at = infer_value_expr(args[3], env, None)?;
     ensure_type(
         &at.ty(),
@@ -1678,9 +1744,7 @@ fn infer_gradient_builtin(
                 at: Box::new(at),
             })
         }
-        _ => Err(Error::new(
-            "gradient expects a func(float -> float) or func(vec3 -> float)",
-        )),
+        _ => Err(Error::new("gradient expects a Func(R, R) or Hom(R3, R)")),
     }
 }
 
@@ -1693,7 +1757,7 @@ fn infer_divergence_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, 
     let epsilon = infer_value_expr(args[0], env, None)?;
     ensure_type(&epsilon.ty(), &Type::Float, "divergence epsilon")?;
     let func = infer_function_expr_for_type(args[1], env, &Type::Vec3, &Type::Vec3)
-        .map_err(|_| Error::new("divergence currently expects a func(vec3 -> vec3)"))?;
+        .map_err(|_| Error::new("divergence currently expects a Hom(R3, R3)"))?;
     let at = infer_value_expr(args[2], env, None)?;
     ensure_type(&at.ty(), &Type::Vec3, "divergence evaluation point")?;
     Ok(ValueExpr::Divergence {

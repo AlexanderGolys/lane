@@ -187,3 +187,40 @@ G product = a * b
     (binary_expression
       (identifier)
       (identifier))))
+
+==================
+Product Type Declarations
+==================
+
+Grp G = E3 x E2 {m, n}
+const Ab Pair = R2 x R3
+provided G g
+provided Pair p
+
+---
+
+(source_file
+  (product_type_declaration
+    (category_type
+      (type_identifier))
+    (identifier)
+    (product_type
+      (type_identifier)
+      (type_identifier))
+    (product_field_list
+      (identifier)
+      (identifier)))
+  (product_type_declaration
+    (gen_modifier)
+    (category_type
+      (type_identifier))
+    (identifier)
+    (product_type
+      (type_identifier)
+      (type_identifier)))
+  (input_declaration
+    (type_identifier)
+    (identifier))
+  (input_declaration
+    (type_identifier)
+    (identifier)))

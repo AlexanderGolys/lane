@@ -31,6 +31,7 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_program(&self) -> Result<Program, Error> {
         let mut custom_types: HashMap<String, AlgebraicCategory> = HashMap::new();
+        let mut product_types = Vec::new();
         let mut inputs = Vec::new();
         let mut funcs = Vec::new();
         let mut value_bindings = Vec::new();
@@ -58,15 +59,7 @@ impl<'a> Parser<'a> {
             directives_open = false;
 
             match self
-                .parse_decl(line, line_number, ambient_dimension)
-                .or_else(|_| {
-                    self.parse_decl_with_custom_types(
-                        line,
-                        line_number,
-                        &custom_types,
-                        ambient_dimension,
-                    )
-                })
+                .parse_decl_with_custom_types(line, line_number, &custom_types, ambient_dimension)
                 .map_err(|err| err.with_line(line_number))?
             {
                 Decl::ProvidedType(provided_type) => {
@@ -90,6 +83,28 @@ impl<'a> Parser<'a> {
                         .with_line(line_number));
                     }
                 }
+                Decl::ProductType(product_type) => {
+                    if is_known_type_name(&product_type.name)
+                        || is_known_category_name(&product_type.name)
+                    {
+                        return Err(Error::new(format!(
+                            "'{}' cannot be used as a product type name",
+                            product_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                    if custom_types
+                        .insert(product_type.name.clone(), product_type.category)
+                        .is_some()
+                    {
+                        return Err(Error::new(format!(
+                            "duplicate provided type '{}'",
+                            product_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                    product_types.push(product_type);
+                }
                 Decl::Input(input) => inputs.push(input),
                 Decl::Func(func) => funcs.push(func),
                 Decl::ValueBinding(binding) => value_bindings.push(binding),
@@ -108,6 +123,7 @@ impl<'a> Parser<'a> {
 
         Ok(Program {
             ambient_dimension,
+            product_types,
             inputs,
             funcs,
             value_bindings,
@@ -117,15 +133,6 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_decl(
-        &self,
-        line: &str,
-        line_number: usize,
-        ambient_dimension: ShapeDimension,
-    ) -> Result<Decl, Error> {
-        self.parse_decl_with_custom_types(line, line_number, &HashMap::new(), ambient_dimension)
-    }
-
     fn parse_decl_with_custom_types(
         &self,
         line: &str,
@@ -133,6 +140,12 @@ impl<'a> Parser<'a> {
         custom_types: &HashMap<String, AlgebraicCategory>,
         ambient_dimension: ShapeDimension,
     ) -> Result<Decl, Error> {
+        if let Some(product_type) =
+            parse_product_type_decl(line, line_number, custom_types, ambient_dimension)?
+        {
+            return Ok(Decl::ProductType(product_type));
+        }
+
         if let Some(rest) = line.strip_prefix("provided ") {
             let (ty, name) = split_type_name(rest.trim())?;
             if let Some(category) = category_by_name(ty) {
@@ -242,6 +255,123 @@ fn parse_directive(line: &str, ambient_dimension: &mut ShapeDimension) -> Result
             Ok(())
         }
         _ => Err(Error::new(format!("unsupported directive '{}'", line))),
+    }
+}
+
+fn parse_product_type_decl(
+    line: &str,
+    line_number: usize,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+    ambient_dimension: ShapeDimension,
+) -> Result<Option<ProductTypeDecl>, Error> {
+    let (eager_ops, line) = if let Some(rest) = line.strip_prefix("const ") {
+        (true, rest.trim())
+    } else {
+        (false, line)
+    };
+    let Some((left, right)) = line.split_once('=') else {
+        return Ok(None);
+    };
+    let Ok((category_source, name)) = split_type_name(left.trim()) else {
+        return Ok(None);
+    };
+    let Some(category) = category_by_name(category_source.trim()) else {
+        return Ok(None);
+    };
+    let (type_source, explicit_field_names) = split_product_type_fields(right.trim())?;
+    let Some(component_sources) = split_top_level_product(type_source) else {
+        return Ok(None);
+    };
+    let mut components = Vec::new();
+    for component_source in component_sources {
+        components.push(parse_type_with_custom_types_for_ambient(
+            component_source,
+            custom_types,
+            ambient_dimension,
+        )?);
+    }
+    let field_names = match explicit_field_names {
+        Some(names) => {
+            if names.len() != components.len() {
+                return Err(Error::new(format!(
+                    "product type '{}' has {} component(s) but {} field name(s)",
+                    name,
+                    components.len(),
+                    names.len()
+                )));
+            }
+            validate_product_field_names(name, &names)?;
+            names
+        }
+        None => default_product_field_names(components.len()),
+    };
+    Ok(Some(ProductTypeDecl {
+        name: name.to_string(),
+        category,
+        components,
+        field_names,
+        eager_ops,
+        line: line_number,
+    }))
+}
+
+fn split_product_type_fields(source: &str) -> Result<(&str, Option<Vec<String>>), Error> {
+    let Some(stripped) = source.strip_suffix('}') else {
+        return Ok((source, None));
+    };
+    let Some(open_index) = stripped.rfind('{') else {
+        return Err(Error::new("expected '{' before product field names"));
+    };
+    let fields = stripped[open_index + 1..]
+        .split(',')
+        .map(str::trim)
+        .filter(|field| !field.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    Ok((stripped[..open_index].trim(), Some(fields)))
+}
+
+fn validate_product_field_names(type_name: &str, field_names: &[String]) -> Result<(), Error> {
+    let mut seen = std::collections::HashSet::new();
+    for field in field_names {
+        if !is_identifier(field) {
+            return Err(Error::new(format!(
+                "product type '{}' has invalid field name '{}'",
+                type_name, field
+            )));
+        }
+        if !seen.insert(field.as_str()) {
+            return Err(Error::new(format!(
+                "product type '{}' has duplicate field name '{}'",
+                type_name, field
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn is_identifier(source: &str) -> bool {
+    let mut chars = source.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn default_product_field_names(count: usize) -> Vec<String> {
+    match count {
+        0 => Vec::new(),
+        1 => vec!["x".to_string()],
+        2 => vec!["x".to_string(), "y".to_string()],
+        3 => vec!["x".to_string(), "y".to_string(), "z".to_string()],
+        4 => vec![
+            "x".to_string(),
+            "y".to_string(),
+            "z".to_string(),
+            "w".to_string(),
+        ],
+        _ => (0..count).map(|index| format!("x{index}")).collect(),
     }
 }
 
@@ -621,14 +751,6 @@ fn parse_type_with_custom_types(
     custom_types: &HashMap<String, AlgebraicCategory>,
 ) -> Result<Type, Error> {
     let source = source.trim();
-    if source.starts_with("func(") && source.ends_with(')') {
-        let inner = &source[5..source.len() - 1];
-        let (input, output) = split_arrow_legacy(inner)?;
-        return Ok(Type::func(
-            parse_type_with_custom_types(input, custom_types)?,
-            parse_type_with_custom_types(output, custom_types)?,
-        ));
-    }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
         return Ok(Type::func(
@@ -684,14 +806,6 @@ fn parse_type_with_custom_types_for_ambient(
     if source == "Object" && ambient_dimension == ShapeDimension::D2 {
         return Ok(Type::Object2D);
     }
-    if source.starts_with("func(") && source.ends_with(')') {
-        let inner = &source[5..source.len() - 1];
-        let (input, output) = split_arrow_legacy(inner)?;
-        return Ok(Type::func(
-            parse_type_with_custom_types_for_ambient(input, custom_types, ambient_dimension)?,
-            parse_type_with_custom_types_for_ambient(output, custom_types, ambient_dimension)?,
-        ));
-    }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
         return Ok(Type::func(
@@ -727,13 +841,6 @@ fn parse_type_with_custom_types_for_ambient(
         return Ok(Type::Product(parsed));
     }
     parse_type_with_custom_types(source, custom_types)
-}
-
-fn split_arrow_legacy(source: &str) -> Result<(&str, &str), Error> {
-    source
-        .split_once("->")
-        .map(|(left, right)| (left.trim(), right.trim()))
-        .ok_or_else(|| Error::new("expected '->' in function type"))
 }
 
 fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {

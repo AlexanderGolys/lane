@@ -1,0 +1,15 @@
+// 2D ambient Lane syntax sample.
+
+#2D
+provided R time
+provided Hom(R2, R) field
+
+E2 move = E2(e, (1, 2))
+E2 turn = rot2D((0, 0), time)
+R2 p = turn * (1, 0)
+R radius = field(p)
+
+construct Object profile = Box2D(a=2, b=1) + p
+const Object disk = Ball2D(r=radius)
+
+generate union(move * profile, rot2D(0.5)(disk), Segment2D(length=2))
