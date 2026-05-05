@@ -293,7 +293,8 @@ impl TypedProgram {
         let mut forbidden = BTreeSet::new();
         for input in &self.inputs {
             match input.ty {
-                Type::Float
+                Type::Bool
+                | Type::Float
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
@@ -496,7 +497,8 @@ fn collect_object_getter_object_refs(expr: &ObjectExpr, names: &mut BTreeSet<Str
 
 fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
-        ValueExpr::Float(_)
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
         | ValueExpr::Int(_)
         | ValueExpr::Neutral { .. }
         | ValueExpr::Var { .. } => {}
@@ -618,7 +620,8 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
             collect_type_support(input, names);
             collect_type_support(output, names);
         }
-        Type::Float
+        Type::Bool
+        | Type::Float
         | Type::Int
         | Type::Complex
         | Type::Quat
@@ -1004,6 +1007,7 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
         }
         ProductOp::One => emit_neutral_value(NeutralKind::One, ty),
         ProductOp::Identity => match ty {
+            Type::Bool => "true".to_string(),
             Type::Float => "1.0".to_string(),
             Type::Int => "1".to_string(),
             Type::Complex => "vec2(1.0, 0.0)".to_string(),
@@ -1021,6 +1025,8 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
 
 fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> String {
     match (op, ty) {
+        (ProductOp::Add | ProductOp::Sub, Type::Bool) => format!("({} != {})", left, right),
+        (ProductOp::Mult, Type::Bool) => format!("({} && {})", left, right),
         (ProductOp::Add, Type::Custom { name, .. }) => format!("add_{}({}, {})", name, left, right),
         (ProductOp::Sub, Type::Custom { name, .. }) => format!("sub_{}({}, {})", name, left, right),
         (ProductOp::Mult, Type::Complex) => format!("mult_C({}, {})", left, right),
@@ -1039,6 +1045,7 @@ fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> S
 
 fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
     match (op, ty) {
+        (ProductOp::Inv, Type::Bool) => value.to_string(),
         (ProductOp::Inv, Type::Float) => format!("(1.0 / {value})"),
         (ProductOp::Inv, Type::Int) => format!("(1 / {value})"),
         (ProductOp::Inv, Type::Complex) => format!("div_C(vec2(1.0, 0.0), {value})"),
@@ -1215,7 +1222,8 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
     }
 
     match expr {
-        ValueExpr::Float(_)
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
         | ValueExpr::Int(_)
         | ValueExpr::Neutral { .. }
         | ValueExpr::Var { .. } => {}
@@ -1294,7 +1302,10 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
 
 fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> bool {
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Neutral { .. } => true,
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. } => true,
         ValueExpr::Var { name, .. } => names.contains(name),
         ValueExpr::Vec2(x, y) => {
             is_global_const_value_expr(x, names) && is_global_const_value_expr(y, names)
@@ -1384,7 +1395,10 @@ fn collect_object_value_refs(
 
 fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Neutral { .. } => {}
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. } => {}
         ValueExpr::Var { name, .. } => {
             names.insert(name.clone());
         }
@@ -1509,7 +1523,8 @@ fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
 
 fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
-        ValueExpr::Float(_)
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
         | ValueExpr::Int(_)
         | ValueExpr::Neutral { .. }
         | ValueExpr::Var { .. } => {
@@ -1638,6 +1653,7 @@ fn emit_value_expr(
     value_names: &HashMap<String, String>,
 ) -> String {
     match expr {
+        ValueExpr::Bool(value) => value.to_string(),
         ValueExpr::Float(value) => format_float(*value),
         ValueExpr::Int(value) => value.to_string(),
         ValueExpr::Neutral { kind, ty } => emit_neutral_value(*kind, ty),
@@ -1814,6 +1830,9 @@ fn emit_binary_expr(
     let right = emit_value_expr(right, helper_names, value_names);
 
     match (op, &left_ty, &right_ty) {
+        (BinOp::Add | BinOp::Sub, Type::Bool, Type::Bool) => format!("({} != {})", left, right),
+        (BinOp::Mul, Type::Bool, Type::Bool) => format!("({} && {})", left, right),
+        (BinOp::Div, Type::Bool, Type::Bool) => left,
         (BinOp::Mul, Type::Complex, Type::Complex) => format!("mult_C({}, {})", left, right),
         (BinOp::Div, Type::Complex, Type::Complex) => format!("div_C({}, {})", left, right),
         (BinOp::Mul, Type::Quat, Type::Quat) => format!("mult_H({}, {})", left, right),
@@ -1893,6 +1912,8 @@ fn scalar_to_algebra(ty: &Type, value: &str) -> String {
 
 fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
     match (kind, ty) {
+        (NeutralKind::Zero, Type::Bool) => "false".to_string(),
+        (NeutralKind::One, Type::Bool) => "true".to_string(),
         (NeutralKind::Zero, Type::Float) => "0.0".to_string(),
         (NeutralKind::One, Type::Float) => "1.0".to_string(),
         (NeutralKind::Zero, Type::Int) => "0".to_string(),

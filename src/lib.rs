@@ -228,7 +228,8 @@ pub fn is_known_category_name(name: &str) -> bool {
     category_by_name(name).is_some()
 }
 
-const BUILTIN_TYPE_DETAILS: [(&str, &str); 4] = [
+const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
+    ("Bool", ""),
     ("C", "#define Complex vec2"),
     ("E2", ""),
     ("E3", ""),
@@ -414,7 +415,14 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
+    BuiltinTypeDef {
+        ty: Type::Bool,
+        aliases: &["Bool"],
+        display_name: "Bool",
+        support_glsl: None,
+        categories: &[AlgebraicCategory::DivRing],
+    },
     BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
@@ -531,6 +539,7 @@ pub struct PreregisteredObject {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
+    Bool,
     Float,
     Int,
     Complex,
@@ -559,6 +568,7 @@ impl Type {
 
     fn glsl_name(&self) -> String {
         match self {
+            Self::Bool => "bool".to_string(),
             Self::Float => "float".to_string(),
             Self::Int => "int".to_string(),
             Self::Complex => "vec2".to_string(),
@@ -800,6 +810,7 @@ enum Decl {
 
 #[derive(Clone, Debug)]
 enum Expr {
+    Bool(bool),
     Number(f64),
     Ident(String),
     Tuple(Vec<Expr>),
@@ -844,6 +855,7 @@ enum BinOp {
 
 #[derive(Clone, Debug)]
 enum ValueExpr {
+    Bool(bool),
     Float(f64),
     Int(i64),
     Neutral {
@@ -931,6 +943,7 @@ enum ValueExpr {
 impl ValueExpr {
     fn ty(&self) -> Type {
         match self {
+            Self::Bool(_) => Type::Bool,
             Self::Float(_) => Type::Float,
             Self::Int(_) => Type::Int,
             Self::Neutral { ty, .. } => ty.clone(),

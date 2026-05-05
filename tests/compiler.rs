@@ -301,6 +301,9 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "VectR" && object.ty == "Cat"));
     assert!(objects
         .iter()
+        .any(|object| object.name == "Bool" && object.ty == "DivRing"));
+    assert!(objects
+        .iter()
         .any(|object| object.name == "C" && object.ty == "DivRing, RAlg"));
     assert!(objects
         .iter()
@@ -314,6 +317,12 @@ fn lists_builtin_lane_objects() {
     assert!(objects
         .iter()
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "boolNot" && object.ty == "Hom(Bool, Bool)"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "boolAnd" && object.ty == "Hom(Bool × Bool, Bool)"));
     assert!(!objects.iter().any(|object| object.name == "cexp"));
     assert!(objects
         .iter()
@@ -363,6 +372,8 @@ fn lists_builtin_lane_objects() {
 fn looks_up_builtin_object_detail() {
     let revolution = known_builtin_object("revolution").unwrap();
     let pow2 = known_builtin_object("pow2").unwrap();
+    let bool_ty = known_builtin_object("Bool").unwrap();
+    let bool_xor = known_builtin_object("boolXor").unwrap();
     let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("H").unwrap();
     let field = known_builtin_object("DivRing").unwrap();
@@ -377,6 +388,10 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(rot.body, "");
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
+    assert_eq!(bool_ty.ty, "DivRing");
+    assert_eq!(bool_ty.body, "");
+    assert_eq!(bool_xor.ty, "Hom(Bool × Bool, Bool)");
+    assert!(bool_xor.body.contains("bool boolXor(bool a, bool b)"));
     assert_eq!(complex.ty, "DivRing, RAlg");
     assert!(complex.body.contains("#define Complex vec2"));
     assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
@@ -701,6 +716,28 @@ fn casts_neutral_literals_to_expected_builtin_types() {
     assert!(glsl.contains("vec3 p = vec3(0.0);"));
     assert!(glsl.contains("mat3 m = mat3(1.0);"));
     assert!(glsl.contains("E3 g = E3(mat3(1.0), vec3(0.0));"));
+}
+
+#[test]
+fn supports_bool_field_values_and_builtins() {
+    let source = "provided Hom(Bool, R) choose\nconst Bool sum = true + false\nconst Bool product = sum * boolNot(false)\nconst Bool either = boolOr(product, false)\nconst R radius = choose(either)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("bool boolNot(bool x)"));
+    assert!(glsl.contains("bool boolOr(bool a, bool b)"));
+    assert!(glsl.contains("const bool sum = (true != false);"));
+    assert!(glsl.contains("bool product = (sum && boolNot(false));"));
+    assert!(glsl.contains("bool either = boolOr(product, false);"));
+    assert!(glsl.contains("float radius = choose(either);"));
+}
+
+#[test]
+fn casts_bool_zero_and_one_neutral_literals() {
+    let source = "const Bool zero = 0\nconst Bool one = 1\nconst Object output = Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("const bool zero = false;"));
+    assert!(glsl.contains("const bool one = true;"));
 }
 
 #[test]

@@ -320,6 +320,7 @@ Lane type names are nominal and case-sensitive.
 
 | Lane type | Alias | GLSL value |
 | --- | --- | --- |
+| `Bool` | | `bool` |
 | `Float` | `R` | `float` |
 | `Int` | `Z` | `int` |
 | `Complex` | `C` | `vec2` |
@@ -564,6 +565,7 @@ vector translates the object.
 
 ```lane
 R a = 1 + 2
+Bool toggled = true + false
 R3 p = (1, 0, 0) - (0, 1, 0)
 Object moved = Ball3D(r=1) + (2, 0, 0)
 ```
@@ -575,6 +577,7 @@ matrix action depending on operand types.
 
 ```lane
 R area = 2 * 3
+Bool both = true * false
 R3 p = 2 * (1, 0, 0)
 E3 composed = a * b
 R3 moved = composed * (1, 0, 0)
@@ -615,7 +618,7 @@ R x = xs[1]
 ### GLSL Math Builtins
 
 Lane pre-registers GLSL math builtins whose signatures fit Lane's current value
-types: `R`, `Z`, `R2`, `R3`, `R4`, and `Mat2` through `Mat4x4`. Calls emit as
+types: `Bool`, `R`, `Z`, `R2`, `R3`, `R4`, and `Mat2` through `Mat4x4`. Calls emit as
 direct GLSL calls and do not add support bodies.
 `lane list-all` prints complete scalar/vector families compactly, for example
 `Hom(Rn, Rn)` for functions available on `R`, `R2`, `R3`, and `R4`, and
@@ -644,9 +647,10 @@ Registered GLSL functions include:
 - Fragment derivative functions: `dFdx`, `dFdy`, `fwidth`.
 - Complex overloads: `inv`, `exp`, `log`, `sqrt`, `sin`, `cos`, `tan`, `sinh`,
   `cosh`, `tanh` on `C`.
+- Bool helpers: `boolNot`, `boolAnd`, `boolOr`, `boolXor`.
 
-Boolean, sampler, image, atomic, packing, and out-parameter GLSL builtins are
-not registered yet because Lane does not have the corresponding value types or
+Sampler, image, atomic, packing, and out-parameter GLSL builtins are not
+registered yet because Lane does not have the corresponding value types or
 parameter passing forms.
 
 `pow2` remains available as a Lane helper:

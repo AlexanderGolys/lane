@@ -176,10 +176,13 @@ fn lists_known_builtin_objects_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("DivRing: Cat"));
     assert!(stdout.contains("VectR: Cat"));
+    assert!(stdout.contains("Bool: DivRing"));
     assert!(stdout.contains("C: DivRing, RAlg"));
     assert!(stdout.contains("H: DivRing, RAlg"));
     assert!(stdout.contains("E2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
+    assert!(stdout.contains("boolNot: Hom(Bool, Bool)"));
+    assert!(stdout.contains("boolAnd: Hom(Bool × Bool, Bool)"));
     assert!(!stdout.contains("cexp: Hom(C, C)"));
     assert!(stdout.contains("union: Hom(Object × Object, Object)"));
     assert!(stdout.contains("smoothUnion: Hom(R, Hom(Object × Object, Object))"));
@@ -228,6 +231,7 @@ fn lists_all_builtin_items_from_command() {
     assert!(stdout.contains("Box2D: {a: R, b: R}"));
     assert!(stdout.contains("Polygon2D: { points: R2 list }"));
     assert!(stdout.contains("DivRing: Cat"));
+    assert!(stdout.contains("Bool: DivRing"));
     assert!(stdout.contains("C: DivRing, RAlg"));
     assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));

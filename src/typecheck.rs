@@ -58,7 +58,8 @@ impl TypedProgram {
             validate_user_type(&input_ty).map_err(|err| err.with_line(func.line))?;
             if !matches!(
                 output_ty,
-                Type::Float
+                Type::Bool
+                    | Type::Float
                     | Type::Int
                     | Type::Complex
                     | Type::Quat
@@ -667,7 +668,8 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             }
         }
         Expr::Call { .. } => infer_object_call(expr, env),
-        Expr::Number(_)
+        Expr::Bool(_)
+        | Expr::Number(_)
         | Expr::Tuple(_)
         | Expr::Array(_)
         | Expr::Index { .. }
@@ -992,6 +994,7 @@ fn infer_value_expr(
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
     match expr {
+        Expr::Bool(value) => Ok(ValueExpr::Bool(*value)),
         Expr::Number(value) => Ok(ValueExpr::Float(*value)),
         Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
         Expr::FieldAccess { .. } if lift_param.is_some() => {
@@ -1099,6 +1102,7 @@ fn infer_value_expr_for_type(
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
     match (expected_ty, expr) {
+        (Type::Bool, Expr::Bool(value)) => Ok(ValueExpr::Bool(*value)),
         (_, Expr::Number(value)) if (*value - 0.0).abs() < f64::EPSILON => {
             if expected_ty == &Type::Float {
                 return infer_value_expr(expr, env, lift_param);
@@ -1208,7 +1212,10 @@ fn collect_lifted_param_type(
     ty: &mut Option<Type>,
 ) -> Result<(), Error> {
     match expr {
-        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Neutral { .. } => {}
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. } => {}
         ValueExpr::Var {
             name: var_name,
             ty: var_ty,
@@ -1469,7 +1476,8 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
 fn is_value_type(ty: &Type) -> bool {
     matches!(
         ty,
-        Type::Float
+        Type::Bool
+            | Type::Float
             | Type::Int
             | Type::Complex
             | Type::Quat
@@ -1737,7 +1745,8 @@ fn validate_user_type(ty: &Type) -> Result<(), Error> {
 fn is_array_element_type(ty: &Type) -> bool {
     matches!(
         ty,
-        Type::Float
+        Type::Bool
+            | Type::Float
             | Type::Int
             | Type::Complex
             | Type::Quat
@@ -2117,7 +2126,8 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                     output: (*output).clone(),
                     kind: FunctionExprKind::Named(name.clone()),
                 }]),
-                Type::Float
+                Type::Bool
+                | Type::Float
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
@@ -2272,7 +2282,8 @@ fn infer_identifier_value(
         });
     };
     match info.ty {
-        Type::Float
+        Type::Bool
+        | Type::Float
         | Type::Int
         | Type::Complex
         | Type::Quat

@@ -545,6 +545,12 @@ impl ExprParser {
         match self.next() {
             Some(Token::Number(value)) => Ok(Expr::Number(value.parse::<f64>().unwrap())),
             Some(Token::Ident(name)) => {
+                if name == "true" {
+                    return Ok(Expr::Bool(true));
+                }
+                if name == "false" {
+                    return Ok(Expr::Bool(false));
+                }
                 if matches!(self.peek(), Some(Token::LParen)) {
                     let args = self.parse_mixed_args()?;
                     return Ok(Expr::Constructor { name, args });
