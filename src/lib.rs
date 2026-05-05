@@ -805,6 +805,10 @@ enum Expr {
         callee: Box<Expr>,
         args: Vec<Expr>,
     },
+    FieldAccess {
+        object: Box<Expr>,
+        field: String,
+    },
     Index {
         array: Box<Expr>,
         index: Box<Expr>,
@@ -851,6 +855,13 @@ enum ValueExpr {
     Call {
         func: String,
         args: Vec<ValueExpr>,
+        ty: Type,
+    },
+    ObjectGetterCall {
+        object: String,
+        getter: ObjectGetter,
+        point: Box<ValueExpr>,
+        captures: Vec<ValueExpr>,
         ty: Type,
     },
     Array {
@@ -922,6 +933,7 @@ impl ValueExpr {
             Self::Neutral { ty, .. } => ty.clone(),
             Self::Var { ty, .. } => ty.clone(),
             Self::Call { ty, .. } => ty.clone(),
+            Self::ObjectGetterCall { ty, .. } => ty.clone(),
             Self::Array { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
             Self::Index { ty, .. } => ty.clone(),
             Self::Concat { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
@@ -965,6 +977,11 @@ struct FunctionExpr {
 #[derive(Clone, Debug)]
 enum FunctionExprKind {
     Named(String),
+    ObjectGetter {
+        object: String,
+        getter: ObjectGetter,
+        captures: Vec<ValueExpr>,
+    },
     Compose(Box<FunctionExpr>, Box<FunctionExpr>),
 }
 
@@ -975,11 +992,28 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             args: vec![arg],
             ty: func.output.clone(),
         },
+        FunctionExprKind::ObjectGetter {
+            object,
+            getter,
+            captures,
+        } => ValueExpr::ObjectGetterCall {
+            object: object.clone(),
+            getter: *getter,
+            point: Box::new(arg),
+            captures: captures.clone(),
+            ty: func.output.clone(),
+        },
         FunctionExprKind::Compose(outer, inner) => {
             let inner_value = apply_function_expr(inner, arg);
             apply_function_expr(outer, inner_value)
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ObjectGetter {
+    Sdf,
+    Grad,
 }
 
 #[derive(Clone, Debug)]
@@ -1025,6 +1059,7 @@ struct TypedBinding {
     name: String,
     expr: ObjectExpr,
     generated: bool,
+    dimension: Option<ShapeDimension>,
 }
 
 #[derive(Clone, Debug)]

@@ -5,7 +5,7 @@
 ["+" "-" "*" "/" "@" "=" "×" "x"] @operator
 
 ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
-[","] @punctuation.delimiter
+["," "."] @punctuation.delimiter
 
 (comment) @comment
 (directive) @keyword.directive
@@ -30,6 +30,9 @@
 
 (named_argument
   name: (identifier) @property)
+
+(field_access_expression
+  field: (identifier) @property)
 
 (binding_declaration
   type: [

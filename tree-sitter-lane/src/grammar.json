@@ -700,6 +700,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "field_access_expression"
+        },
+        {
+          "type": "SYMBOL",
           "name": "index_expression"
         },
         {
@@ -743,6 +747,10 @@
                 {
                   "type": "SYMBOL",
                   "name": "call_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "field_access_expression"
                 },
                 {
                   "type": "SYMBOL",
@@ -804,6 +812,10 @@
                 },
                 {
                   "type": "SYMBOL",
+                  "name": "field_access_expression"
+                },
+                {
+                  "type": "SYMBOL",
                   "name": "index_expression"
                 },
                 {
@@ -848,6 +860,68 @@
           {
             "type": "STRING",
             "value": "]"
+          }
+        ]
+      }
+    },
+    "field_access_expression": {
+      "type": "PREC_LEFT",
+      "value": 4,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "object",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "call_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "field_access_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "index_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "parenthesized_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "tuple_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "array_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "identifier"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "number"
+                }
+              ]
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "."
+          },
+          {
+            "type": "FIELD",
+            "name": "field",
+            "content": {
+              "type": "SYMBOL",
+              "name": "identifier"
+            }
           }
         ]
       }

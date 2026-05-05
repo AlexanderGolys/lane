@@ -894,6 +894,28 @@ fn generated_helpers_capture_scene_inputs_in_their_signatures() {
 }
 
 #[test]
+fn object_sdf_and_grad_getters_emit_helpers_for_plain_bindings() {
+    let source = "provided R3 q\nObject shell = Ball3D(r=2) + (1, 0, 0)\nR d = shell.sdf(q)\nR3 g = shell.grad(q)\ngenerate Ball3D(r=d + length(g))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sdf_shell(vec3 p, vec3 q) {"));
+    assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p, vec3 q) {"));
+    assert!(glsl.contains("float d = sdf_shell(q, q);"));
+    assert!(glsl.contains("vec3 g = grad_sdf_shell(q, q);"));
+}
+
+#[test]
+fn object_sdf_getter_closure_captures_scene_inputs() {
+    let source = "provided R time\nObject shell = Ball3D(r=1 + time)\nR3 p0 = (0, 0, 0)\nR3 g = gradient(shell.sdf)(p0)\ngenerate Ball3D(r=length(g))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
+    assert!(glsl.contains("return sdf0_Ball3D(p, ParamBall3D((1.0 + time)));"));
+    assert!(glsl.contains("vec3 g = vec3("));
+    assert!(glsl.contains("sdf_shell((p0 + vec3(0.01, 0.0, 0.0)), time)"));
+}
+
+#[test]
 fn scene_sdf_reuses_generated_object_helpers() {
     let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2) + (1, 0, 0)\ngenerate union(a, b)\n";
     let glsl = compile_program(source).unwrap();

@@ -252,6 +252,21 @@ construct Object shell = Ball3D(r=radius) + (1, 0, 0)
 generate shell
 ```
 
+Object bindings also expose function getters:
+
+```lane
+Object shell = Ball3D(r=2)
+R d = shell.sdf((0, 0, 0))
+R3 normal = shell.grad((0, 0, 0))
+R3 finite_diff_normal = gradient(shell.sdf)((0, 0, 0))
+generate Ball3D(r=d + length(normal + finite_diff_normal))
+```
+
+`obj.sdf` has type `Hom(R3, R)` for 3D objects and `Hom(R2, R)` for 2D
+objects. `obj.grad` returns the matching ambient vector type. Using either
+getter emits the same helper functions as `construct`, even for a plain
+`Object` binding.
+
 ### `const Object name = object_expression`
 
 `const` is an alias for `construct` on object bindings. It exports the same SDF

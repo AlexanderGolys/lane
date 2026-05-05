@@ -43,9 +43,10 @@ impl TypedProgram {
         let scene_input_names = self.scene_input_names();
         let object_bindings = self.object_bindings();
         let helper_names = self.func_names();
+        let object_getter_bindings = self.object_getter_bindings();
 
         for binding in &self.bindings {
-            if !binding.generated {
+            if !binding.generated && !object_getter_bindings.contains(&binding.name) {
                 continue;
             }
             lines.extend(self.emit_generated_binding(
@@ -104,9 +105,13 @@ impl TypedProgram {
     }
 
     fn scene_signature(&self, point_name: &str) -> Vec<String> {
+        self.object_helper_signature(point_name, self.ambient_dimension)
+    }
+
+    fn object_helper_signature(&self, point_name: &str, dimension: ShapeDimension) -> Vec<String> {
         let mut signature = vec![format!(
             "{} {}",
-            ambient_vector_glsl_type(self.ambient_dimension),
+            ambient_vector_glsl_type(dimension),
             point_name
         )];
         for input in &self.inputs {
@@ -255,7 +260,8 @@ impl TypedProgram {
         global_value_names: &BTreeSet<String>,
         locals: &EmitLocals,
     ) -> Vec<String> {
-        let signature = self.scene_signature(&locals.point);
+        let dimension = binding.dimension.unwrap_or(self.ambient_dimension);
+        let signature = self.object_helper_signature(&locals.point, dimension);
         let mut lines = Vec::new();
 
         lines.push(format!(
@@ -275,7 +281,7 @@ impl TypedProgram {
             emit_object_expr(
                 &binding.expr,
                 &locals.point,
-                self.ambient_dimension,
+                dimension,
                 object_bindings,
                 helper_names,
                 scene_input_names,
@@ -286,7 +292,7 @@ impl TypedProgram {
 
         lines.push(format!(
             "{} grad_sdf_{}({}) {{",
-            ambient_vector_glsl_type(self.ambient_dimension),
+            ambient_vector_glsl_type(dimension),
             binding.name,
             signature.join(", ")
         ));
@@ -302,7 +308,7 @@ impl TypedProgram {
                 &locals.point,
                 &locals.eps,
                 scene_input_names,
-                self.ambient_dimension,
+                dimension,
             )
         ));
         lines.push("}".to_string());
@@ -434,6 +440,21 @@ impl TypedProgram {
             .collect()
     }
 
+    fn object_getter_bindings(&self) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        for func in &self.funcs {
+            collect_object_getter_value_refs(&func.expr, &mut names);
+        }
+        for binding in &self.value_bindings {
+            collect_object_getter_value_refs(&binding.expr, &mut names);
+        }
+        for binding in &self.bindings {
+            collect_object_getter_object_refs(&binding.expr, &mut names);
+        }
+        collect_object_getter_object_refs(&self.output, &mut names);
+        names
+    }
+
     fn concat_helpers(&self) -> Vec<ConcatHelper> {
         let mut helpers = BTreeMap::new();
         for func in &self.funcs {
@@ -447,6 +468,157 @@ impl TypedProgram {
         }
         collect_object_concat_helpers(&self.output, &mut helpers);
         helpers.into_values().collect()
+    }
+}
+
+fn collect_object_getter_object_refs(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
+    match expr {
+        ObjectExpr::Var(_) => {}
+        ObjectExpr::Primitive { fields, .. } => {
+            for (_, value) in fields {
+                match value {
+                    PrimitiveArgExpr::Value(value) => {
+                        collect_object_getter_value_refs(value, names);
+                    }
+                    PrimitiveArgExpr::Vec2List(vertices) => {
+                        for vertex in vertices {
+                            collect_object_getter_value_refs(vertex, names);
+                        }
+                    }
+                }
+            }
+        }
+        ObjectExpr::AmbientTransform {
+            object,
+            translation,
+            linear,
+        } => {
+            collect_object_getter_value_refs(translation, names);
+            collect_object_getter_value_refs(linear, names);
+            collect_object_getter_object_refs(object, names);
+        }
+        ObjectExpr::IsometryTransform { object, transform } => {
+            collect_object_getter_value_refs(transform, names);
+            collect_object_getter_object_refs(object, names);
+        }
+        ObjectExpr::RegisteredOp {
+            value_args,
+            object_args,
+            ..
+        } => {
+            for arg in value_args {
+                collect_object_getter_value_refs(arg, names);
+            }
+            for arg in object_args {
+                collect_object_getter_object_refs(arg, names);
+            }
+        }
+    }
+}
+
+fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
+    match expr {
+        ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. }
+        | ValueExpr::Var { .. } => {}
+        ValueExpr::Call { args, .. } => {
+            for arg in args {
+                collect_object_getter_value_refs(arg, names);
+            }
+        }
+        ValueExpr::ObjectGetterCall {
+            object,
+            point,
+            captures,
+            ..
+        } => {
+            names.insert(object.clone());
+            collect_object_getter_value_refs(point, names);
+            for capture in captures {
+                collect_object_getter_value_refs(capture, names);
+            }
+        }
+        ValueExpr::Array { elements, .. } => {
+            for element in elements {
+                collect_object_getter_value_refs(element, names);
+            }
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_object_getter_value_refs(array, names);
+            collect_object_getter_value_refs(index, names);
+        }
+        ValueExpr::Concat { left, right, .. } => {
+            collect_object_getter_value_refs(left, names);
+            collect_object_getter_value_refs(right, names);
+        }
+        ValueExpr::Binary { left, right, .. } => {
+            collect_object_getter_value_refs(left, names);
+            collect_object_getter_value_refs(right, names);
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_object_getter_value_refs(x, names);
+            collect_object_getter_value_refs(y, names);
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_object_getter_value_refs(x, names);
+            collect_object_getter_value_refs(y, names);
+            collect_object_getter_value_refs(z, names);
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_object_getter_value_refs(x, names);
+            collect_object_getter_value_refs(y, names);
+            collect_object_getter_value_refs(z, names);
+            collect_object_getter_value_refs(w, names);
+        }
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_object_getter_value_refs(row, names);
+            }
+        }
+        ValueExpr::Derivative { epsilon, func, at }
+        | ValueExpr::Gradient { epsilon, func, at }
+        | ValueExpr::Divergence { epsilon, func, at } => {
+            collect_object_getter_value_refs(epsilon, names);
+            collect_object_getter_function_refs(func, names);
+            collect_object_getter_value_refs(at, names);
+        }
+        ValueExpr::Partial {
+            epsilon, func, at, ..
+        } => {
+            collect_object_getter_value_refs(epsilon, names);
+            collect_object_getter_function_refs(func, names);
+            collect_object_getter_value_refs(at, names);
+        }
+        ValueExpr::DirectionalDerivative {
+            epsilon,
+            direction,
+            func,
+            at,
+        } => {
+            collect_object_getter_value_refs(epsilon, names);
+            collect_object_getter_value_refs(direction, names);
+            collect_object_getter_function_refs(func, names);
+            collect_object_getter_value_refs(at, names);
+        }
+    }
+}
+
+fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet<String>) {
+    match &func.kind {
+        FunctionExprKind::Named(_) => {}
+        FunctionExprKind::ObjectGetter {
+            object, captures, ..
+        } => {
+            names.insert(object.clone());
+            for capture in captures {
+                collect_object_getter_value_refs(capture, names);
+            }
+        }
+        FunctionExprKind::Compose(outer, inner) => {
+            collect_object_getter_function_refs(outer, names);
+            collect_object_getter_function_refs(inner, names);
+        }
     }
 }
 
@@ -1074,6 +1246,14 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
                 collect_concat_helpers(arg, helpers);
             }
         }
+        ValueExpr::ObjectGetterCall {
+            point, captures, ..
+        } => {
+            collect_concat_helpers(point, helpers);
+            for capture in captures {
+                collect_concat_helpers(capture, helpers);
+            }
+        }
         ValueExpr::Array { elements, .. } => {
             for element in elements {
                 collect_concat_helpers(element, helpers);
@@ -1162,6 +1342,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         | ValueExpr::Index { .. }
         | ValueExpr::Concat { .. }
         | ValueExpr::Call { .. }
+        | ValueExpr::ObjectGetterCall { .. }
         | ValueExpr::Derivative { .. }
         | ValueExpr::Partial { .. }
         | ValueExpr::DirectionalDerivative { .. }
@@ -1232,6 +1413,14 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         ValueExpr::Call { args, .. } => {
             for arg in args {
                 collect_value_refs(arg, names);
+            }
+        }
+        ValueExpr::ObjectGetterCall {
+            point, captures, ..
+        } => {
+            collect_value_refs(point, names);
+            for capture in captures {
+                collect_value_refs(capture, names);
             }
         }
         ValueExpr::Array { elements, .. } => {
@@ -1367,6 +1556,18 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_support(arg, names);
             }
         }
+        ValueExpr::ObjectGetterCall {
+            point,
+            captures,
+            ty,
+            ..
+        } => {
+            collect_type_support(ty, names);
+            collect_value_support(point, names);
+            for capture in captures {
+                collect_value_support(capture, names);
+            }
+        }
         ValueExpr::Array { elements, .. } => {
             for element in elements {
                 collect_value_support(element, names);
@@ -1442,6 +1643,11 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
         FunctionExprKind::Named(name) => {
             names.insert(name.clone());
         }
+        FunctionExprKind::ObjectGetter { captures, .. } => {
+            for capture in captures {
+                collect_value_support(capture, names);
+            }
+        }
         FunctionExprKind::Compose(outer, inner) => {
             collect_function_support(outer, names);
             collect_function_support(inner, names);
@@ -1472,6 +1678,27 @@ fn emit_value_expr(
                 emitted_function_name(func, helper_names),
                 rendered_args
             )
+        }
+        ValueExpr::ObjectGetterCall {
+            object,
+            getter,
+            point,
+            captures,
+            ..
+        } => {
+            let function_name = match getter {
+                ObjectGetter::Sdf => format!("sdf_{object}"),
+                ObjectGetter::Grad => format!("grad_sdf_{object}"),
+            };
+            let rendered_args = std::iter::once(emit_value_expr(point, helper_names, value_names))
+                .chain(
+                    captures
+                        .iter()
+                        .map(|arg| emit_value_expr(arg, helper_names, value_names)),
+                )
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{function_name}({rendered_args})")
         }
         ValueExpr::Array {
             element_ty,

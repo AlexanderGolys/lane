@@ -161,6 +161,7 @@ module.exports = grammar({
         _expression: ($) => choice(
             $.binary_expression,
             $.call_expression,
+            $.field_access_expression,
             $.index_expression,
             $.unary_expression,
             $.parenthesized_expression,
@@ -173,6 +174,7 @@ module.exports = grammar({
         call_expression: ($) => prec.left(PREC.call, seq(
             field('function', choice(
                 $.call_expression,
+                $.field_access_expression,
                 $.index_expression,
                 $.unary_expression,
                 $.parenthesized_expression,
@@ -187,6 +189,7 @@ module.exports = grammar({
         index_expression: ($) => prec.left(PREC.call, seq(
             field('array', choice(
                 $.call_expression,
+                $.field_access_expression,
                 $.index_expression,
                 $.unary_expression,
                 $.parenthesized_expression,
@@ -198,6 +201,21 @@ module.exports = grammar({
             '[',
             field('index', $._expression),
             ']',
+        )),
+
+        field_access_expression: ($) => prec.left(PREC.call, seq(
+            field('object', choice(
+                $.call_expression,
+                $.field_access_expression,
+                $.index_expression,
+                $.parenthesized_expression,
+                $.tuple_expression,
+                $.array_expression,
+                $.identifier,
+                $.number,
+            )),
+            '.',
+            field('field', $.identifier),
         )),
 
         argument_list: ($) => seq(

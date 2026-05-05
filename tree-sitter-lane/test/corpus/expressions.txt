@@ -72,6 +72,45 @@ generate Ball3D(r=1e-1) + (2e0, .5e+1, 3E-1)
         (number)))))
 
 ==================
+Object Getters
+==================
+
+R d = shell.sdf(p)
+R3 g = gradient(shell.sdf)(p) + shell.grad(p)
+
+---
+
+(source_file
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (field_access_expression
+        (identifier)
+        (identifier))
+      (argument_list
+        (identifier))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (binary_expression
+      (call_expression
+        (call_expression
+          (identifier)
+          (argument_list
+            (field_access_expression
+              (identifier)
+              (identifier))))
+        (argument_list
+          (identifier)))
+      (call_expression
+        (field_access_expression
+          (identifier)
+          (identifier))
+        (argument_list
+          (identifier))))))
+
+==================
 Arrays
 ==================
 

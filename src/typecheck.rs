@@ -10,6 +10,7 @@ impl TypedProgram {
             registry,
             program.ambient_dimension,
             program.derivative_epsilon,
+            &program.inputs,
             &program.product_types,
         );
 
@@ -141,6 +142,7 @@ impl TypedProgram {
                 name: binding.name.clone(),
                 expr,
                 generated: binding.generated,
+                dimension,
             });
         }
 
@@ -156,6 +158,7 @@ impl TypedProgram {
                     name: binding.name.clone(),
                     expr,
                     generated: true,
+                    dimension,
                 });
                 continue;
             }
@@ -170,6 +173,7 @@ impl TypedProgram {
                         name: binding.name.clone(),
                         expr,
                         generated: false,
+                        dimension,
                     });
                 }
                 Err(_) => {
@@ -246,6 +250,7 @@ struct Env<'a> {
     registry: &'a Registry,
     ambient_dimension: ShapeDimension,
     derivative_epsilon: f64,
+    scene_inputs: Vec<(String, Type, Option<usize>)>,
     product_types: HashMap<String, ProductTypeDecl>,
     values: HashMap<String, ValueInfo>,
     funcs: HashMap<String, Vec<FunctionInfo>>,
@@ -269,6 +274,7 @@ impl<'a> Env<'a> {
         registry: &'a Registry,
         ambient_dimension: ShapeDimension,
         derivative_epsilon: f64,
+        inputs: &[InputDecl],
         product_types: &[ProductTypeDecl],
     ) -> Self {
         let values = HashMap::new();
@@ -312,6 +318,11 @@ impl<'a> Env<'a> {
             registry,
             ambient_dimension,
             derivative_epsilon,
+            scene_inputs: inputs
+                .iter()
+                .filter(|input| value_type_scene_input(&input.ty))
+                .map(|input| (input.name.clone(), input.ty.clone(), None))
+                .collect(),
             product_types: product_types
                 .iter()
                 .map(|decl| (decl.name.clone(), decl.clone()))
@@ -401,6 +412,17 @@ impl<'a> Env<'a> {
 
     fn object_dimension(&self, name: &str) -> Option<ShapeDimension> {
         self.object_dimensions.get(name).copied()
+    }
+
+    fn scene_input_values(&self) -> Vec<ValueExpr> {
+        self.scene_inputs
+            .iter()
+            .map(|(name, ty, array_len)| ValueExpr::Var {
+                name: name.clone(),
+                ty: ty.clone(),
+                array_len: *array_len,
+            })
+            .collect()
     }
 
     fn product_type(&self, name: &str) -> Option<&ProductTypeDecl> {
@@ -645,9 +667,11 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             }
         }
         Expr::Call { .. } => infer_object_call(expr, env),
-        Expr::Number(_) | Expr::Tuple(_) | Expr::Array(_) | Expr::Index { .. } => {
-            Err(Error::new("expected an Object expression"))
-        }
+        Expr::Number(_)
+        | Expr::Tuple(_)
+        | Expr::Array(_)
+        | Expr::Index { .. }
+        | Expr::FieldAccess { .. } => Err(Error::new("expected an Object expression")),
         Expr::Binary { .. } => Err(Error::new("unsupported object expression")),
     }
 }
@@ -970,6 +994,9 @@ fn infer_value_expr(
     match expr {
         Expr::Number(value) => Ok(ValueExpr::Float(*value)),
         Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
+        Expr::FieldAccess { .. } => Err(Error::new(
+            "object getters are functions and must be called or passed as closures",
+        )),
         Expr::Tuple(items) => infer_tuple_value_expr(items, env, lift_param),
         Expr::Array(items) => infer_array_literal(items, env, lift_param, None),
         Expr::Index { array, index } => infer_index_expr(array, index, env, lift_param),
@@ -985,7 +1012,15 @@ fn infer_value_expr(
             }
             let name = match &**callee {
                 Expr::Ident(name) => name,
-                _ => return Err(Error::new("only named value functions are supported")),
+                _ => {
+                    let func = infer_function_expr(callee, env)?;
+                    if args.len() != 1 {
+                        return Err(Error::new("function closures expect one argument"));
+                    }
+                    let arg = infer_value_expr_for_type(&args[0], &func.input, env, lift_param)?;
+                    ensure_type(&arg.ty(), &func.input, "closure call")?;
+                    return Ok(apply_function_expr(&func, arg));
+                }
             };
             if let Some(result) = infer_type_constructor_call(name, args, env, lift_param)? {
                 return Ok(result);
@@ -1318,6 +1353,24 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
 }
 
 fn is_value_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Float
+            | Type::Int
+            | Type::Complex
+            | Type::Quat
+            | Type::E2
+            | Type::E3
+            | Type::Custom { .. }
+            | Type::Vec2
+            | Type::Vec3
+            | Type::Vec4
+            | Type::Mat(_, _)
+            | Type::Array(_)
+    )
+}
+
+fn value_type_scene_input(ty: &Type) -> bool {
     matches!(
         ty,
         Type::Float
@@ -1987,6 +2040,45 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                     name
                 ))),
             }
+        }
+        Expr::FieldAccess { object, field } => {
+            let Expr::Ident(object_name) = &**object else {
+                return Err(Error::new("object getter must target a named object"));
+            };
+            let getter = match field.as_str() {
+                "sdf" => ObjectGetter::Sdf,
+                "grad" => ObjectGetter::Grad,
+                _ => {
+                    return Err(Error::new(format!(
+                        "object '{}' has no getter '{}'",
+                        object_name, field
+                    )))
+                }
+            };
+            let ty = env
+                .get(object_name)
+                .ok_or_else(|| Error::new(format!("unknown identifier '{}'", object_name)))?;
+            if !matches!(ty, Type::Object | Type::Object2D) {
+                return Err(Error::new(format!("'{}' is not an object", object_name)));
+            }
+            let dimension = env
+                .object_dimension(object_name)
+                .or_else(|| object_type_dimension(ty))
+                .unwrap_or(env.ambient_dimension);
+            let input = ambient_vector_type(dimension);
+            let output = match getter {
+                ObjectGetter::Sdf => Type::Float,
+                ObjectGetter::Grad => ambient_vector_type(dimension),
+            };
+            Ok(vec![FunctionExpr {
+                input,
+                output,
+                kind: FunctionExprKind::ObjectGetter {
+                    object: object_name.clone(),
+                    getter,
+                    captures: env.scene_input_values(),
+                },
+            }])
         }
         Expr::Binary {
             op: BinOp::Compose,

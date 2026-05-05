@@ -16,6 +16,7 @@ enum Token {
     Minus,
     Star,
     Slash,
+    Dot,
     At,
     Arrow,
 }
@@ -498,6 +499,16 @@ impl ExprParser {
                         index: Box::new(index),
                     };
                 }
+                Some(Token::Dot) => {
+                    self.index += 1;
+                    let Some(Token::Ident(field)) = self.next() else {
+                        return Err(Error::new("expected field name after '.'"));
+                    };
+                    expr = Expr::FieldAccess {
+                        object: Box::new(expr),
+                        field,
+                    };
+                }
                 _ => break,
             }
         }
@@ -673,6 +684,7 @@ impl ExprParser {
             Token::Minus => "'-'".to_string(),
             Token::Star => "'*'".to_string(),
             Token::Slash => "'/'".to_string(),
+            Token::Dot => "'.'".to_string(),
             Token::At => "'@'".to_string(),
             Token::Arrow => "'->'".to_string(),
         }
@@ -759,6 +771,7 @@ fn tokenize(source: &str) -> Vec<Token> {
             '-' => Token::Minus,
             '*' => Token::Star,
             '/' => Token::Slash,
+            '.' => Token::Dot,
             '@' => Token::At,
             _ => panic!("unsupported token: {ch}"),
         };
