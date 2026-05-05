@@ -772,17 +772,42 @@ fn supports_const_output_declaration() {
     let source = "const Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
+    assert!(glsl.contains("vec3 grad_sdf_output(vec3 p) {"));
     assert!(glsl.contains("float scene_sdf(vec3 p) {"));
 }
 
 #[test]
 fn supports_multiple_const_object_declarations() {
-    let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2)\nconst Object output = union(a, b)\n";
+    let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_a("));
     assert!(glsl.contains("float sdf_b("));
-    assert!(glsl.contains("op_union"));
+    assert!(glsl.contains("vec3 grad_sdf_a("));
+    assert!(glsl.contains("vec3 grad_sdf_b("));
+    assert!(glsl.contains("return sdf0_Ball3D(p, ParamBall3D(2.0));"));
+    assert!(!glsl.contains("float scene_sdf("));
+}
+
+#[test]
+fn object_declarations_do_not_require_an_explicit_scene() {
+    let source = "Object a = Ball3D(r=1)\nObject b = Ball3D(r=2)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(!glsl.contains("float scene_sdf("));
+    assert!(!glsl.contains("float sdf_a("));
+    assert!(!glsl.contains("float sdf_b("));
+}
+
+#[test]
+fn const_object2d_declarations_emit_only_sdf_helpers() {
+    let source = "#2D\nconst Object2D shape = Box2D(a=2, b=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sdf_shape(vec2 p) {"));
+    assert!(!glsl.contains("grad_sdf_shape"));
+    assert!(!glsl.contains("float scene_sdf("));
 }
 
 #[test]

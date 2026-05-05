@@ -124,7 +124,7 @@ impl<'a> Parser<'a> {
                             ));
                         }
                         output = Some(OutputDecl {
-                            expr: binding.expr,
+                            expr: binding.expr.clone(),
                             line: binding.line,
                         });
                         continue;
@@ -139,7 +139,7 @@ impl<'a> Parser<'a> {
                             ));
                         }
                         output = Some(OutputDecl {
-                            expr: binding.expr,
+                            expr: binding.expr.clone(),
                             line: binding.line,
                         });
                         continue;
@@ -148,8 +148,6 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-
-        let output = output.ok_or_else(|| Error::new("missing const output declaration"))?;
 
         Ok(Program {
             ambient_dimension,

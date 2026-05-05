@@ -223,15 +223,30 @@ impl TypedProgram {
             }
         }
 
-        let output = infer_object_expr(&program.output.expr, &env)
-            .map_err(|err| err.with_line(program.output.line))?;
-        if program.ambient_dimension == ShapeDimension::D2
-            && object_dimension(&output, &env) != Some(ShapeDimension::D2)
-        {
-            return Err(
-                Error::new("const output expected Object2D in 2D ambient space")
-                    .with_line(program.output.line),
-            );
+        let output = program
+            .output
+            .as_ref()
+            .map(|output| {
+                let expr = infer_object_expr(&output.expr, &env)
+                    .map_err(|err| err.with_line(output.line))?;
+                if program.ambient_dimension == ShapeDimension::D2
+                    && object_dimension(&expr, &env) != Some(ShapeDimension::D2)
+                {
+                    return Err(
+                        Error::new("const output expected Object2D in 2D ambient space")
+                            .with_line(output.line),
+                    );
+                }
+                Ok(expr)
+            })
+            .transpose()?;
+        if let Some(output) = &output {
+            typed_bindings.push(TypedBinding {
+                name: "output".to_string(),
+                expr: output.clone(),
+                generated: true,
+                dimension: object_dimension(output, &env),
+            });
         }
 
         Ok(Self {

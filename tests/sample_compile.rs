@@ -76,6 +76,15 @@ vec3 dsl_centerB(float t) {
     return (vec3(1.0, sin(t), cos(t)) + (centerA(t) / 2.0));
 }
 
+float sdf_output(vec3 p, float time) {
+    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time))), dsl_hardness(time));
+}
+
+vec3 grad_sdf_output(vec3 p, float time) {
+    float eps = 0.0005;
+    return normalize(vec3(((sdf_output(p + vec3(eps, 0.0, 0.0), time) - sdf_output(p - vec3(eps, 0.0, 0.0), time)) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, eps, 0.0), time) - sdf_output(p - vec3(0.0, eps, 0.0), time)) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, 0.0, eps), time) - sdf_output(p - vec3(0.0, 0.0, eps), time)) / (2.0 * eps))));
+}
+
 float scene_sdf(vec3 p, float time) {
     return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time))), dsl_hardness(time));
 }

@@ -59,47 +59,52 @@ impl TypedProgram {
             ));
         }
 
-        lines.push(format!("float scene_sdf({}) {{", signature.join(", ")));
-        let scene_value_names =
-            self.needed_value_binding_names(&self.output, &object_bindings, &global_value_names);
-        lines.extend(self.emit_value_binding_lines(
-            &helper_names,
-            &global_value_names,
-            &scene_value_names,
-        ));
-        let output = emit_object_expr(
-            &self.output,
-            &locals.point,
-            self.ambient_dimension,
-            &object_bindings,
-            &helper_names,
-            &scene_input_names,
-        );
-        lines.push(format!("    return {};", output));
-        lines.push("}".to_string());
-
-        lines.push(String::new());
-        lines.push(format!(
-            "{} scene_grad({}) {{",
-            ambient_vector_glsl_type(self.ambient_dimension),
-            signature.join(", ")
-        ));
-        lines.push(format!(
-            "    float {} = {};",
-            locals.eps,
-            format_float(self.gradient_epsilon)
-        ));
-        lines.push(format!(
-            "    return normalize({});",
-            emit_sdf_gradient_expr(
-                "scene_sdf",
+        if let Some(scene_output) = &self.output {
+            lines.push(format!("float scene_sdf({}) {{", signature.join(", ")));
+            let scene_value_names = self.needed_value_binding_names(
+                scene_output,
+                &object_bindings,
+                &global_value_names,
+            );
+            lines.extend(self.emit_value_binding_lines(
+                &helper_names,
+                &global_value_names,
+                &scene_value_names,
+            ));
+            let output = emit_object_expr(
+                scene_output,
                 &locals.point,
-                &locals.eps,
+                self.ambient_dimension,
+                &object_bindings,
+                &helper_names,
                 &scene_input_names,
-                self.ambient_dimension
-            )
-        ));
-        lines.push("}".to_string());
+            );
+            lines.push(format!("    return {};", output));
+            lines.push("}".to_string());
+
+            lines.push(String::new());
+            lines.push(format!(
+                "{} scene_grad({}) {{",
+                ambient_vector_glsl_type(self.ambient_dimension),
+                signature.join(", ")
+            ));
+            lines.push(format!(
+                "    float {} = {};",
+                locals.eps,
+                format_float(self.gradient_epsilon)
+            ));
+            lines.push(format!(
+                "    return normalize({});",
+                emit_sdf_gradient_expr(
+                    "scene_sdf",
+                    &locals.point,
+                    &locals.eps,
+                    &scene_input_names,
+                    self.ambient_dimension
+                )
+            ));
+            lines.push("}".to_string());
+        }
 
         suffix_glsl_float_literals(&lines.join("\n"))
     }
@@ -290,29 +295,31 @@ impl TypedProgram {
         lines.push("}".to_string());
         lines.push(String::new());
 
-        lines.push(format!(
-            "{} grad_sdf_{}({}) {{",
-            ambient_vector_glsl_type(dimension),
-            binding.name,
-            signature.join(", ")
-        ));
-        lines.push(format!(
-            "    float {} = {};",
-            locals.eps,
-            format_float(self.gradient_epsilon)
-        ));
-        lines.push(format!(
-            "    return normalize({});",
-            emit_sdf_gradient_expr(
-                &format!("sdf_{}", binding.name),
-                &locals.point,
-                &locals.eps,
-                scene_input_names,
-                dimension,
-            )
-        ));
-        lines.push("}".to_string());
-        lines.push(String::new());
+        if dimension == ShapeDimension::D3 {
+            lines.push(format!(
+                "{} grad_sdf_{}({}) {{",
+                ambient_vector_glsl_type(dimension),
+                binding.name,
+                signature.join(", ")
+            ));
+            lines.push(format!(
+                "    float {} = {};",
+                locals.eps,
+                format_float(self.gradient_epsilon)
+            ));
+            lines.push(format!(
+                "    return normalize({});",
+                emit_sdf_gradient_expr(
+                    &format!("sdf_{}", binding.name),
+                    &locals.point,
+                    &locals.eps,
+                    scene_input_names,
+                    dimension,
+                )
+            ));
+            lines.push("}".to_string());
+            lines.push(String::new());
+        }
 
         lines
     }
@@ -376,7 +383,9 @@ impl TypedProgram {
         for binding in &self.bindings {
             collect_object_support(&binding.expr, &mut names);
         }
-        collect_object_support(&self.output, &mut names);
+        if let Some(output) = &self.output {
+            collect_object_support(output, &mut names);
+        }
         for product_type in &self.product_types {
             if product_type.eager_ops {
                 names.insert(product_type_type_support_name(&product_type.name));
@@ -451,7 +460,9 @@ impl TypedProgram {
         for binding in &self.bindings {
             collect_object_getter_object_refs(&binding.expr, &mut names);
         }
-        collect_object_getter_object_refs(&self.output, &mut names);
+        if let Some(output) = &self.output {
+            collect_object_getter_object_refs(output, &mut names);
+        }
         names
     }
 
@@ -466,7 +477,9 @@ impl TypedProgram {
         for binding in &self.bindings {
             collect_object_concat_helpers(&binding.expr, &mut helpers);
         }
-        collect_object_concat_helpers(&self.output, &mut helpers);
+        if let Some(output) = &self.output {
+            collect_object_concat_helpers(output, &mut helpers);
+        }
         helpers.into_values().collect()
     }
 }

@@ -89,8 +89,9 @@ vim.lsp.enable("lane_lsp")
 ## Program Structure
 
 Lane source is line-oriented. Each non-empty, non-comment line is one
-declaration. A program must contain exactly one `const Object output` binding,
-which marks the final scene.
+declaration. `const Object` declarations export object helper functions.
+`const Object output` also keeps the legacy `scene_sdf` and `scene_grad`
+entrypoints, but a program does not need an explicit scene.
 
 ```lane
 provided R time
@@ -274,12 +275,13 @@ getter emits the same helper functions as `construct`, even for a plain
 
 ### `const Object name = object_expression`
 
-Exports a reusable SDF helper like `construct`, and also marks the final scene
-when the name is `output`. Use `const Object output = ...` exactly once.
+Exports a reusable SDF helper like `construct`. For 3D objects, Lane emits
+`sdf_name` and `grad_sdf_name`; for 2D objects, Lane emits `sdf_name`. The name
+does not need to be `output`.
 
 ```lane
 const Object shell = Ball3D(r=2)
-const Object output = Ball3D(r=1)
+const Object scene = Ball3D(r=1)
 ```
 
 ## Types
@@ -809,10 +811,10 @@ Every compilation emits:
 - support structs and helper functions for used primitives, operators, value
   functions, built-in algebraic types, and constructed product types;
 - user value functions named `dsl_name`;
-- generated object helpers `sdf_name` and `grad_sdf_name` for `construct` or
-  `const Object` bindings;
-- `float scene_sdf(vec3 p, ...)` and `vec3 scene_grad(vec3 p, ...)`, or `vec2`
-  point/gradient signatures under `#2D`.
+- generated object helpers for `construct` or `const Object` bindings:
+  `sdf_name` and `grad_sdf_name` for 3D objects, and `sdf_name` for 2D objects;
+- legacy `float scene_sdf(vec3 p, ...)` and `vec3 scene_grad(vec3 p, ...)`
+  entrypoints only when `const Object output` is present.
 
 Scene-invariant value bindings are emitted as global `const` values when
 possible. Generated local names are renamed if they would collide with user

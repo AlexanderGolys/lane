@@ -782,7 +782,7 @@ struct Program {
     value_bindings: Vec<ValueBindingDecl>,
     bindings: Vec<BindingDecl>,
     inferred_bindings: Vec<InferredBindingDecl>,
-    output: OutputDecl,
+    output: Option<OutputDecl>,
 }
 
 #[derive(Clone, Debug)]
@@ -1079,7 +1079,7 @@ struct TypedProgram {
     funcs: Vec<TypedFunc>,
     value_bindings: Vec<TypedValueBinding>,
     bindings: Vec<TypedBinding>,
-    output: ObjectExpr,
+    output: Option<ObjectExpr>,
 }
 
 #[derive(Clone, Debug)]
