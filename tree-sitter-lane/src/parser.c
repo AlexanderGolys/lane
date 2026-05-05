@@ -28,7 +28,7 @@ enum ts_symbol_identifiers {
   anon_sym_Mon = 6,
   anon_sym_Grp = 7,
   anon_sym_Ring = 8,
-  anon_sym_Field = 9,
+  anon_sym_DivRing = 9,
   anon_sym_VectR = 10,
   anon_sym_RAlg = 11,
   anon_sym_Set = 12,
@@ -102,7 +102,7 @@ static const char * const ts_symbol_names[] = {
   [anon_sym_Mon] = "type_identifier",
   [anon_sym_Grp] = "type_identifier",
   [anon_sym_Ring] = "type_identifier",
-  [anon_sym_Field] = "type_identifier",
+  [anon_sym_DivRing] = "type_identifier",
   [anon_sym_VectR] = "type_identifier",
   [anon_sym_RAlg] = "type_identifier",
   [anon_sym_Set] = "type_identifier",
@@ -176,7 +176,7 @@ static const TSSymbol ts_symbol_map[] = {
   [anon_sym_Mon] = anon_sym_Ab,
   [anon_sym_Grp] = anon_sym_Ab,
   [anon_sym_Ring] = anon_sym_Ab,
-  [anon_sym_Field] = anon_sym_Ab,
+  [anon_sym_DivRing] = anon_sym_Ab,
   [anon_sym_VectR] = anon_sym_Ab,
   [anon_sym_RAlg] = anon_sym_Ab,
   [anon_sym_Set] = anon_sym_Ab,
@@ -277,7 +277,7 @@ static const TSSymbolMetadata ts_symbol_metadata[] = {
     .visible = true,
     .named = true,
   },
-  [anon_sym_Field] = {
+  [anon_sym_DivRing] = {
     .visible = true,
     .named = true,
   },
@@ -1057,200 +1057,209 @@ static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
     case 0:
       ADVANCE_MAP(
         'A', 1,
-        'E', 2,
-        'F', 3,
-        'G', 4,
-        'H', 5,
-        'M', 6,
-        'R', 7,
-        'S', 8,
-        'V', 9,
-        'c', 10,
-        'p', 11,
-        'x', 12,
+        'D', 2,
+        'E', 3,
+        'F', 4,
+        'G', 5,
+        'H', 6,
+        'M', 7,
+        'R', 8,
+        'S', 9,
+        'V', 10,
+        'c', 11,
+        'p', 12,
+        'x', 13,
       );
       if (('\t' <= lookahead && lookahead <= '\r') ||
           lookahead == ' ') SKIP(0);
       END_STATE();
     case 1:
-      if (lookahead == 'b') ADVANCE(13);
-      if (lookahead == 'r') ADVANCE(14);
+      if (lookahead == 'b') ADVANCE(14);
+      if (lookahead == 'r') ADVANCE(15);
       END_STATE();
     case 2:
-      if (lookahead == 'n') ADVANCE(15);
+      if (lookahead == 'i') ADVANCE(16);
       END_STATE();
     case 3:
-      if (lookahead == 'i') ADVANCE(16);
-      if (lookahead == 'u') ADVANCE(17);
+      if (lookahead == 'n') ADVANCE(17);
       END_STATE();
     case 4:
-      if (lookahead == 'r') ADVANCE(18);
+      if (lookahead == 'u') ADVANCE(18);
       END_STATE();
     case 5:
-      if (lookahead == 'o') ADVANCE(19);
+      if (lookahead == 'r') ADVANCE(19);
       END_STATE();
     case 6:
       if (lookahead == 'o') ADVANCE(20);
       END_STATE();
     case 7:
-      if (lookahead == 'A') ADVANCE(21);
-      if (lookahead == 'i') ADVANCE(22);
+      if (lookahead == 'o') ADVANCE(21);
       END_STATE();
     case 8:
-      if (lookahead == 'e') ADVANCE(23);
+      if (lookahead == 'A') ADVANCE(22);
+      if (lookahead == 'i') ADVANCE(23);
       END_STATE();
     case 9:
       if (lookahead == 'e') ADVANCE(24);
       END_STATE();
     case 10:
-      if (lookahead == 'o') ADVANCE(25);
+      if (lookahead == 'e') ADVANCE(25);
       END_STATE();
     case 11:
-      if (lookahead == 'r') ADVANCE(26);
+      if (lookahead == 'o') ADVANCE(26);
       END_STATE();
     case 12:
-      ACCEPT_TOKEN(anon_sym_x);
-      END_STATE();
-    case 13:
-      ACCEPT_TOKEN(anon_sym_Ab);
-      END_STATE();
-    case 14:
       if (lookahead == 'r') ADVANCE(27);
       END_STATE();
+    case 13:
+      ACCEPT_TOKEN(anon_sym_x);
+      END_STATE();
+    case 14:
+      ACCEPT_TOKEN(anon_sym_Ab);
+      END_STATE();
     case 15:
-      if (lookahead == 'd') ADVANCE(28);
+      if (lookahead == 'r') ADVANCE(28);
       END_STATE();
     case 16:
-      if (lookahead == 'e') ADVANCE(29);
+      if (lookahead == 'v') ADVANCE(29);
       END_STATE();
     case 17:
-      if (lookahead == 'n') ADVANCE(30);
+      if (lookahead == 'd') ADVANCE(30);
       END_STATE();
     case 18:
-      if (lookahead == 'p') ADVANCE(31);
+      if (lookahead == 'n') ADVANCE(31);
       END_STATE();
     case 19:
-      if (lookahead == 'm') ADVANCE(32);
+      if (lookahead == 'p') ADVANCE(32);
       END_STATE();
     case 20:
-      if (lookahead == 'n') ADVANCE(33);
+      if (lookahead == 'm') ADVANCE(33);
       END_STATE();
     case 21:
-      if (lookahead == 'l') ADVANCE(34);
+      if (lookahead == 'n') ADVANCE(34);
       END_STATE();
     case 22:
-      if (lookahead == 'n') ADVANCE(35);
+      if (lookahead == 'l') ADVANCE(35);
       END_STATE();
     case 23:
-      if (lookahead == 't') ADVANCE(36);
+      if (lookahead == 'n') ADVANCE(36);
       END_STATE();
     case 24:
-      if (lookahead == 'c') ADVANCE(37);
+      if (lookahead == 't') ADVANCE(37);
       END_STATE();
     case 25:
-      if (lookahead == 'n') ADVANCE(38);
+      if (lookahead == 'c') ADVANCE(38);
       END_STATE();
     case 26:
-      if (lookahead == 'o') ADVANCE(39);
+      if (lookahead == 'n') ADVANCE(39);
       END_STATE();
     case 27:
-      if (lookahead == 'a') ADVANCE(40);
+      if (lookahead == 'o') ADVANCE(40);
       END_STATE();
     case 28:
-      ACCEPT_TOKEN(anon_sym_End);
+      if (lookahead == 'a') ADVANCE(41);
       END_STATE();
     case 29:
-      if (lookahead == 'l') ADVANCE(41);
+      if (lookahead == 'R') ADVANCE(42);
       END_STATE();
     case 30:
-      if (lookahead == 'c') ADVANCE(42);
+      ACCEPT_TOKEN(anon_sym_End);
       END_STATE();
     case 31:
-      ACCEPT_TOKEN(anon_sym_Grp);
+      if (lookahead == 'c') ADVANCE(43);
       END_STATE();
     case 32:
-      ACCEPT_TOKEN(anon_sym_Hom);
+      ACCEPT_TOKEN(anon_sym_Grp);
       END_STATE();
     case 33:
-      ACCEPT_TOKEN(anon_sym_Mon);
+      ACCEPT_TOKEN(anon_sym_Hom);
       END_STATE();
     case 34:
-      if (lookahead == 'g') ADVANCE(43);
+      ACCEPT_TOKEN(anon_sym_Mon);
       END_STATE();
     case 35:
       if (lookahead == 'g') ADVANCE(44);
       END_STATE();
     case 36:
-      ACCEPT_TOKEN(anon_sym_Set);
+      if (lookahead == 'g') ADVANCE(45);
       END_STATE();
     case 37:
-      if (lookahead == 't') ADVANCE(45);
+      ACCEPT_TOKEN(anon_sym_Set);
       END_STATE();
     case 38:
-      if (lookahead == 's') ADVANCE(46);
+      if (lookahead == 't') ADVANCE(46);
       END_STATE();
     case 39:
-      if (lookahead == 'v') ADVANCE(47);
+      if (lookahead == 's') ADVANCE(47);
       END_STATE();
     case 40:
-      if (lookahead == 'y') ADVANCE(48);
+      if (lookahead == 'v') ADVANCE(48);
       END_STATE();
     case 41:
-      if (lookahead == 'd') ADVANCE(49);
+      if (lookahead == 'y') ADVANCE(49);
       END_STATE();
     case 42:
-      ACCEPT_TOKEN(anon_sym_Func);
+      if (lookahead == 'i') ADVANCE(50);
       END_STATE();
     case 43:
-      ACCEPT_TOKEN(anon_sym_RAlg);
+      ACCEPT_TOKEN(anon_sym_Func);
       END_STATE();
     case 44:
-      ACCEPT_TOKEN(anon_sym_Ring);
+      ACCEPT_TOKEN(anon_sym_RAlg);
       END_STATE();
     case 45:
-      if (lookahead == 'R') ADVANCE(50);
+      ACCEPT_TOKEN(anon_sym_Ring);
       END_STATE();
     case 46:
-      if (lookahead == 't') ADVANCE(51);
+      if (lookahead == 'R') ADVANCE(51);
       END_STATE();
     case 47:
-      if (lookahead == 'i') ADVANCE(52);
+      if (lookahead == 't') ADVANCE(52);
       END_STATE();
     case 48:
-      ACCEPT_TOKEN(anon_sym_Array);
+      if (lookahead == 'i') ADVANCE(53);
       END_STATE();
     case 49:
-      ACCEPT_TOKEN(anon_sym_Field);
+      ACCEPT_TOKEN(anon_sym_Array);
       END_STATE();
     case 50:
-      ACCEPT_TOKEN(anon_sym_VectR);
+      if (lookahead == 'n') ADVANCE(54);
       END_STATE();
     case 51:
-      ACCEPT_TOKEN(anon_sym_const);
-      if (lookahead == 'r') ADVANCE(53);
+      ACCEPT_TOKEN(anon_sym_VectR);
       END_STATE();
     case 52:
-      if (lookahead == 'd') ADVANCE(54);
+      ACCEPT_TOKEN(anon_sym_const);
+      if (lookahead == 'r') ADVANCE(55);
       END_STATE();
     case 53:
-      if (lookahead == 'u') ADVANCE(55);
+      if (lookahead == 'd') ADVANCE(56);
       END_STATE();
     case 54:
-      if (lookahead == 'e') ADVANCE(56);
+      if (lookahead == 'g') ADVANCE(57);
       END_STATE();
     case 55:
-      if (lookahead == 'c') ADVANCE(57);
+      if (lookahead == 'u') ADVANCE(58);
       END_STATE();
     case 56:
-      if (lookahead == 'd') ADVANCE(58);
+      if (lookahead == 'e') ADVANCE(59);
       END_STATE();
     case 57:
-      if (lookahead == 't') ADVANCE(59);
+      ACCEPT_TOKEN(anon_sym_DivRing);
       END_STATE();
     case 58:
-      ACCEPT_TOKEN(anon_sym_provided);
+      if (lookahead == 'c') ADVANCE(60);
       END_STATE();
     case 59:
+      if (lookahead == 'd') ADVANCE(61);
+      END_STATE();
+    case 60:
+      if (lookahead == 't') ADVANCE(62);
+      END_STATE();
+    case 61:
+      ACCEPT_TOKEN(anon_sym_provided);
+      END_STATE();
+    case 62:
       ACCEPT_TOKEN(anon_sym_construct);
       END_STATE();
     default:
@@ -1440,7 +1449,7 @@ static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
     [anon_sym_Mon] = ACTIONS(1),
     [anon_sym_Grp] = ACTIONS(1),
     [anon_sym_Ring] = ACTIONS(1),
-    [anon_sym_Field] = ACTIONS(1),
+    [anon_sym_DivRing] = ACTIONS(1),
     [anon_sym_VectR] = ACTIONS(1),
     [anon_sym_RAlg] = ACTIONS(1),
     [anon_sym_Set] = ACTIONS(1),
@@ -1496,7 +1505,7 @@ static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
     [anon_sym_Mon] = ACTIONS(13),
     [anon_sym_Grp] = ACTIONS(13),
     [anon_sym_Ring] = ACTIONS(13),
-    [anon_sym_Field] = ACTIONS(13),
+    [anon_sym_DivRing] = ACTIONS(13),
     [anon_sym_VectR] = ACTIONS(13),
     [anon_sym_RAlg] = ACTIONS(13),
     [anon_sym_Set] = ACTIONS(13),
@@ -1535,7 +1544,7 @@ static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
     [anon_sym_Mon] = ACTIONS(13),
     [anon_sym_Grp] = ACTIONS(13),
     [anon_sym_Ring] = ACTIONS(13),
-    [anon_sym_Field] = ACTIONS(13),
+    [anon_sym_DivRing] = ACTIONS(13),
     [anon_sym_VectR] = ACTIONS(13),
     [anon_sym_RAlg] = ACTIONS(13),
     [anon_sym_Set] = ACTIONS(13),
@@ -1574,7 +1583,7 @@ static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
     [anon_sym_Mon] = ACTIONS(42),
     [anon_sym_Grp] = ACTIONS(42),
     [anon_sym_Ring] = ACTIONS(42),
-    [anon_sym_Field] = ACTIONS(42),
+    [anon_sym_DivRing] = ACTIONS(42),
     [anon_sym_VectR] = ACTIONS(42),
     [anon_sym_RAlg] = ACTIONS(42),
     [anon_sym_Set] = ACTIONS(42),
@@ -1613,7 +1622,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1644,7 +1653,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1675,7 +1684,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1706,7 +1715,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1740,7 +1749,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1771,7 +1780,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1802,7 +1811,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1833,7 +1842,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1864,7 +1873,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1895,7 +1904,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1926,7 +1935,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1957,7 +1966,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -1988,7 +1997,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2019,7 +2028,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2053,7 +2062,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2082,7 +2091,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2116,7 +2125,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2145,7 +2154,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2176,7 +2185,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2210,7 +2219,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2238,7 +2247,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2267,7 +2276,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2296,7 +2305,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2330,7 +2339,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2358,7 +2367,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2392,7 +2401,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2425,7 +2434,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2458,7 +2467,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2486,7 +2495,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2515,7 +2524,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2544,7 +2553,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2588,7 +2597,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2622,7 +2631,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2643,7 +2652,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2671,7 +2680,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2695,7 +2704,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2719,7 +2728,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2743,7 +2752,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2767,7 +2776,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2791,7 +2800,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2815,7 +2824,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2839,7 +2848,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -2863,7 +2872,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,
@@ -3237,7 +3246,7 @@ static const uint16_t ts_small_parse_table[] = {
       anon_sym_Mon,
       anon_sym_Grp,
       anon_sym_Ring,
-      anon_sym_Field,
+      anon_sym_DivRing,
       anon_sym_VectR,
       anon_sym_RAlg,
       anon_sym_Set,

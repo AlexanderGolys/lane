@@ -448,9 +448,9 @@ impl<'a> Env<'a> {
 }
 
 fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
-    if decl.category == AlgebraicCategory::Field {
+    if decl.category == AlgebraicCategory::DivRing {
         return Err(Error::new(format!(
-            "product type '{}' cannot be declared as Field",
+            "product type '{}' cannot be declared as DivRing",
             decl.name
         )));
     }
@@ -1196,7 +1196,7 @@ fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKin
             if matches!(ty, Type::Mat(rows, columns) if rows == columns) {
                 Some(NeutralKind::Identity)
             } else if has_category(ty, AlgebraicCategory::Ring)
-                || has_category(ty, AlgebraicCategory::Field)
+                || has_category(ty, AlgebraicCategory::DivRing)
                 || has_category(ty, AlgebraicCategory::RAlg)
             {
                 Some(NeutralKind::One)
@@ -2308,7 +2308,7 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         let category = match op {
             BinOp::Add | BinOp::Sub => AlgebraicCategory::Ab,
             BinOp::Mul => AlgebraicCategory::Mon,
-            BinOp::Div => AlgebraicCategory::Field,
+            BinOp::Div => AlgebraicCategory::DivRing,
             BinOp::Compose => unreachable!(),
         };
         if has_category(left, category) {

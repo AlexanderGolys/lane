@@ -186,7 +186,7 @@ globals such as `zero_G`, `one_G`, and `e_G` when those operations are needed.
 ### `[const] CATEGORY TypeName = TYPE x TYPE [{field, field}]`
 
 Constructs a nominal product type and emits a GLSL struct. Every component must
-satisfy the declared category or a subcategory. `Field` products are rejected.
+satisfy the declared category or a subcategory. `DivRing` products are rejected.
 
 ```lane
 Grp G = E3 x E2 {m, n}
@@ -209,7 +209,7 @@ G mult_G(G a, G b) {
 }
 ```
 
-Field names are optional:
+DivRing names are optional:
 
 ```lane
 Ab Pair = R2 x R3
@@ -396,15 +396,15 @@ Categories classify which algebraic operations are available.
 | `Mon` | monoid | `1`, `*` |
 | `Grp` | group | `e`/`I`, `*`, inverse helpers |
 | `Ring` | ring | `0`, `1`, `+`, `-`, `*` |
-| `Field` | field | ring operations and `/` |
+| `DivRing` | division ring | ring operations and `/` |
 | `VectR` | real vector space | `0`, `+`, `-`, scalar `*` and `/` |
 | `RAlg` | real algebra | ring operations and scalar multiplication |
 
 The category order used by Lane is:
 
 ```text
-Field < Grp < Mon < Set
-Field < Ring
+DivRing < Grp < Mon < Set
+DivRing < Ring
 Ring < Mon
 Ring < Ab
 RAlg < Ring

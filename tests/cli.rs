@@ -173,10 +173,10 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Field: Cat"));
+    assert!(stdout.contains("DivRing: Cat"));
     assert!(stdout.contains("VectR: Cat"));
-    assert!(stdout.contains("C: Field, RAlg"));
-    assert!(stdout.contains("H: Field, RAlg"));
+    assert!(stdout.contains("C: DivRing, RAlg"));
+    assert!(stdout.contains("H: DivRing, RAlg"));
     assert!(stdout.contains("E2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(!stdout.contains("cexp: Hom(C, C)"));
@@ -226,8 +226,8 @@ fn lists_all_builtin_items_from_command() {
     assert!(stdout.contains("Ball3D: {r: R}"));
     assert!(stdout.contains("Box2D: {a: R, b: R}"));
     assert!(stdout.contains("Polygon2D: { points: R2 list }"));
-    assert!(stdout.contains("Field: Cat"));
-    assert!(stdout.contains("C: Field, RAlg"));
+    assert!(stdout.contains("DivRing: Cat"));
+    assert!(stdout.contains("C: DivRing, RAlg"));
     assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("min: Hom(Rn × Rn, Rn) | Hom(Rn × R, Rn) | Hom(R × Rn, Rn)"));
@@ -290,7 +290,7 @@ fn shows_builtin_type_detail_from_cli() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("H: Field, RAlg"));
+    assert!(stdout.contains("H: DivRing, RAlg"));
     assert!(stdout.contains("#define H vec4"));
     assert!(stdout.contains("vec4 mult_H(vec4 a, vec4 b)"));
 }
@@ -298,14 +298,14 @@ fn shows_builtin_type_detail_from_cli() {
 #[test]
 fn shows_builtin_category_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .args(["--list-objects", "Field"])
+        .args(["--list-objects", "DivRing"])
         .output()
         .unwrap();
 
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(stdout, "Field: Cat\n");
+    assert_eq!(stdout, "DivRing: Cat\n");
 }
 
 #[test]
@@ -332,7 +332,7 @@ fn prints_bash_completion_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
-    assert!(stdout.contains("Ab Mon Grp Ring Field VectR RAlg"));
+    assert!(stdout.contains("Ab Mon Grp Ring DivRing VectR RAlg"));
     assert!(stdout.contains("C E2 E3"));
     assert!(stdout.contains("diff"));
     assert!(!stdout.contains("Complex diff E2"));

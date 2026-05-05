@@ -542,23 +542,23 @@ mod tests {
     #[test]
     fn highlights_builtin_type_names_as_types() {
         let highlighted =
-            highlight_builtin_object_line("H", "Field, RAlg", lane::KnownBuiltinObjectKind::Type);
+            highlight_builtin_object_line("H", "DivRing, RAlg", lane::KnownBuiltinObjectKind::Type);
 
         assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
-        assert!(highlighted.contains("\x1b[92mField\x1b[0m"));
+        assert!(highlighted.contains("\x1b[92mDivRing\x1b[0m"));
         assert!(highlighted.contains("\x1b[92mRAlg\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[33mField\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[33mDivRing\x1b[0m"));
         assert!(!highlighted.contains("\x1b[33mRAlg\x1b[0m"));
     }
 
     #[test]
     fn highlights_categories_as_bright_yellow_and_cat_as_white() {
         let highlighted =
-            highlight_builtin_object_line("Field", "Cat", lane::KnownBuiltinObjectKind::Category);
+            highlight_builtin_object_line("DivRing", "Cat", lane::KnownBuiltinObjectKind::Category);
 
-        assert!(highlighted.contains("\x1b[92mField\x1b[0m"));
+        assert!(highlighted.contains("\x1b[92mDivRing\x1b[0m"));
         assert!(highlighted.contains("\x1b[38;2;255;255;255mCat\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[33mField\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[33mDivRing\x1b[0m"));
         assert!(!highlighted.contains("\x1b[92mCat\x1b[0m"));
     }
 

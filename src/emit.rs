@@ -751,7 +751,7 @@ fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
             ProductOp::Mult,
             ProductOp::Scale,
         ],
-        AlgebraicCategory::Field | AlgebraicCategory::Set => &[],
+        AlgebraicCategory::DivRing | AlgebraicCategory::Set => &[],
     }
 }
 
@@ -1032,7 +1032,7 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
         ProductOp::One
             if has_category(ty, AlgebraicCategory::Grp)
                 && !has_category(ty, AlgebraicCategory::Ring)
-                && !has_category(ty, AlgebraicCategory::Field)
+                && !has_category(ty, AlgebraicCategory::DivRing)
                 && !has_category(ty, AlgebraicCategory::RAlg) =>
         {
             emit_component_neutral(ProductOp::Identity, ty)

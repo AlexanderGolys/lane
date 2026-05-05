@@ -295,16 +295,16 @@ fn lists_builtin_lane_objects() {
 
     assert!(objects
         .iter()
-        .any(|object| object.name == "Field" && object.ty == "Cat"));
+        .any(|object| object.name == "DivRing" && object.ty == "Cat"));
     assert!(objects
         .iter()
         .any(|object| object.name == "VectR" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "C" && object.ty == "Field, RAlg"));
+        .any(|object| object.name == "C" && object.ty == "DivRing, RAlg"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "H" && object.ty == "Field, RAlg"));
+        .any(|object| object.name == "H" && object.ty == "DivRing, RAlg"));
     assert!(objects
         .iter()
         .any(|object| object.name == "E2" && object.ty == "Grp"));
@@ -365,7 +365,7 @@ fn looks_up_builtin_object_detail() {
     let pow2 = known_builtin_object("pow2").unwrap();
     let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("H").unwrap();
-    let field = known_builtin_object("Field").unwrap();
+    let field = known_builtin_object("DivRing").unwrap();
     let gradient = known_builtin_object("gradient").unwrap();
 
     assert_eq!(revolution.ty, "Hom(R, Hom(Object2D, Object))");
@@ -377,10 +377,10 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(rot.body, "");
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
-    assert_eq!(complex.ty, "Field, RAlg");
+    assert_eq!(complex.ty, "DivRing, RAlg");
     assert!(complex.body.contains("#define Complex vec2"));
     assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert_eq!(quat.ty, "Field, RAlg");
+    assert_eq!(quat.ty, "DivRing, RAlg");
     assert!(quat.body.contains("#define H vec4"));
     assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
     let e2 = known_builtin_object("E2").unwrap();
@@ -651,10 +651,10 @@ fn rejects_duplicate_product_field_names() {
 
 #[test]
 fn rejects_product_field_types() {
-    let source = "Field G = C x H\nconst Object output = Ball3D(r=1)\n";
+    let source = "DivRing G = C x H\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
-    assert!(err.contains("product type 'G' cannot be declared as Field"));
+    assert!(err.contains("product type 'G' cannot be declared as DivRing"));
 }
 
 #[test]
@@ -750,12 +750,12 @@ fn rejects_category_names_as_value_binding_types() {
 
 #[test]
 fn rejects_category_names_as_provided_type_names() {
-    let source = "provided Grp Field\nconst Object output = Ball3D(r=1)\n";
+    let source = "provided Grp DivRing\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(
         err.to_string(),
-        "line 1: 'Field' cannot be used as a provided type name"
+        "line 1: 'DivRing' cannot be used as a provided type name"
     );
 }
 

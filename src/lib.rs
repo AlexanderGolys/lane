@@ -295,7 +295,7 @@ enum AlgebraicCategory {
     Mon,
     Grp,
     Ring,
-    Field,
+    DivRing,
     VectR,
     RAlg,
     Set,
@@ -324,8 +324,8 @@ const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 8] = [
         name: "Ring",
     },
     AlgebraicCategoryDef {
-        category: AlgebraicCategory::Field,
-        name: "Field",
+        category: AlgebraicCategory::DivRing,
+        name: "DivRing",
     },
     AlgebraicCategoryDef {
         category: AlgebraicCategory::VectR,
@@ -421,7 +421,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
         display_name: "R",
         support_glsl: None,
         categories: &[
-            AlgebraicCategory::Field,
+            AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
             AlgebraicCategory::RAlg,
             AlgebraicCategory::VectR,
@@ -440,7 +440,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
         display_name: "C",
         support_glsl: Some(COMPLEX_FIELD_SUPPORT_GLSL),
         categories: &[
-            AlgebraicCategory::Field,
+            AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
             AlgebraicCategory::RAlg,
             AlgebraicCategory::VectR,
@@ -473,7 +473,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
         display_name: "H",
         support_glsl: Some(QUAT_FIELD_SUPPORT_GLSL),
         categories: &[
-            AlgebraicCategory::Field,
+            AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
             AlgebraicCategory::RAlg,
             AlgebraicCategory::VectR,
@@ -691,17 +691,17 @@ fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> boo
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Mon)
             | (AlgebraicCategory::Ring, AlgebraicCategory::Ab)
             | (AlgebraicCategory::Ring, AlgebraicCategory::Mon)
-            | (AlgebraicCategory::Field, AlgebraicCategory::Grp)
-            | (AlgebraicCategory::Field, AlgebraicCategory::Ring)
-            | (AlgebraicCategory::Field, AlgebraicCategory::Ab)
-            | (AlgebraicCategory::Field, AlgebraicCategory::Mon)
+            | (AlgebraicCategory::DivRing, AlgebraicCategory::Grp)
+            | (AlgebraicCategory::DivRing, AlgebraicCategory::Ring)
+            | (AlgebraicCategory::DivRing, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::DivRing, AlgebraicCategory::Mon)
             | (AlgebraicCategory::Grp, AlgebraicCategory::Mon)
             | (AlgebraicCategory::VectR, AlgebraicCategory::Ab)
             | (AlgebraicCategory::Ab, AlgebraicCategory::Set)
             | (AlgebraicCategory::Mon, AlgebraicCategory::Set)
             | (AlgebraicCategory::Grp, AlgebraicCategory::Set)
             | (AlgebraicCategory::Ring, AlgebraicCategory::Set)
-            | (AlgebraicCategory::Field, AlgebraicCategory::Set)
+            | (AlgebraicCategory::DivRing, AlgebraicCategory::Set)
             | (AlgebraicCategory::VectR, AlgebraicCategory::Set)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Set)
     )
