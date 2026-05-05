@@ -886,6 +886,10 @@ enum ValueExpr {
         base: Box<ValueExpr>,
         ty: Type,
     },
+    BoolToNumberCast {
+        value: Box<ValueExpr>,
+        ty: Type,
+    },
     ObjectGetterCall {
         object: String,
         getter: ObjectGetter,
@@ -964,6 +968,7 @@ impl ValueExpr {
             Self::Var { ty, .. } => ty.clone(),
             Self::Call { ty, .. } => ty.clone(),
             Self::MonoidPow { ty, .. } => ty.clone(),
+            Self::BoolToNumberCast { ty, .. } => ty.clone(),
             Self::ObjectGetterCall { ty, .. } => ty.clone(),
             Self::Array { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
             Self::Index { ty, .. } => ty.clone(),

@@ -632,6 +632,9 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
             collect_object_getter_value_refs(exponent, names);
             collect_object_getter_value_refs(base, names);
         }
+        ValueExpr::BoolToNumberCast { value, .. } => {
+            collect_object_getter_value_refs(value, names);
+        }
         ValueExpr::ObjectGetterCall {
             object,
             point,
@@ -1451,6 +1454,9 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
             collect_concat_helpers(exponent, helpers);
             collect_concat_helpers(base, helpers);
         }
+        ValueExpr::BoolToNumberCast { value, .. } => {
+            collect_concat_helpers(value, helpers);
+        }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
         } => {
@@ -1546,6 +1552,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         ValueExpr::Binary { left, right, .. } => {
             is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
         }
+        ValueExpr::BoolToNumberCast { value, .. } => is_global_const_value_expr(value, names),
         ValueExpr::Array { .. }
         | ValueExpr::Index { .. }
         | ValueExpr::Concat { .. }
@@ -1631,6 +1638,9 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_refs(exponent, names);
             collect_value_refs(base, names);
         }
+        ValueExpr::BoolToNumberCast { value, .. } => {
+            collect_value_refs(value, names);
+        }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
         } => {
@@ -1715,6 +1725,9 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         ValueExpr::MonoidPow { exponent, base, .. } => {
             collect_value_function_refs(exponent, names);
             collect_value_function_refs(base, names);
+        }
+        ValueExpr::BoolToNumberCast { value, .. } => {
+            collect_value_function_refs(value, names);
         }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
@@ -1915,6 +1928,9 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_support(exponent, names);
             collect_value_support(base, names);
         }
+        ValueExpr::BoolToNumberCast { value, .. } => {
+            collect_value_support(value, names);
+        }
         ValueExpr::ObjectGetterCall {
             point,
             captures,
@@ -2063,6 +2079,14 @@ fn emit_value_expr(
             emit_value_expr(exponent, helper_names, value_names),
             emit_value_expr(base, helper_names, value_names)
         ),
+        ValueExpr::BoolToNumberCast { value, ty } => {
+            let value = emit_value_expr(value, helper_names, value_names);
+            match ty {
+                Type::Float => format!("({value} ? 1.0 : 0.0)"),
+                Type::Int => format!("({value} ? 1 : 0)"),
+                _ => unreachable!(),
+            }
+        }
         ValueExpr::ObjectGetterCall {
             object,
             getter,

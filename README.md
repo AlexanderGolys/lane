@@ -485,6 +485,16 @@ E3 identity_motion = E3(e, 0)
 When overloads conflict, Lane prefers the uncast numeric type if that resolves
 the call; otherwise an explicit expected type may be required.
 
+`Bool` values cast to `Z` or `R` when a numeric type is expected. `true` becomes
+`1` and `false` becomes `0`; this applies to literals, variables, and function
+results.
+
+```lane
+provided Bool enabled
+R weight = enabled
+Z count = enabled
+```
+
 ### Tuples
 
 Tuple literals construct vectors, complex numbers, quaternions, and matrices

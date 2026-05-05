@@ -1088,6 +1088,22 @@ fn infer_value_expr(
                         } else {
                             return Err(original_err);
                         }
+                    } else if let Some(right_cast) =
+                        try_bool_to_number_cast_value(&right, &left.ty())
+                    {
+                        if let Ok(ty) = infer_binary_type(*op, &left.ty(), &right_cast.ty()) {
+                            (left, right_cast, ty)
+                        } else {
+                            return Err(original_err);
+                        }
+                    } else if let Some(left_cast) =
+                        try_bool_to_number_cast_value(&left, &right.ty())
+                    {
+                        if let Ok(ty) = infer_binary_type(*op, &left_cast.ty(), &right.ty()) {
+                            (left_cast, right, ty)
+                        } else {
+                            return Err(original_err);
+                        }
                     } else if let Some(right_cast) = try_neutral_cast_value(&right, &left.ty()) {
                         if let Ok(ty) = infer_binary_type(*op, &left.ty(), &right_cast.ty()) {
                             (left, right_cast, ty)
@@ -1213,7 +1229,23 @@ fn infer_value_expr_for_type(
                 },
             ))
         }
-        (Type::Int, _) => infer_int_expr(expr, env, lift_param),
+        (Type::Float, _) => {
+            let value = infer_value_expr(expr, env, lift_param)?;
+            if let Some(cast) = try_bool_to_number_cast_value(&value, expected_ty) {
+                return Ok(cast);
+            }
+            Ok(value)
+        }
+        (Type::Int, _) => {
+            if matches!(expr, Expr::Number(_)) {
+                return infer_int_expr(expr, env, lift_param);
+            }
+            let value = infer_value_expr(expr, env, lift_param)?;
+            if let Some(cast) = try_bool_to_number_cast_value(&value, expected_ty) {
+                return Ok(cast);
+            }
+            Ok(value)
+        }
         (Type::Array(element_ty), Expr::Array(items)) => {
             infer_array_literal(items, env, lift_param, Some(element_ty))
         }
@@ -1288,6 +1320,9 @@ fn collect_lifted_param_type(
         ValueExpr::MonoidPow { exponent, base, .. } => {
             collect_lifted_param_type(exponent, name, ty)?;
             collect_lifted_param_type(base, name, ty)?;
+        }
+        ValueExpr::BoolToNumberCast { value, .. } => {
+            collect_lifted_param_type(value, name, ty)?;
         }
         ValueExpr::ObjectGetterCall {
             point, captures, ..
@@ -2770,6 +2805,16 @@ fn try_int_literal_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<V
     } else {
         None
     }
+}
+
+fn try_bool_to_number_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
+    if !matches!(expected_ty, Type::Float | Type::Int) || value.ty() != Type::Bool {
+        return None;
+    }
+    Some(ValueExpr::BoolToNumberCast {
+        value: Box::new(value.clone()),
+        ty: expected_ty.clone(),
+    })
 }
 
 fn try_neutral_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {

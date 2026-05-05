@@ -821,6 +821,19 @@ fn supports_bool_field_values_and_builtins() {
 }
 
 #[test]
+fn casts_bool_values_to_expected_numeric_types() {
+    let source = "provided Bool flag\nprovided Hom(R, Bool) pred\nprovided Hom(Z, R) measure\nprovided Z count\nconst R literal = true\nR variable = flag\nR call = pred(0)\nR mixed = 2 + flag\nZ total = count + pred(1)\nR radius = literal + variable + call + mixed + measure(total)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("const float literal = (true ? 1.0 : 0.0);"));
+    assert!(glsl.contains("float variable = (flag ? 1.0 : 0.0);"));
+    assert!(glsl.contains("float call = (pred(0.0) ? 1.0 : 0.0);"));
+    assert!(glsl.contains("float mixed = (2.0 + (flag ? 1.0 : 0.0));"));
+    assert!(glsl.contains("int total = (count + (pred(1.0) ? 1 : 0));"));
+    assert!(glsl.contains("measure(total)"));
+}
+
+#[test]
 fn supports_comparison_operators() {
     let source = "provided Hom(Bool, R) choose\nprovided R time\nprovided Z count\nconst Bool scalar_order = 1 + time <= 3\nconst Bool int_order = count < 4\nconst Bool bool_equal = true == false\nconst Bool int_not_equal = count != 0\nconst R radius = choose(or(and(scalar_order, int_order), and(bool_equal, int_not_equal)))\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
