@@ -524,7 +524,7 @@ fn supports_default_gradient_operator_for_scalar_fields() {
 
 #[test]
 fn emits_support_for_custom_complex_functions() {
-    let source = "Complex seed = (1, 0)\nFunc(Float, C) orbit = exp(seed)\nconst Object output = Ball3D(r=1)\n";
+    let source = "Complex seed = (1, 0)\nconst Func(Float, C) orbit = exp(seed)\nconst Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 exp(vec2 z) {"));
@@ -893,6 +893,16 @@ fn const_value_expressions_lift_object_getters_over_points() {
     assert!(glsl.contains("vec4 dsl_color(vec2 t) {"));
     assert!(glsl.contains("sdf_rect(t) * color1"));
     assert!(glsl.contains("sdf_ball(t) * color2"));
+    assert!(glsl.contains("float sdf_scene(vec2 p) {"));
+}
+
+#[test]
+fn omits_non_const_functions_not_used_by_const_outputs() {
+    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\ncolor = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 dsl_center(float t)"));
+    assert!(!glsl.contains("vec4 dsl_color(vec2 t)"));
     assert!(glsl.contains("float sdf_scene(vec2 p) {"));
 }
 

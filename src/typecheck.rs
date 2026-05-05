@@ -100,6 +100,7 @@ impl TypedProgram {
                 input: input_ty,
                 output: output_ty,
                 expr,
+                generated: func.generated,
             });
         }
 
@@ -189,6 +190,7 @@ impl TypedProgram {
                                     input,
                                     output,
                                     expr,
+                                    generated: binding.generated,
                                 });
                                 continue;
                             }
@@ -211,6 +213,7 @@ impl TypedProgram {
                                         array_len: None,
                                     },
                                 ),
+                                generated: binding.generated,
                             });
                             continue;
                         }

@@ -16,7 +16,9 @@ impl TypedProgram {
         }
 
         let global_value_names = self.global_value_binding_names();
-        for line in self.emit_global_value_binding_lines(&global_value_names, &self.func_names()) {
+        let emitted_func_names = self.emitted_func_names();
+        let helper_names = self.func_names();
+        for line in self.emit_global_value_binding_lines(&global_value_names, &helper_names) {
             lines.push(line);
         }
         if !global_value_names.is_empty() {
@@ -24,6 +26,9 @@ impl TypedProgram {
         }
 
         for func in &self.funcs {
+            if !emitted_func_names.contains(&func.name) {
+                continue;
+            }
             let func_var_names = HashMap::from([("t".to_string(), locals.func_param.clone())]);
             lines.push(format!(
                 "{} {}({} {}) {{",
@@ -34,7 +39,7 @@ impl TypedProgram {
             ));
             lines.push(format!(
                 "    return {};",
-                emit_value_expr(&func.expr, &self.func_names(), &func_var_names)
+                emit_value_expr(&func.expr, &helper_names, &func_var_names)
             ));
             lines.push("}".to_string());
             lines.push(String::new());
@@ -43,7 +48,6 @@ impl TypedProgram {
         let signature = self.scene_signature(&locals.point);
         let scene_input_names = self.scene_input_names();
         let object_bindings = self.object_bindings();
-        let helper_names = self.func_names();
         let object_getter_bindings = self.object_getter_bindings();
 
         for binding in &self.bindings {
@@ -174,6 +178,59 @@ impl TypedProgram {
                 && !matches!(binding.ty, Type::Array(_))
             {
                 names.insert(binding.name.clone());
+            }
+        }
+        names
+    }
+
+    fn emitted_func_names(&self) -> BTreeSet<String> {
+        let mut names = self
+            .funcs
+            .iter()
+            .filter_map(|func| func.generated.then_some(func.name.clone()))
+            .collect::<BTreeSet<_>>();
+
+        for binding in &self.value_bindings {
+            if binding.generated {
+                collect_value_function_refs(&binding.expr, &mut names);
+            }
+        }
+        let object_bindings = self.object_bindings();
+        let global_value_names = self.global_value_binding_names();
+        let mut needed_value_names = BTreeSet::new();
+        for binding in &self.bindings {
+            if binding.generated {
+                collect_object_function_refs(&binding.expr, &object_bindings, &mut names);
+                needed_value_names.extend(self.needed_value_binding_names(
+                    &binding.expr,
+                    &object_bindings,
+                    &global_value_names,
+                ));
+            }
+        }
+        if let Some(output) = &self.output {
+            collect_object_function_refs(output, &object_bindings, &mut names);
+            needed_value_names.extend(self.needed_value_binding_names(
+                output,
+                &object_bindings,
+                &global_value_names,
+            ));
+        }
+        for binding in &self.value_bindings {
+            if needed_value_names.contains(&binding.name) {
+                collect_value_function_refs(&binding.expr, &mut names);
+            }
+        }
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for func in &self.funcs {
+                if names.contains(&func.name) {
+                    let before = names.len();
+                    collect_value_function_refs(&func.expr, &mut names);
+                    changed |= names.len() != before;
+                }
             }
         }
         names
@@ -1484,6 +1541,133 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_refs(epsilon, names);
             collect_value_refs(direction, names);
             collect_value_refs(at, names);
+        }
+    }
+}
+
+fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
+    match expr {
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. }
+        | ValueExpr::Var { .. } => {}
+        ValueExpr::Call { func, args, .. } => {
+            names.insert(func.clone());
+            for arg in args {
+                collect_value_function_refs(arg, names);
+            }
+        }
+        ValueExpr::ObjectGetterCall {
+            point, captures, ..
+        } => {
+            collect_value_function_refs(point, names);
+            for capture in captures {
+                collect_value_function_refs(capture, names);
+            }
+        }
+        ValueExpr::Array { elements, .. } => {
+            for element in elements {
+                collect_value_function_refs(element, names);
+            }
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_value_function_refs(array, names);
+            collect_value_function_refs(index, names);
+        }
+        ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
+            collect_value_function_refs(left, names);
+            collect_value_function_refs(right, names);
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_value_function_refs(x, names);
+            collect_value_function_refs(y, names);
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_value_function_refs(x, names);
+            collect_value_function_refs(y, names);
+            collect_value_function_refs(z, names);
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_value_function_refs(x, names);
+            collect_value_function_refs(y, names);
+            collect_value_function_refs(z, names);
+            collect_value_function_refs(w, names);
+        }
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_value_function_refs(row, names);
+            }
+        }
+        ValueExpr::Derivative { epsilon, at, .. }
+        | ValueExpr::Partial { epsilon, at, .. }
+        | ValueExpr::Gradient { epsilon, at, .. }
+        | ValueExpr::Divergence { epsilon, at, .. } => {
+            collect_value_function_refs(epsilon, names);
+            collect_value_function_refs(at, names);
+        }
+        ValueExpr::DirectionalDerivative {
+            epsilon,
+            direction,
+            at,
+            ..
+        } => {
+            collect_value_function_refs(epsilon, names);
+            collect_value_function_refs(direction, names);
+            collect_value_function_refs(at, names);
+        }
+    }
+}
+
+fn collect_object_function_refs(
+    expr: &ObjectExpr,
+    object_bindings: &BTreeMap<String, ObjectBinding>,
+    names: &mut BTreeSet<String>,
+) {
+    match expr {
+        ObjectExpr::Var(name) => {
+            if let Some(binding) = object_bindings.get(name) {
+                if !binding.generated {
+                    collect_object_function_refs(&binding.expr, object_bindings, names);
+                }
+            }
+        }
+        ObjectExpr::Primitive { fields, .. } => {
+            for (_, value) in fields {
+                match value {
+                    PrimitiveArgExpr::Value(value) => collect_value_function_refs(value, names),
+                    PrimitiveArgExpr::Vec2List(vertices) => {
+                        for vertex in vertices {
+                            collect_value_function_refs(vertex, names);
+                        }
+                    }
+                }
+            }
+        }
+        ObjectExpr::AmbientTransform {
+            object,
+            translation,
+            linear,
+        } => {
+            collect_value_function_refs(translation, names);
+            collect_value_function_refs(linear, names);
+            collect_object_function_refs(object, object_bindings, names);
+        }
+        ObjectExpr::IsometryTransform { object, transform } => {
+            collect_value_function_refs(transform, names);
+            collect_object_function_refs(object, object_bindings, names);
+        }
+        ObjectExpr::RegisteredOp {
+            value_args,
+            object_args,
+            ..
+        } => {
+            for arg in value_args {
+                collect_value_function_refs(arg, names);
+            }
+            for arg in object_args {
+                collect_object_function_refs(arg, object_bindings, names);
+            }
         }
     }
 }

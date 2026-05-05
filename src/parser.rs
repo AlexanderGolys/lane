@@ -239,6 +239,7 @@ impl<'a> Parser<'a> {
                 name: name.to_string(),
                 ty,
                 expr,
+                generated,
                 line: line_number,
             }));
         }

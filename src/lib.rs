@@ -745,6 +745,7 @@ struct FuncDecl {
     name: String,
     ty: Type,
     expr: Expr,
+    generated: bool,
     line: usize,
 }
 
@@ -1123,6 +1124,7 @@ struct TypedFunc {
     input: Type,
     output: Type,
     expr: ValueExpr,
+    generated: bool,
 }
 
 #[derive(Clone, Debug)]
