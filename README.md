@@ -676,7 +676,7 @@ Registered GLSL functions include:
 - Fragment derivative functions: `dFdx`, `dFdy`, `fwidth`.
 - Complex overloads: `inv`, `exp`, `log`, `sqrt`, `sin`, `cos`, `tan`, `sinh`,
   `cosh`, `tanh` on `C`.
-- Bool helpers: `boolNot`, `boolAnd`, `boolOr`, `boolXor`.
+- Bool helpers: `not`, `and`, `or`, `xor`.
 
 Sampler, image, atomic, packing, and out-parameter GLSL builtins are not
 registered yet because Lane does not have the corresponding value types or

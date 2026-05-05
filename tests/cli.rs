@@ -183,8 +183,11 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(stdout.contains("pow: Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)"));
     assert!(stdout.contains("Hom(C × C, C)"));
-    assert!(stdout.contains("boolNot: Hom(Bool, Bool)"));
-    assert!(stdout.contains("boolAnd: Hom(Bool × Bool, Bool)"));
+    assert!(stdout.contains("not: Hom(Bool, Bool)"));
+    assert!(stdout.contains("and: Hom(Bool × Bool, Bool)"));
+    assert!(stdout.contains("or: Hom(Bool × Bool, Bool)"));
+    assert!(stdout.contains("xor: Hom(Bool × Bool, Bool)"));
+    assert!(!stdout.contains("boolNot: Hom(Bool, Bool)"));
     assert!(!stdout.contains("cexp: Hom(C, C)"));
     assert!(stdout.contains("union: Hom(Object × Object, Object)"));
     assert!(stdout.contains("smoothUnion: Hom(R, Hom(Object × Object, Object))"));

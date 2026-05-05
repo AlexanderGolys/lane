@@ -326,10 +326,17 @@ fn lists_builtin_lane_objects() {
     }));
     assert!(objects
         .iter()
-        .any(|object| object.name == "boolNot" && object.ty == "Hom(Bool, Bool)"));
+        .any(|object| object.name == "not" && object.ty == "Hom(Bool, Bool)"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "boolAnd" && object.ty == "Hom(Bool × Bool, Bool)"));
+        .any(|object| object.name == "and" && object.ty == "Hom(Bool × Bool, Bool)"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "or" && object.ty == "Hom(Bool × Bool, Bool)"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "xor" && object.ty == "Hom(Bool × Bool, Bool)"));
+    assert!(!objects.iter().any(|object| object.name == "boolNot"));
     assert!(!objects.iter().any(|object| object.name == "cexp"));
     assert!(objects
         .iter()
@@ -380,7 +387,7 @@ fn looks_up_builtin_object_detail() {
     let revolution = known_builtin_object("revolution").unwrap();
     let pow2 = known_builtin_object("pow2").unwrap();
     let bool_ty = known_builtin_object("Bool").unwrap();
-    let bool_xor = known_builtin_object("boolXor").unwrap();
+    let bool_xor = known_builtin_object("xor").unwrap();
     let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("H").unwrap();
     let field = known_builtin_object("DivRing").unwrap();
@@ -401,7 +408,7 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(bool_ty.ty, "DivRing");
     assert_eq!(bool_ty.body, "");
     assert_eq!(bool_xor.ty, "Hom(Bool × Bool, Bool)");
-    assert!(bool_xor.body.contains("bool boolXor(bool a, bool b)"));
+    assert!(bool_xor.body.contains("bool xor(bool a, bool b)"));
     assert_eq!(complex.ty, "DivRing, RAlg");
     assert!(complex.body.contains("#define Complex vec2"));
     assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
@@ -802,14 +809,14 @@ fn casts_neutral_literals_to_expected_builtin_types() {
 
 #[test]
 fn supports_bool_field_values_and_builtins() {
-    let source = "provided Hom(Bool, R) choose\nconst Bool sum = true + false\nconst Bool product = sum * boolNot(false)\nconst Bool either = boolOr(product, false)\nconst R radius = choose(either)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided Hom(Bool, R) choose\nconst Bool sum = true + false\nconst Bool product = sum * not(false)\nconst Bool either = or(product, false)\nconst R radius = choose(either)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("bool boolNot(bool x)"));
-    assert!(glsl.contains("bool boolOr(bool a, bool b)"));
+    assert!(glsl.contains("bool not(bool x)"));
+    assert!(glsl.contains("bool or(bool a, bool b)"));
     assert!(glsl.contains("const bool sum = (true != false);"));
-    assert!(glsl.contains("bool product = (sum && boolNot(false));"));
-    assert!(glsl.contains("bool either = boolOr(product, false);"));
+    assert!(glsl.contains("bool product = (sum && not(false));"));
+    assert!(glsl.contains("bool either = or(product, false);"));
     assert!(glsl.contains("float radius = choose(either);"));
 }
 

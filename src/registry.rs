@@ -469,34 +469,34 @@ impl Default for Registry {
                 },
             ),
             (
-                "boolNot",
+                "not",
                 ValueFuncDef {
                     ty: Type::func(Type::Bool, Type::Bool),
-                    support_glsl: Some("bool boolNot(bool x) {\n    return !x;\n}"),
+                    support_glsl: Some("bool not(bool x) {\n    return !x;\n}"),
                     listed: true,
                 },
             ),
             (
-                "boolAnd",
+                "and",
                 ValueFuncDef {
                     ty: Type::func(Type::Product(vec![Type::Bool, Type::Bool]), Type::Bool),
-                    support_glsl: Some("bool boolAnd(bool a, bool b) {\n    return a && b;\n}"),
+                    support_glsl: Some("bool and(bool a, bool b) {\n    return a && b;\n}"),
                     listed: true,
                 },
             ),
             (
-                "boolOr",
+                "or",
                 ValueFuncDef {
                     ty: Type::func(Type::Product(vec![Type::Bool, Type::Bool]), Type::Bool),
-                    support_glsl: Some("bool boolOr(bool a, bool b) {\n    return a || b;\n}"),
+                    support_glsl: Some("bool or(bool a, bool b) {\n    return a || b;\n}"),
                     listed: true,
                 },
             ),
             (
-                "boolXor",
+                "xor",
                 ValueFuncDef {
                     ty: Type::func(Type::Product(vec![Type::Bool, Type::Bool]), Type::Bool),
-                    support_glsl: Some("bool boolXor(bool a, bool b) {\n    return a != b;\n}"),
+                    support_glsl: Some("bool xor(bool a, bool b) {\n    return a != b;\n}"),
                     listed: true,
                 },
             ),
