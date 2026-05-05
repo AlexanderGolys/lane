@@ -1,6 +1,7 @@
 // 2D ambient Lane syntax sample.
 
 #2D
+#prec 0.002
 provided R time
 provided Hom(R2, R) field
 

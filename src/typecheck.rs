@@ -6,7 +6,12 @@ impl TypedProgram {
             validate_product_type_decl(product_type)
                 .map_err(|err| err.with_line(product_type.line))?;
         }
-        let mut env = Env::new(registry, program.ambient_dimension, &program.product_types);
+        let mut env = Env::new(
+            registry,
+            program.ambient_dimension,
+            program.derivative_epsilon,
+            &program.product_types,
+        );
 
         for input in &program.inputs {
             validate_user_type(&input.ty).map_err(|err| err.with_line(input.line))?;
@@ -225,6 +230,7 @@ impl TypedProgram {
 
         Ok(Self {
             ambient_dimension: program.ambient_dimension,
+            gradient_epsilon: program.gradient_epsilon,
             product_types: program.product_types.clone(),
             inputs: program.inputs.clone(),
             funcs: typed_funcs,
@@ -239,6 +245,7 @@ impl TypedProgram {
 struct Env<'a> {
     registry: &'a Registry,
     ambient_dimension: ShapeDimension,
+    derivative_epsilon: f64,
     product_types: HashMap<String, ProductTypeDecl>,
     values: HashMap<String, ValueInfo>,
     funcs: HashMap<String, Vec<FunctionInfo>>,
@@ -260,6 +267,7 @@ impl<'a> Env<'a> {
     fn new(
         registry: &'a Registry,
         ambient_dimension: ShapeDimension,
+        derivative_epsilon: f64,
         product_types: &[ProductTypeDecl],
     ) -> Self {
         let values = HashMap::new();
@@ -291,6 +299,7 @@ impl<'a> Env<'a> {
         Self {
             registry,
             ambient_dimension,
+            derivative_epsilon,
             product_types: product_types
                 .iter()
                 .map(|decl| (decl.name.clone(), decl.clone()))
@@ -1702,9 +1711,13 @@ fn infer_gradient_builtin(
             Some(args[2]),
         )
     } else if args.len() == 2 {
-        (ValueExpr::Float(0.01), args[0], Some(args[1]))
+        (
+            ValueExpr::Float(env.derivative_epsilon),
+            args[0],
+            Some(args[1]),
+        )
     } else {
-        (ValueExpr::Float(0.01), args[0], None)
+        (ValueExpr::Float(env.derivative_epsilon), args[0], None)
     };
     ensure_type(&epsilon.ty(), &Type::Float, "gradient epsilon")?;
     let func = match infer_function_expr_for_type(func_arg, env, &Type::Float, &Type::Float) {

@@ -758,6 +758,36 @@ fn directive_2d_uses_object2d_ambient_space() {
 }
 
 #[test]
+fn directive_prec_sets_default_differential_precision() {
+    let source = "#prec 0.002\nprovided Hom(R3, R) density\nprovided R3 p\nFunc(R, R) slope = grad(sin)\nR3 normal = gradient(density)(p)\ngenerate Ball3D(r=slope(0) + density(normal))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float eps = 0.002;"));
+    assert!(glsl.contains("(sin((t + 0.002)) - sin((t - 0.002))) / (2.0 * 0.002)"));
+    assert!(glsl.contains("density((p + vec3(0.002, 0.0, 0.0)))"));
+    assert!(glsl.contains("density((p - vec3(0.0, 0.0, 0.002)))"));
+}
+
+#[test]
+fn directive_prec_accepts_scientific_notation() {
+    let source = "#prec 1e-3\ngenerate Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float eps = 0.001;"));
+}
+
+#[test]
+fn directive_prec_rejects_invalid_values() {
+    let source = "#prec nope\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+    assert!(err.contains("invalid #prec value 'nope'"));
+
+    let source = "#prec 0\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+    assert!(err.contains("#prec expects a positive float value"));
+}
+
+#[test]
 fn directive_2d_supports_2d_isometry_actions() {
     let source = "#2D\nE2 g = E2(e, (1, 2))\ngenerate g * Box2D(a=2, b=1)\n";
     let glsl = compile_program(source).unwrap();

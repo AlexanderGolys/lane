@@ -39,6 +39,8 @@ impl<'a> Parser<'a> {
         let mut inferred_bindings = Vec::new();
         let mut output = None;
         let mut ambient_dimension = ShapeDimension::D3;
+        let mut derivative_epsilon = 0.01;
+        let mut gradient_epsilon = 0.0005;
         let mut directives_open = true;
 
         for (line_index, raw_line) in self.source.lines().enumerate() {
@@ -52,8 +54,13 @@ impl<'a> Parser<'a> {
                     return Err(Error::new("directives must appear before declarations")
                         .with_line(line_number));
                 }
-                parse_directive(line, &mut ambient_dimension)
-                    .map_err(|err| err.with_line(line_number))?;
+                parse_directive(
+                    line,
+                    &mut ambient_dimension,
+                    &mut derivative_epsilon,
+                    &mut gradient_epsilon,
+                )
+                .map_err(|err| err.with_line(line_number))?;
                 continue;
             }
             directives_open = false;
@@ -123,6 +130,8 @@ impl<'a> Parser<'a> {
 
         Ok(Program {
             ambient_dimension,
+            derivative_epsilon,
+            gradient_epsilon,
             product_types,
             inputs,
             funcs,
@@ -248,14 +257,32 @@ fn strip_line_comment(line: &str) -> &str {
     line.split_once("//").map_or(line, |(before, _)| before)
 }
 
-fn parse_directive(line: &str, ambient_dimension: &mut ShapeDimension) -> Result<(), Error> {
-    match line {
-        "#2D" => {
-            *ambient_dimension = ShapeDimension::D2;
-            Ok(())
-        }
-        _ => Err(Error::new(format!("unsupported directive '{}'", line))),
+fn parse_directive(
+    line: &str,
+    ambient_dimension: &mut ShapeDimension,
+    derivative_epsilon: &mut f64,
+    gradient_epsilon: &mut f64,
+) -> Result<(), Error> {
+    if line == "#2D" {
+        *ambient_dimension = ShapeDimension::D2;
+        return Ok(());
     }
+    if let Some(rest) = line.strip_prefix("#prec") {
+        let value = rest.trim();
+        if value.is_empty() {
+            return Err(Error::new("#prec expects a positive float value"));
+        }
+        let parsed = value
+            .parse::<f64>()
+            .map_err(|_| Error::new(format!("invalid #prec value '{}'", value)))?;
+        if !parsed.is_finite() || parsed <= 0.0 {
+            return Err(Error::new("#prec expects a positive float value"));
+        }
+        *derivative_epsilon = parsed;
+        *gradient_epsilon = parsed;
+        return Ok(());
+    }
+    Err(Error::new(format!("unsupported directive '{}'", line)))
 }
 
 fn parse_product_type_decl(

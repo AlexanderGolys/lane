@@ -772,6 +772,8 @@ struct OutputDecl {
 #[derive(Clone, Debug)]
 struct Program {
     ambient_dimension: ShapeDimension,
+    derivative_epsilon: f64,
+    gradient_epsilon: f64,
     product_types: Vec<ProductTypeDecl>,
     inputs: Vec<InputDecl>,
     funcs: Vec<FuncDecl>,
@@ -1035,6 +1037,7 @@ struct TypedValueBinding {
 #[derive(Clone, Debug)]
 struct TypedProgram {
     ambient_dimension: ShapeDimension,
+    gradient_epsilon: f64,
     product_types: Vec<ProductTypeDecl>,
     inputs: Vec<InputDecl>,
     funcs: Vec<TypedFunc>,

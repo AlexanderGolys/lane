@@ -104,6 +104,9 @@ generate Ball3D(r=1 + time)
 
 ## Directives
 
+Directives are line-oriented declarations that start with `#`. They must appear
+before all non-directive declarations.
+
 ### `#2D`
 
 `#2D` switches the ambient SDF space from 3D to 2D. It must appear before other
@@ -118,6 +121,28 @@ generate shape
 
 Other `#...` lines are not language directives; the compiler treats unknown
 directives as errors.
+
+### `#prec VALUE`
+
+`#prec` sets the default finite-difference epsilon used by generated SDF
+gradients and by differential builtins that omit an explicit epsilon. The value
+must be a positive float literal.
+
+```lane
+#prec 0.002
+provided Hom(R3, R) density
+provided R3 p
+R3 normal = gradient(density)(p)
+Func(R, R) slope = grad(sin)
+generate Ball3D(r=slope(0) + density(normal))
+```
+
+Explicit epsilon arguments still override the directive:
+
+```lane
+#prec 0.002
+Func(R, R) slope = derivative(0.0001)(sin)
+```
 
 ## Declarations
 

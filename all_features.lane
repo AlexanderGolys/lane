@@ -1,6 +1,8 @@
 // Comprehensive 3D Lane syntax sample.
 // The 2D ambient directive is demonstrated in all_features_2d.lane.
 
+#prec 0.002
+
 provided R time
 provided Func(R, R) drive
 provided Hom(R3, R) density

@@ -83,7 +83,11 @@ impl TypedProgram {
             ambient_vector_glsl_type(self.ambient_dimension),
             signature.join(", ")
         ));
-        lines.push(format!("    float {} = 0.0005;", locals.eps));
+        lines.push(format!(
+            "    float {} = {};",
+            locals.eps,
+            format_float(self.gradient_epsilon)
+        ));
         lines.push(format!(
             "    return normalize({});",
             emit_sdf_gradient_expr(
@@ -286,7 +290,11 @@ impl TypedProgram {
             binding.name,
             signature.join(", ")
         ));
-        lines.push(format!("    float {} = 0.0005;", locals.eps));
+        lines.push(format!(
+            "    float {} = {};",
+            locals.eps,
+            format_float(self.gradient_epsilon)
+        ));
         lines.push(format!(
             "    return normalize({});",
             emit_sdf_gradient_expr(
