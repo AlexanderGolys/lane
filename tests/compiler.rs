@@ -533,6 +533,25 @@ fn emits_support_for_custom_complex_functions() {
 }
 
 #[test]
+fn supports_same_domain_function_products() {
+    let source = "provided Hom(R2, R) f\nprovided Hom(R x R, R) g\nHom(R2, R2) h = (f, g)\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 dsl_h(vec2 t)"));
+    assert!(glsl.contains("return vec2(f(t), g(t));"));
+    assert!(glsl.contains("length(dsl_h(uv))"));
+}
+
+#[test]
+fn supports_tensor_function_products() {
+    let source = "Hom(R2, R2) h = sin x cos\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 dsl_h(vec2 t)"));
+    assert!(glsl.contains("return vec2(sin(t[0]), cos(t[1]));"));
+}
+
+#[test]
 fn emits_glsl_builtin_scalar_vector_and_geometric_calls() {
     let source = "provided R3 v\nR3 n = normalize(v)\nR len = length(n)\nR angle = atan(len, 1)\nR3 bounced = reflect(v, n)\nR3 blended = mix(clamp(cross(n, bounced), -1, 1), refract(v, n, 0.5), 0.25)\nconst Object output = Ball3D(r=len + distance(blended, n) + dot(blended, n) + angle)\n";
     let glsl = compile_program(source).unwrap();

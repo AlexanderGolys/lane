@@ -599,6 +599,15 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
             collect_object_getter_function_refs(outer, names);
             collect_object_getter_function_refs(inner, names);
         }
+        FunctionExprKind::ProductSameDomain(funcs) => {
+            for func in funcs {
+                collect_object_getter_function_refs(func, names);
+            }
+        }
+        FunctionExprKind::ProductTensor(left, right) => {
+            collect_object_getter_function_refs(left, names);
+            collect_object_getter_function_refs(right, names);
+        }
     }
 }
 
@@ -729,7 +738,7 @@ fn product_op_for_binary(op: BinOp) -> Option<ProductOp> {
         BinOp::Sub => Some(ProductOp::Sub),
         BinOp::Mul => Some(ProductOp::Mult),
         BinOp::Div => Some(ProductOp::Inv),
-        BinOp::Compose => None,
+        BinOp::Product | BinOp::Compose => None,
     }
 }
 
@@ -1645,6 +1654,15 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
             collect_function_support(outer, names);
             collect_function_support(inner, names);
         }
+        FunctionExprKind::ProductSameDomain(funcs) => {
+            for func in funcs {
+                collect_function_support(func, names);
+            }
+        }
+        FunctionExprKind::ProductTensor(left, right) => {
+            collect_function_support(left, names);
+            collect_function_support(right, names);
+        }
     }
 }
 fn emit_value_expr(
@@ -1887,7 +1905,7 @@ fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> Str
         BinOp::Sub => format!("sub_{}({}, {})", name, left, right),
         BinOp::Mul => format!("mult_{}({}, {})", name, left, right),
         BinOp::Div => format!("mult_{}({}, inv_{}({}))", name, left, name, right),
-        BinOp::Compose => unreachable!(),
+        BinOp::Product | BinOp::Compose => unreachable!(),
     }
 }
 
@@ -1898,7 +1916,7 @@ fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> St
     match op {
         BinOp::Mul => format!("scale_{}({}, {})", name, value, scalar),
         BinOp::Div => format!("scale_{}({}, (1.0 / {}))", name, value, scalar),
-        BinOp::Add | BinOp::Sub | BinOp::Compose => unreachable!(),
+        BinOp::Add | BinOp::Sub | BinOp::Product | BinOp::Compose => unreachable!(),
     }
 }
 

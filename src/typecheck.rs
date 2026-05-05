@@ -79,8 +79,18 @@ impl TypedProgram {
                 .with_line(func.line));
             }
 
-            let expr = infer_value_expr_for_type(&func.expr, &output_ty, &env, Some("t"))
-                .map_err(|err| err.with_line(func.line))?;
+            let expr = match infer_function_expr_for_type(&func.expr, &env, &input_ty, &output_ty) {
+                Ok(func_expr) => apply_function_expr(
+                    &func_expr,
+                    ValueExpr::Var {
+                        name: "t".to_string(),
+                        ty: input_ty.clone(),
+                        array_len: None,
+                    },
+                ),
+                Err(_) => infer_value_expr_for_type(&func.expr, &output_ty, &env, Some("t"))
+                    .map_err(|err| err.with_line(func.line))?,
+            };
             ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
                 .map_err(|err| err.with_line(func.line))?;
             ensure_lift_param_type(&expr, "t", &input_ty)
@@ -1049,6 +1059,11 @@ fn infer_value_expr(
             left,
             right,
         } => infer_composed_value_expr(left, right, env, lift_param),
+        Expr::Binary {
+            op: BinOp::Product,
+            left,
+            right,
+        } => infer_function_product_value_expr(left, right, env, lift_param),
         Expr::Binary { op, left, right } => {
             let left = infer_value_expr(left, env, lift_param)?;
             let right = infer_value_expr(right, env, lift_param)?;
@@ -1159,6 +1174,23 @@ fn infer_value_expr_for_type(
                 ValueExpr::Var {
                     name: lift_param.unwrap().to_string(),
                     ty: Type::Float,
+                    array_len: None,
+                },
+            ))
+        }
+        (
+            Type::Vec2 | Type::Vec3 | Type::Vec4,
+            Expr::Binary {
+                op: BinOp::Product, ..
+            },
+        ) if lift_param.is_some() => {
+            let func = infer_function_expr(expr, env)?;
+            ensure_type(&func.output, expected_ty, "function product")?;
+            Ok(apply_function_expr(
+                &func,
+                ValueExpr::Var {
+                    name: lift_param.unwrap().to_string(),
+                    ty: func.input.clone(),
                     array_len: None,
                 },
             ))
@@ -2059,6 +2091,30 @@ fn infer_composed_value_expr(
     ))
 }
 
+fn infer_function_product_value_expr(
+    left: &Expr,
+    right: &Expr,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    let param_name = lift_param
+        .ok_or_else(|| Error::new("function products are only supported inside function bodies"))?;
+    let product = infer_function_expr(
+        &Expr::Binary {
+            op: BinOp::Product,
+            left: Box::new(left.clone()),
+            right: Box::new(right.clone()),
+        },
+        env,
+    )?;
+    let arg = ValueExpr::Var {
+        name: param_name.to_string(),
+        ty: product.input.clone(),
+        array_len: None,
+    };
+    Ok(apply_function_expr(&product, arg))
+}
+
 fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error> {
     let candidates = infer_function_expr_candidates(expr, env)?;
     if candidates.len() == 1 {
@@ -2076,10 +2132,46 @@ fn infer_function_expr_for_type(
     expected_input: &Type,
     expected_output: &Type,
 ) -> Result<FunctionExpr, Error> {
+    if let Expr::Tuple(items) = expr {
+        if let Some(count) = vector_dimension(expected_output) {
+            if count == items.len() {
+                let funcs = items
+                    .iter()
+                    .map(|item| {
+                        infer_function_expr_for_type(item, env, expected_input, &Type::Float)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                return Ok(FunctionExpr {
+                    input: expected_input.clone(),
+                    output: expected_output.clone(),
+                    kind: FunctionExprKind::ProductSameDomain(funcs),
+                });
+            }
+        }
+    }
+    if let Expr::Binary {
+        op: BinOp::Product,
+        left,
+        right,
+    } = expr
+    {
+        if expected_input == &Type::Vec2 && expected_output == &Type::Vec2 {
+            let left = infer_function_expr_for_type(left, env, &Type::Float, &Type::Float)?;
+            let right = infer_function_expr_for_type(right, env, &Type::Float, &Type::Float)?;
+            return Ok(FunctionExpr {
+                input: Type::Vec2,
+                output: Type::Vec2,
+                kind: FunctionExprKind::ProductTensor(Box::new(left), Box::new(right)),
+            });
+        }
+    }
     let candidates = infer_function_expr_candidates(expr, env)?;
     let matches = candidates
         .into_iter()
-        .filter(|func| &func.input == expected_input && &func.output == expected_output)
+        .filter(|func| {
+            types_equivalent(&func.input, expected_input)
+                && types_equivalent(&func.output, expected_output)
+        })
         .collect::<Vec<_>>();
     if matches.len() == 1 {
         return Ok(matches.into_iter().next().unwrap());
@@ -2217,10 +2309,111 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             }
             Ok(candidates)
         }
+        Expr::Tuple(items) => infer_same_domain_function_product_candidates(items, env),
+        Expr::Binary {
+            op: BinOp::Product,
+            left,
+            right,
+        } => infer_tensor_function_product_candidates(left, right, env),
         _ => Err(Error::new(
             "function composition currently only supports named unary functions",
         )),
     }
+}
+
+fn infer_same_domain_function_product_candidates(
+    items: &[Expr],
+    env: &Env<'_>,
+) -> Result<Vec<FunctionExpr>, Error> {
+    if !(2..=4).contains(&items.len()) {
+        return Err(Error::new("function tuples support two to four functions"));
+    }
+    let mut funcs = Vec::new();
+    for item in items {
+        funcs.push(infer_function_expr(item, env)?);
+    }
+    let input = funcs[0].input.clone();
+    if funcs
+        .iter()
+        .any(|func| !types_equivalent(&func.input, &input))
+    {
+        return Err(Error::new(
+            "function tuple entries must have equivalent domains",
+        ));
+    }
+    let output = scalar_product_output(funcs.iter().map(|func| &func.output))?;
+    Ok(vec![FunctionExpr {
+        input: normalize_scalar_product_type(&input),
+        output,
+        kind: FunctionExprKind::ProductSameDomain(funcs),
+    }])
+}
+
+fn infer_tensor_function_product_candidates(
+    left: &Expr,
+    right: &Expr,
+    env: &Env<'_>,
+) -> Result<Vec<FunctionExpr>, Error> {
+    let left = infer_function_expr(left, env)?;
+    let right = infer_function_expr(right, env)?;
+    if left.input != Type::Float || right.input != Type::Float {
+        return Err(Error::new(
+            "function product syntax currently supports scalar domains",
+        ));
+    }
+    if left.output != Type::Float || right.output != Type::Float {
+        return Err(Error::new(
+            "function product syntax currently supports scalar codomains",
+        ));
+    }
+    Ok(vec![FunctionExpr {
+        input: Type::Vec2,
+        output: Type::Vec2,
+        kind: FunctionExprKind::ProductTensor(Box::new(left), Box::new(right)),
+    }])
+}
+
+fn scalar_product_output<'a>(parts: impl Iterator<Item = &'a Type>) -> Result<Type, Error> {
+    let count = parts
+        .map(scalar_product_part_len)
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| Error::new("function products currently require scalar codomains"))?
+        .into_iter()
+        .sum::<usize>();
+    match count {
+        2 => Ok(Type::Vec2),
+        3 => Ok(Type::Vec3),
+        4 => Ok(Type::Vec4),
+        _ => Err(Error::new(
+            "function products currently support R2, R3, and R4 codomains",
+        )),
+    }
+}
+
+fn scalar_product_part_len(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Float => Some(1),
+        Type::Product(parts) if parts.iter().all(|part| part == &Type::Float) => Some(parts.len()),
+        _ => None,
+    }
+}
+
+fn normalize_scalar_product_type(ty: &Type) -> Type {
+    match ty {
+        Type::Product(parts) if parts.iter().all(|part| part == &Type::Float) => {
+            match parts.len() {
+                2 => Type::Vec2,
+                3 => Type::Vec3,
+                4 => Type::Vec4,
+                _ => ty.clone(),
+            }
+        }
+        other => other.clone(),
+    }
+}
+
+fn types_equivalent(left: &Type, right: &Type) -> bool {
+    normalize_scalar_product_type(left) == normalize_scalar_product_type(right)
 }
 
 fn format_function_expr(expr: &Expr) -> String {
@@ -2399,7 +2592,7 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
             BinOp::Add | BinOp::Sub => AlgebraicCategory::Ab,
             BinOp::Mul => AlgebraicCategory::Mon,
             BinOp::Div => AlgebraicCategory::DivRing,
-            BinOp::Compose => unreachable!(),
+            BinOp::Product | BinOp::Compose => unreachable!(),
         };
         if has_category(left, category) {
             return Ok(left.clone());

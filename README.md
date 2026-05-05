@@ -604,6 +604,25 @@ Func(R, R) wave = pow2 @ sin
 R y = wave(time)
 ```
 
+### Function Products
+
+Tuples of functions with the same domain form a product-valued function. Products
+of `R` components are represented as `R2`, `R3`, or `R4`, so `R x R` and `R2`
+are equivalent in function domains and codomains.
+
+```lane
+Hom(R, R2) circle = (sin, cos)
+R2 p = circle(time)
+```
+
+`f x g` forms a product map for scalar functions, applying the left function to
+the first coordinate and the right function to the second.
+
+```lane
+Hom(R2, R2) warp = sin x cos
+R2 q = warp((1, 2))
+```
+
 ### Indexing `[]`
 
 Array indexing uses square brackets and integer indices.

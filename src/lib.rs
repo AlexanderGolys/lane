@@ -850,6 +850,7 @@ enum BinOp {
     Sub,
     Mul,
     Div,
+    Product,
     Compose,
 }
 
@@ -999,6 +1000,8 @@ enum FunctionExprKind {
         captures: Vec<ValueExpr>,
     },
     Compose(Box<FunctionExpr>, Box<FunctionExpr>),
+    ProductSameDomain(Vec<FunctionExpr>),
+    ProductTensor(Box<FunctionExpr>, Box<FunctionExpr>),
 }
 
 fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
@@ -1023,6 +1026,46 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             let inner_value = apply_function_expr(inner, arg);
             apply_function_expr(outer, inner_value)
         }
+        FunctionExprKind::ProductSameDomain(funcs) => product_value(
+            funcs
+                .iter()
+                .map(|func| apply_function_expr(func, arg.clone()))
+                .collect(),
+        ),
+        FunctionExprKind::ProductTensor(left, right) => {
+            let left_arg = ValueExpr::Index {
+                array: Box::new(arg.clone()),
+                index: Box::new(ValueExpr::Int(0)),
+                ty: left.input.clone(),
+            };
+            let right_arg = ValueExpr::Index {
+                array: Box::new(arg),
+                index: Box::new(ValueExpr::Int(1)),
+                ty: right.input.clone(),
+            };
+            product_value(vec![
+                apply_function_expr(left, left_arg),
+                apply_function_expr(right, right_arg),
+            ])
+        }
+    }
+}
+
+fn product_value(values: Vec<ValueExpr>) -> ValueExpr {
+    match values.as_slice() {
+        [x, y] => ValueExpr::Vec2(Box::new(x.clone()), Box::new(y.clone())),
+        [x, y, z] => ValueExpr::Vec3(
+            Box::new(x.clone()),
+            Box::new(y.clone()),
+            Box::new(z.clone()),
+        ),
+        [x, y, z, w] => ValueExpr::Vec4(
+            Box::new(x.clone()),
+            Box::new(y.clone()),
+            Box::new(z.clone()),
+            Box::new(w.clone()),
+        ),
+        _ => unreachable!("function products only support R2, R3, and R4 outputs"),
     }
 }
 
@@ -1750,6 +1793,7 @@ impl BinOp {
             Self::Sub => "-",
             Self::Mul => "*",
             Self::Div => "/",
+            Self::Product => "x",
             Self::Compose => "@",
         }
     }

@@ -441,7 +441,7 @@ impl ExprParser {
     }
 
     fn parse_add_sub(&mut self) -> Result<Expr, Error> {
-        let mut expr = self.parse_mul_div()?;
+        let mut expr = self.parse_function_product()?;
         loop {
             let op = match self.peek() {
                 Some(Token::Plus) => BinOp::Add,
@@ -449,9 +449,29 @@ impl ExprParser {
                 _ => break,
             };
             self.index += 1;
-            let rhs = self.parse_mul_div()?;
+            let rhs = self.parse_function_product()?;
             expr = Expr::Binary {
                 op,
+                left: Box::new(expr),
+                right: Box::new(rhs),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_function_product(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.parse_mul_div()?;
+        loop {
+            let Some(Token::Ident(op)) = self.peek() else {
+                break;
+            };
+            if op != "x" {
+                break;
+            }
+            self.index += 1;
+            let rhs = self.parse_mul_div()?;
+            expr = Expr::Binary {
+                op: BinOp::Product,
                 left: Box::new(expr),
                 right: Box::new(rhs),
             };
@@ -835,7 +855,7 @@ fn parse_type_with_custom_types(
         for part in parts {
             parsed.push(parse_type_with_custom_types(part, custom_types)?);
         }
-        return Ok(Type::Product(parsed));
+        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
     }
     if category_by_name(source).is_some() {
         return Err(Error::new(format!(
@@ -893,9 +913,22 @@ fn parse_type_with_custom_types_for_ambient(
                 ambient_dimension,
             )?);
         }
-        return Ok(Type::Product(parsed));
+        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
     }
     parse_type_with_custom_types(source, custom_types)
+}
+
+fn scalar_product_type(parts: &[Type]) -> Option<Type> {
+    if !parts.iter().all(|part| part == &Type::Float) {
+        return None;
+    }
+    match parts.len() {
+        1 => Some(Type::Float),
+        2 => Some(Type::Vec2),
+        3 => Some(Type::Vec3),
+        4 => Some(Type::Vec4),
+        _ => None,
+    }
 }
 
 fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {
