@@ -1228,11 +1228,165 @@ fn format_object_type(ty: &Type) -> String {
 }
 
 fn format_overload_set(overloads: &[Type]) -> String {
-    overloads
-        .iter()
-        .map(format_object_type)
-        .collect::<Vec<_>>()
-        .join(" | ")
+    compact_overload_set(overloads).unwrap_or_else(|| {
+        overloads
+            .iter()
+            .map(format_object_type)
+            .collect::<Vec<_>>()
+            .join(" | ")
+    })
+}
+
+fn compact_overload_set(overloads: &[Type]) -> Option<String> {
+    let mut remaining = overloads.to_vec();
+    let mut parts = Vec::new();
+
+    take_pattern(
+        &mut remaining,
+        &transpose_matrix_overloads(),
+        "Hom(Matnxm, Matmxn)",
+        &mut parts,
+    );
+    take_pattern(
+        &mut remaining,
+        &same_matrix_overloads(),
+        "Hom(Matnxm × Matnxm, Matnxm)",
+        &mut parts,
+    );
+    take_pattern(
+        &mut remaining,
+        &square_matrix_to_float_overloads(),
+        "Hom(Matn, R)",
+        &mut parts,
+    );
+    take_pattern(
+        &mut remaining,
+        &square_matrix_overloads(),
+        "Hom(Matn, Matn)",
+        &mut parts,
+    );
+
+    for arity in [3, 2] {
+        let label = compact_same_type_label(arity);
+        take_pattern(
+            &mut remaining,
+            &same_type_float_gen_overloads(arity),
+            &label,
+            &mut parts,
+        );
+
+        let label = compact_vector_scalar_last_label(arity);
+        take_pattern(
+            &mut remaining,
+            &vector_scalar_last_overloads(arity),
+            &label,
+            &mut parts,
+        );
+        if arity > 2 {
+            let label = compact_vectors_then_scalar_label(arity);
+            take_pattern(
+                &mut remaining,
+                &vectors_then_scalar_overloads(arity),
+                &label,
+                &mut parts,
+            );
+        }
+
+        let label = compact_scalar_vector_first_label(arity);
+        take_pattern(
+            &mut remaining,
+            &scalar_vector_first_overloads(arity),
+            &label,
+            &mut parts,
+        );
+        if arity > 2 {
+            let label = compact_scalars_then_vector_label(arity);
+            take_pattern(
+                &mut remaining,
+                &scalars_then_vector_overloads(arity),
+                &label,
+                &mut parts,
+            );
+        }
+    }
+
+    take_pattern(
+        &mut remaining,
+        &unary_float_gen_type_overloads(),
+        "Hom(Rn, Rn)",
+        &mut parts,
+    );
+    take_pattern(
+        &mut remaining,
+        &vector_measure_overloads(2),
+        "Hom(Rn × Rn, R)",
+        &mut parts,
+    );
+    take_pattern(
+        &mut remaining,
+        &vector_measure_overloads(1),
+        "Hom(Rn, R)",
+        &mut parts,
+    );
+
+    for ty in remaining {
+        parts.push(format_object_type(&ty));
+    }
+
+    (!parts.is_empty()).then(|| parts.join(" | "))
+}
+
+fn take_pattern(remaining: &mut Vec<Type>, pattern: &[Type], label: &str, parts: &mut Vec<String>) {
+    if pattern.is_empty() || !contains_pattern(remaining, pattern) {
+        return;
+    }
+    for ty in pattern {
+        let index = remaining
+            .iter()
+            .position(|candidate| candidate == ty)
+            .unwrap();
+        remaining.remove(index);
+    }
+    parts.push(label.to_string());
+}
+
+fn contains_pattern(remaining: &[Type], pattern: &[Type]) -> bool {
+    let mut scratch = remaining.to_vec();
+    for ty in pattern {
+        let Some(index) = scratch.iter().position(|candidate| candidate == ty) else {
+            return false;
+        };
+        scratch.remove(index);
+    }
+    true
+}
+
+fn compact_same_type_label(arity: usize) -> String {
+    format!("Hom({}, Rn)", vec!["Rn"; arity].join(" × "))
+}
+
+fn compact_vector_scalar_last_label(arity: usize) -> String {
+    let mut args = vec!["Rn"];
+    args.extend(vec!["R"; arity - 1]);
+    format!("Hom({}, Rn)", args.join(" × "))
+}
+
+fn compact_vectors_then_scalar_label(arity: usize) -> String {
+    let mut args = vec!["Rn"; arity - 1];
+    args.push("R");
+    format!("Hom({}, Rn)", args.join(" × "))
+}
+
+fn compact_scalar_vector_first_label(arity: usize) -> String {
+    let mut args = vec!["R"];
+    args.extend(vec!["Rn"; arity - 1]);
+    format!("Hom({}, Rn)", args.join(" × "))
+}
+
+fn compact_scalars_then_vector_label(arity: usize) -> String {
+    let mut args = vec!["R"; arity - 1];
+    args.push("Rn");
+    format!("Hom({}, Rn)", args.join(" × "))
 }
 
 fn flatten_func_type<'a>(ty: &'a Type) -> (Vec<&'a Type>, &'a Type) {
@@ -1284,6 +1438,14 @@ fn flatten_call<'a>(expr: &'a Expr) -> Result<(String, Vec<&'a Expr>), Error> {
             _ => return Err(Error::new("unsupported callable object expression")),
         }
     }
+}
+
+fn listed_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
+    let mut overloads = glsl_builtin_value_func_overload_types(name).unwrap_or_default();
+    if COMPLEX_OVERLOAD_NAMES.contains(&name) {
+        overloads.push(Type::func(Type::Complex, Type::Complex));
+    }
+    (!overloads.is_empty()).then_some(overloads)
 }
 
 fn glsl_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
@@ -1340,8 +1502,8 @@ fn glsl_builtin_value_func_overloads() -> Vec<(&'static str, Vec<Type>)> {
         ("atan", unary_float_gen_type_overloads()),
         ("pow", same_type_float_gen_overloads(2)),
         ("mod", same_or_scalar_float_gen_overloads(2)),
-        ("min", same_or_scalar_float_gen_overloads(2)),
-        ("max", same_or_scalar_float_gen_overloads(2)),
+        ("min", same_or_scalar_symmetric_float_gen_overloads()),
+        ("max", same_or_scalar_symmetric_float_gen_overloads()),
         ("clamp", same_or_scalar_float_gen_overloads(3)),
         ("mix", same_prefix_scalar_last_float_gen_overloads()),
         ("step", scalar_or_same_first_float_gen_overloads()),
@@ -1399,12 +1561,58 @@ fn same_type_float_gen_overloads(arity: usize) -> Vec<Type> {
 
 fn same_or_scalar_float_gen_overloads(arity: usize) -> Vec<Type> {
     let mut overloads = same_type_float_gen_overloads(arity);
-    for ty in vector_types() {
-        let mut args = vec![ty.clone()];
-        args.extend(vec![Type::Float; arity - 1]);
-        overloads.push(func_type(args, ty));
-    }
+    overloads.extend(vector_scalar_last_overloads(arity));
     overloads
+}
+
+fn same_or_scalar_symmetric_float_gen_overloads() -> Vec<Type> {
+    let mut overloads = same_or_scalar_float_gen_overloads(2);
+    overloads.extend(scalar_vector_first_overloads(2));
+    overloads
+}
+
+fn vector_scalar_last_overloads(arity: usize) -> Vec<Type> {
+    vector_types()
+        .into_iter()
+        .map(|ty| {
+            let mut args = vec![ty.clone()];
+            args.extend(vec![Type::Float; arity - 1]);
+            func_type(args, ty)
+        })
+        .collect()
+}
+
+fn scalar_vector_first_overloads(arity: usize) -> Vec<Type> {
+    vector_types()
+        .into_iter()
+        .map(|ty| {
+            let mut args = vec![Type::Float];
+            args.extend(vec![ty.clone(); arity - 1]);
+            func_type(args, ty)
+        })
+        .collect()
+}
+
+fn vectors_then_scalar_overloads(arity: usize) -> Vec<Type> {
+    vector_types()
+        .into_iter()
+        .map(|ty| {
+            let mut args = vec![ty.clone(); arity - 1];
+            args.push(Type::Float);
+            func_type(args, ty)
+        })
+        .collect()
+}
+
+fn scalars_then_vector_overloads(arity: usize) -> Vec<Type> {
+    vector_types()
+        .into_iter()
+        .map(|ty| {
+            let mut args = vec![Type::Float; arity - 1];
+            args.push(ty.clone());
+            func_type(args, ty)
+        })
+        .collect()
 }
 
 fn scalar_or_same_first_float_gen_overloads() -> Vec<Type> {

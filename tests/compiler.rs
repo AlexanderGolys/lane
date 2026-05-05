@@ -347,15 +347,15 @@ fn lists_builtin_lane_objects() {
     }));
     assert!(objects
         .iter()
-        .any(|object| object.name == "sin" && object.ty.contains("Hom(R3, R3)")));
+        .any(|object| object.name == "sin" && object.ty == "Hom(Rn, Rn) | Hom(C, C)"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "clamp" && object.ty.contains("Hom(R3 × R × R, R3)")));
+        .any(|object| object.name == "clamp" && object.ty.contains("Hom(Rn × R × R, Rn)")));
     assert!(objects
         .iter()
-        .any(|object| object.name == "reflect" && object.ty.contains("Hom(R3 × R3, R3)")));
+        .any(|object| object.name == "reflect" && object.ty == "Hom(Rn × Rn, Rn)"));
     assert!(objects.iter().any(|object| {
-        object.name == "matrixCompMult" && object.ty.contains("Hom(Mat3 × Mat3, Mat3)")
+        object.name == "matrixCompMult" && object.ty == "Hom(Matnxm × Matnxm, Matnxm)"
     }));
 }
 
@@ -404,8 +404,8 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(gradient.ty, "Hom(Hom(R3, R), Hom(R3, R3))");
     assert_eq!(gradient.body, "");
     let clamp = known_builtin_object("clamp").unwrap();
-    assert!(clamp.ty.contains("Hom(R × R × R, R)"));
-    assert!(clamp.ty.contains("Hom(R3 × R × R, R3)"));
+    assert!(clamp.ty.contains("Hom(Rn × Rn × Rn, Rn)"));
+    assert!(clamp.ty.contains("Hom(Rn × R × R, Rn)"));
     assert_eq!(clamp.body, "");
 }
 
@@ -540,6 +540,15 @@ fn emits_glsl_builtin_matrix_calls() {
 
     assert!(glsl.contains("mat3 m = matrixCompMult(frame, inverse(transpose(frame)));"));
     assert!(glsl.contains("float d = determinant(m);"));
+}
+
+#[test]
+fn emits_scalar_first_min_max_as_valid_glsl_vector_calls() {
+    let source = "provided R edge\nprovided R2 uv\nR2 hi = max(edge, uv)\nR2 lo = min(edge, uv)\nconst Object output = Ball3D(r=length(hi) + length(lo))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 hi = max(uv, edge);"));
+    assert!(glsl.contains("vec2 lo = min(uv, edge);"));
 }
 
 #[test]

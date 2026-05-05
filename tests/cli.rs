@@ -189,9 +189,11 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("derivative: Hom(R, Hom(Hom(R, R), Hom(R, R)))"));
     assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
     assert!(stdout.contains("divergence: Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"));
-    assert!(stdout.contains("sin: Hom(R, R)"));
-    assert!(stdout.contains("clamp: Hom(R × R × R, R)"));
-    assert!(stdout.contains("reflect: Hom(R × R, R)"));
+    assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
+    assert!(stdout.contains("inv: Hom(C, C)"));
+    assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
+    assert!(stdout.contains("reflect: Hom(Rn × Rn, Rn)"));
+    assert!(stdout.contains("transpose: Hom(Matnxm, Matmxn)"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
 
@@ -226,9 +228,12 @@ fn lists_all_builtin_items_from_command() {
     assert!(stdout.contains("Polygon2D: { points: R2 list }"));
     assert!(stdout.contains("Field: Cat"));
     assert!(stdout.contains("C: Field, RAlg"));
-    assert!(stdout.contains("sin: Hom(R, R)"));
-    assert!(stdout.contains("clamp: Hom(R × R × R, R)"));
+    assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
+    assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
+    assert!(stdout.contains("min: Hom(Rn × Rn, Rn) | Hom(Rn × R, Rn) | Hom(R × Rn, Rn)"));
+    assert!(stdout.contains("transpose: Hom(Matnxm, Matmxn)"));
     assert!(stdout.contains("union: Hom(Object × Object, Object)"));
+    assert!(!stdout.contains("matrixCompMult:"));
     assert!(!stdout.contains("sdf0_Ball3D"));
     assert!(!stdout.contains("struct ParamBall3D"));
 }
@@ -244,7 +249,21 @@ fn lists_all_builtin_items_from_flag() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Ball3D: {r: R}"));
-    assert!(stdout.contains("sin: Hom(R, R)"));
+    assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
+}
+
+#[test]
+fn lists_all_builtin_items_from_short_flag() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg("-la")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Ball3D: {r: R}"));
+    assert!(stdout.contains("transpose: Hom(Matnxm, Matmxn)"));
 }
 
 #[test]
@@ -323,6 +342,7 @@ fn prints_bash_completion_from_cli() {
     assert!(stdout.contains("-l2"));
     assert!(stdout.contains("--list-objects"));
     assert!(stdout.contains("--list-all"));
+    assert!(stdout.contains("-la"));
     assert!(stdout.contains("list-all"));
 }
 
@@ -356,7 +376,7 @@ fn prints_help_from_cli() {
     assert!(stdout.contains("lane -l3, --list3d"));
     assert!(stdout.contains("lane -lo, --list-objects [NAME]"));
     assert!(stdout.contains("lane list-all"));
-    assert!(stdout.contains("lane --list-all"));
+    assert!(stdout.contains("lane -la, --list-all"));
     assert!(stdout.contains("lane -pc, --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h, --help"));
     assert!(stdout.contains("When TARGET is present"));

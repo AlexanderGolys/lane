@@ -759,13 +759,14 @@ impl Registry {
                 .into_iter()
                 .map(|(name, _)| name),
         );
+        value_func_names.extend(COMPLEX_OVERLOAD_NAMES);
         value_func_names.sort_unstable();
         value_func_names.dedup();
         for name in value_func_names {
             let ty = if let Some(func) = self.value_funcs.get(name).filter(|func| func.listed) {
                 format_object_type(&func.ty)
             } else {
-                format_overload_set(&glsl_builtin_value_func_overload_types(name).unwrap())
+                format_overload_set(&listed_builtin_value_func_overload_types(name).unwrap())
             };
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
@@ -778,7 +779,7 @@ impl Registry {
         op_names.sort_unstable();
         for name in op_names {
             if self.value_funcs.get(name).is_some_and(|func| func.listed)
-                || glsl_builtin_value_func_overload_types(name).is_some()
+                || listed_builtin_value_func_overload_types(name).is_some()
             {
                 continue;
             }
@@ -831,7 +832,7 @@ impl Registry {
             }
         }
 
-        if let Some(overloads) = glsl_builtin_value_func_overload_types(name) {
+        if let Some(overloads) = listed_builtin_value_func_overload_types(name) {
             return Some(KnownBuiltinObjectDetail {
                 name: name.to_string(),
                 ty: format_overload_set(&overloads),

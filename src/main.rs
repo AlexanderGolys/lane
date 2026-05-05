@@ -8,7 +8,7 @@ const COLOR_TYPE: &str = "33";
 const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -32,7 +32,7 @@ const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     fi
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--show -s --list -l --list2d -l2 --list3d -l3 --list-objects -lo --list-all --print-completion -pc --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--show -s --list -l --list2d -l2 --list3d -l3 --list-objects -lo --list-all -la --print-completion -pc --help -h" -- "$cur") )
         return
     fi
 
@@ -51,7 +51,7 @@ _lane() {
         '(-l2 --list2d)'{-l2,--list2d}'[list only 2D primitives]' \
         '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
         '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(__OBJECTS__)' \
-        '--list-all[list every builtin object, function, type, and constructor]' \
+        '(-la --list-all)'{-la,--list-all}'[list every builtin object, function, type, and constructor]' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-s --show)'{-s,--show}'[print compiled GLSL while also writing TARGET]' \
         '(-h --help)'{-h,--help}'[show help]'
@@ -67,7 +67,7 @@ complete -c lane -o l2 -l list2d -d 'List only 2D primitives'
 complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
 complete -c lane -o lo -l list-objects -d 'List builtin Lane objects'
 complete -c lane -o lo -l list-objects -r -a '__OBJECTS__' -d 'Show one builtin object'
-complete -c lane -l list-all -d 'List every builtin object, function, type, and constructor'
+complete -c lane -o la -l list-all -d 'List every builtin object, function, type, and constructor'
 complete -c lane -f -a 'list-all' -d 'List every builtin object, function, type, and constructor'
 complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s s -l show -d 'Print compiled GLSL while also writing TARGET'
@@ -111,7 +111,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         [flag, name] if matches!(flag.as_str(), "--list-objects" | "-lo") => {
             print_known_builtin_object_detail(name)
         }
-        [command] if matches!(command.as_str(), "list-all" | "--list-all") => {
+        [command] if matches!(command.as_str(), "list-all" | "--list-all" | "-la") => {
             print_all_known_builtin_items();
             Ok(())
         }
@@ -265,6 +265,10 @@ fn print_known_builtin_objects() {
     }
 }
 
+fn include_in_list_all(name: &str) -> bool {
+    !matches!(name, "matrixCompMult")
+}
+
 fn print_all_known_builtin_items() {
     for primitive in lane::known_primitives() {
         print_known_builtin_object_line(
@@ -274,6 +278,9 @@ fn print_all_known_builtin_items() {
         );
     }
     for object in lane::known_builtin_objects() {
+        if !include_in_list_all(&object.name) {
+            continue;
+        }
         print_known_builtin_object_line(&object.name, &object.ty, object.kind);
     }
 }

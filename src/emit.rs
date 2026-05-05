@@ -1681,6 +1681,11 @@ fn emit_value_expr(
             .cloned()
             .unwrap_or_else(|| name.clone()),
         ValueExpr::Call { func, args, .. } => {
+            if let Some(reordered) =
+                emit_scalar_first_min_max(func, args, helper_names, value_names)
+            {
+                return reordered;
+            }
             let rendered_args = args
                 .iter()
                 .map(|arg| emit_value_expr(arg, helper_names, value_names))
@@ -1783,6 +1788,30 @@ fn emit_value_expr(
             emit_divergence(func, epsilon, at, helper_names, value_names)
         }
     }
+}
+
+fn emit_scalar_first_min_max(
+    func: &str,
+    args: &[ValueExpr],
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> Option<String> {
+    let [left, right] = args else {
+        return None;
+    };
+    if !matches!(func, "min" | "max") || left.ty() != Type::Float || !is_vector_type(&right.ty()) {
+        return None;
+    }
+    Some(format!(
+        "{}({}, {})",
+        emitted_function_name(func, helper_names),
+        emit_value_expr(right, helper_names, value_names),
+        emit_value_expr(left, helper_names, value_names)
+    ))
+}
+
+fn is_vector_type(ty: &Type) -> bool {
+    matches!(ty, Type::Vec2 | Type::Vec3 | Type::Vec4)
 }
 
 fn emit_plain_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> String {

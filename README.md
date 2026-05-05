@@ -45,7 +45,7 @@ Usage:
   lane -l3, --list3d
   lane -lo, --list-objects [NAME]
   lane list-all
-  lane --list-all
+  lane -la, --list-all
   lane -pc, --print-completion <bash|zsh|fish>
   lane -h, --help
 ```
@@ -61,9 +61,12 @@ Usage:
 - `lane -lo` or `lane --list-objects` lists builtin objects, type aliases, and
   algebraic categories.
 - `lane -lo NAME` shows one builtin object's type and support body.
-- `lane list-all` or `lane --list-all` lists every builtin item on one line,
-  including primitive constructors, GLSL functions, type aliases, object
-  operators, and algebraic categories.
+- `lane list-all`, `lane -la`, or `lane --list-all` lists every builtin item on
+  one line, including primitive constructors, GLSL functions, type aliases,
+  object operators, and algebraic categories. Repeated scalar/vector overload
+  families are compacted with `Rn`, matrix families use `Matn` and `Matnxm`, and
+  algebraic helper operations such as component-wise matrix multiplication are
+  omitted from this broad list.
 - `lane -pc SHELL` prints completion code for `bash`, `zsh`, or `fish`.
 - `lane help` is treated as an input path. Use `lane -h` or `lane --help`.
 
@@ -587,6 +590,9 @@ R x = xs[1]
 Lane pre-registers GLSL math builtins whose signatures fit Lane's current value
 types: `R`, `Z`, `R2`, `R3`, `R4`, and `Mat2` through `Mat4x4`. Calls emit as
 direct GLSL calls and do not add support bodies.
+`lane list-all` prints complete scalar/vector families compactly, for example
+`Hom(Rn, Rn)` for functions available on `R`, `R2`, `R3`, and `R4`, and
+`transpose` as `Hom(Matnxm, Matmxn)`.
 
 ```lane
 provided Mat3 frame
@@ -604,10 +610,13 @@ Registered GLSL functions include:
 - Exponential: `pow`, `exp`, `log`, `exp2`, `log2`, `sqrt`, `inversesqrt`.
 - Common math: `abs`, `sign`, `floor`, `trunc`, `round`, `roundEven`, `ceil`,
   `fract`, `mod`, `min`, `max`, `clamp`, `mix`, `step`, `smoothstep`, `fma`.
+  `min` and `max` accept scalar/vector operands in either order.
 - Geometric functions: `length`, `distance`, `dot`, `cross`, `normalize`,
   `faceforward`, `reflect`, `refract`.
 - Matrix functions: `matrixCompMult`, `transpose`, `determinant`, `inverse`.
 - Fragment derivative functions: `dFdx`, `dFdy`, `fwidth`.
+- Complex overloads: `inv`, `exp`, `log`, `sqrt`, `sin`, `cos`, `tan`, `sinh`,
+  `cosh`, `tanh` on `C`.
 
 Boolean, sampler, image, atomic, packing, and out-parameter GLSL builtins are
 not registered yet because Lane does not have the corresponding value types or
