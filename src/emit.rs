@@ -69,6 +69,7 @@ impl TypedProgram {
         let output = emit_object_expr(
             &self.output,
             &locals.point,
+            self.ambient_dimension,
             &object_bindings,
             &helper_names,
             &scene_input_names,
@@ -77,11 +78,21 @@ impl TypedProgram {
         lines.push("}".to_string());
 
         lines.push(String::new());
-        lines.push(format!("vec3 scene_grad({}) {{", signature.join(", ")));
+        lines.push(format!(
+            "{} scene_grad({}) {{",
+            ambient_vector_glsl_type(self.ambient_dimension),
+            signature.join(", ")
+        ));
         lines.push(format!("    float {} = 0.0005;", locals.eps));
         lines.push(format!(
             "    return normalize({});",
-            emit_sdf_gradient_expr("scene_sdf", &locals.point, &locals.eps, &scene_input_names)
+            emit_sdf_gradient_expr(
+                "scene_sdf",
+                &locals.point,
+                &locals.eps,
+                &scene_input_names,
+                self.ambient_dimension
+            )
         ));
         lines.push("}".to_string());
 
@@ -89,7 +100,11 @@ impl TypedProgram {
     }
 
     fn scene_signature(&self, point_name: &str) -> Vec<String> {
-        let mut signature = vec![format!("vec3 {}", point_name)];
+        let mut signature = vec![format!(
+            "{} {}",
+            ambient_vector_glsl_type(self.ambient_dimension),
+            point_name
+        )];
         for input in &self.inputs {
             match input.ty {
                 Type::Float
@@ -256,6 +271,7 @@ impl TypedProgram {
             emit_object_expr(
                 &binding.expr,
                 &locals.point,
+                self.ambient_dimension,
                 object_bindings,
                 helper_names,
                 scene_input_names,
@@ -265,7 +281,8 @@ impl TypedProgram {
         lines.push(String::new());
 
         lines.push(format!(
-            "vec3 grad_sdf_{}({}) {{",
+            "{} grad_sdf_{}({}) {{",
+            ambient_vector_glsl_type(self.ambient_dimension),
             binding.name,
             signature.join(", ")
         ));
@@ -277,6 +294,7 @@ impl TypedProgram {
                 &locals.point,
                 &locals.eps,
                 scene_input_names,
+                self.ambient_dimension,
             )
         ));
         lines.push("}".to_string());
@@ -1219,31 +1237,56 @@ fn emit_sdf_gradient_expr(
     point_name: &str,
     epsilon_name: &str,
     scene_input_names: &[String],
+    dimension: ShapeDimension,
 ) -> String {
-    format!(
-        "vec3({}, {}, {})",
-        emit_sdf_partial_derivative(
-            function_name,
-            point_name,
-            epsilon_name,
-            scene_input_names,
-            0
+    match dimension {
+        ShapeDimension::D2 => format!(
+            "vec2({}, {})",
+            emit_sdf_partial_derivative(
+                function_name,
+                point_name,
+                epsilon_name,
+                scene_input_names,
+                dimension,
+                0
+            ),
+            emit_sdf_partial_derivative(
+                function_name,
+                point_name,
+                epsilon_name,
+                scene_input_names,
+                dimension,
+                1
+            ),
         ),
-        emit_sdf_partial_derivative(
-            function_name,
-            point_name,
-            epsilon_name,
-            scene_input_names,
-            1
+        ShapeDimension::D3 => format!(
+            "vec3({}, {}, {})",
+            emit_sdf_partial_derivative(
+                function_name,
+                point_name,
+                epsilon_name,
+                scene_input_names,
+                dimension,
+                0
+            ),
+            emit_sdf_partial_derivative(
+                function_name,
+                point_name,
+                epsilon_name,
+                scene_input_names,
+                dimension,
+                1
+            ),
+            emit_sdf_partial_derivative(
+                function_name,
+                point_name,
+                epsilon_name,
+                scene_input_names,
+                dimension,
+                2
+            ),
         ),
-        emit_sdf_partial_derivative(
-            function_name,
-            point_name,
-            epsilon_name,
-            scene_input_names,
-            2
-        ),
-    )
+    }
 }
 
 fn emit_sdf_partial_derivative(
@@ -1251,12 +1294,15 @@ fn emit_sdf_partial_derivative(
     point_name: &str,
     epsilon_name: &str,
     scene_input_names: &[String],
+    dimension: ShapeDimension,
     axis: usize,
 ) -> String {
-    let offset = match axis {
-        0 => format!("vec3({}, 0.0, 0.0)", epsilon_name),
-        1 => format!("vec3(0.0, {}, 0.0)", epsilon_name),
-        2 => format!("vec3(0.0, 0.0, {})", epsilon_name),
+    let offset = match (dimension, axis) {
+        (ShapeDimension::D2, 0) => format!("vec2({}, 0.0)", epsilon_name),
+        (ShapeDimension::D2, 1) => format!("vec2(0.0, {})", epsilon_name),
+        (ShapeDimension::D3, 0) => format!("vec3({}, 0.0, 0.0)", epsilon_name),
+        (ShapeDimension::D3, 1) => format!("vec3(0.0, {}, 0.0)", epsilon_name),
+        (ShapeDimension::D3, 2) => format!("vec3(0.0, 0.0, {})", epsilon_name),
         _ => unreachable!(),
     };
     let forward = emit_sdf_call(
@@ -1480,6 +1526,7 @@ fn emit_vec3_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: B
 fn emit_object_expr(
     expr: &ObjectExpr,
     point_expr: &str,
+    ambient_dimension: ShapeDimension,
     object_bindings: &BTreeMap<String, ObjectBinding>,
     helper_names: &HashMap<String, String>,
     scene_input_names: &[String],
@@ -1494,6 +1541,7 @@ fn emit_object_expr(
                     emit_object_expr(
                         &binding.expr,
                         point_expr,
+                        ambient_dimension,
                         object_bindings,
                         helper_names,
                         scene_input_names,
@@ -1521,7 +1569,9 @@ fn emit_object_expr(
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
-                let point_arg = if registry::shape_dimension(name) == ShapeDimension::D2 {
+                let point_arg = if registry::shape_dimension(name) == ShapeDimension::D2
+                    && ambient_dimension == ShapeDimension::D3
+                {
                     format!("({}).xy", point_expr)
                 } else {
                     point_expr.to_string()
@@ -1540,8 +1590,8 @@ fn emit_object_expr(
                     })
                     .unwrap();
                 format!(
-                    "sdf0_Polygon2D({}.xy, {}, {})",
-                    point_expr,
+                    "sdf0_Polygon2D({}, {}, {})",
+                    primitive_2d_point_arg(point_expr, ambient_dimension),
                     emit_polygon_vertices(vertices, helper_names),
                     vertices.len()
                 )
@@ -1557,17 +1607,28 @@ fn emit_object_expr(
             emit_object_expr(
                 object,
                 &transformed_point,
+                ambient_dimension,
                 object_bindings,
                 helper_names,
                 scene_input_names,
             )
         }
         ObjectExpr::IsometryTransform { object, transform } => {
-            let inverse = format!("inv_E3({})", emit_plain_value_expr(transform, helper_names));
-            let transformed_point = format!("act_E3({}, {})", inverse, point_expr);
+            let type_name = if ambient_dimension == ShapeDimension::D2 {
+                "E2"
+            } else {
+                "E3"
+            };
+            let inverse = format!(
+                "inv_{}({})",
+                type_name,
+                emit_plain_value_expr(transform, helper_names)
+            );
+            let transformed_point = format!("act_{}({}, {})", type_name, inverse, point_expr);
             emit_object_expr(
                 object,
                 &transformed_point,
+                ambient_dimension,
                 object_bindings,
                 helper_names,
                 scene_input_names,
@@ -1585,6 +1646,7 @@ fn emit_object_expr(
                 return emit_object_expr(
                     &object_args[0],
                     &revolved_point,
+                    ambient_dimension,
                     object_bindings,
                     helper_names,
                     scene_input_names,
@@ -1596,6 +1658,7 @@ fn emit_object_expr(
                 let base_distance = emit_object_expr(
                     &object_args[0],
                     &base_point,
+                    ambient_dimension,
                     object_bindings,
                     helper_names,
                     scene_input_names,
@@ -1616,6 +1679,7 @@ fn emit_object_expr(
                 return emit_object_expr(
                     &object_args[0],
                     &rotated_point,
+                    ambient_dimension,
                     object_bindings,
                     helper_names,
                     scene_input_names,
@@ -1624,13 +1688,21 @@ fn emit_object_expr(
             if glsl_name == "op_rot2D" {
                 let anchor = emit_plain_value_expr(&value_args[0], helper_names);
                 let angle = emit_plain_value_expr(&value_args[1], helper_names);
-                let rotated_point = format!(
-                    "op_rot2D_inverse_point({}, {}, {})",
-                    point_expr, anchor, angle
-                );
+                let rotated_point = if ambient_dimension == ShapeDimension::D2 {
+                    format!(
+                        "({} + (transpose(op_rot2D_matrix({})) * ({} - {})))",
+                        anchor, angle, point_expr, anchor
+                    )
+                } else {
+                    format!(
+                        "op_rot2D_inverse_point({}, {}, {})",
+                        point_expr, anchor, angle
+                    )
+                };
                 return emit_object_expr(
                     &object_args[0],
                     &rotated_point,
+                    ambient_dimension,
                     object_bindings,
                     helper_names,
                     scene_input_names,
@@ -1642,6 +1714,7 @@ fn emit_object_expr(
                     emit_object_expr(
                         arg,
                         point_expr,
+                        ambient_dimension,
                         object_bindings,
                         helper_names,
                         scene_input_names,
@@ -1666,6 +1739,20 @@ fn emit_generated_object_call(
     let mut args = vec![point_expr.to_string()];
     args.extend(scene_input_names.iter().cloned());
     format!("sdf_{}({})", name, args.join(", "))
+}
+
+fn ambient_vector_glsl_type(dimension: ShapeDimension) -> &'static str {
+    match dimension {
+        ShapeDimension::D2 => "vec2",
+        ShapeDimension::D3 => "vec3",
+    }
+}
+
+fn primitive_2d_point_arg(point_expr: &str, ambient_dimension: ShapeDimension) -> String {
+    match ambient_dimension {
+        ShapeDimension::D2 => point_expr.to_string(),
+        ShapeDimension::D3 => format!("{}.xy", point_expr),
+    }
 }
 
 fn primitive_value_field<'a>(
@@ -1702,11 +1789,25 @@ fn emit_transformed_point(
     linear: &ValueExpr,
     helper_names: &HashMap<String, String>,
 ) -> String {
+    if is_identity_mat2(linear) {
+        return format!(
+            "({} - {})",
+            point_expr,
+            emit_plain_value_expr(translation, helper_names)
+        );
+    }
     if is_identity_mat3(linear) {
         return format!(
             "({} - {})",
             point_expr,
             emit_plain_value_expr(translation, helper_names)
+        );
+    }
+    if is_zero_vec2(translation) {
+        return format!(
+            "(transpose({}) * {})",
+            emit_plain_value_expr(linear, helper_names),
+            point_expr
         );
     }
     if is_zero_vec3(translation) {
@@ -1724,10 +1825,26 @@ fn emit_transformed_point(
     )
 }
 
+fn is_zero_vec2(expr: &ValueExpr) -> bool {
+    match expr {
+        ValueExpr::Vec2(x, y) => is_float_literal(x, 0.0) && is_float_literal(y, 0.0),
+        _ => false,
+    }
+}
+
 fn is_zero_vec3(expr: &ValueExpr) -> bool {
     match expr {
         ValueExpr::Vec3(x, y, z) => {
             is_float_literal(x, 0.0) && is_float_literal(y, 0.0) && is_float_literal(z, 0.0)
+        }
+        _ => false,
+    }
+}
+
+fn is_identity_mat2(expr: &ValueExpr) -> bool {
+    match expr {
+        ValueExpr::Matrix { columns: 2, rows } if rows.len() == 2 => {
+            is_vec2_literal(&rows[0], [1.0, 0.0]) && is_vec2_literal(&rows[1], [0.0, 1.0])
         }
         _ => false,
     }
@@ -1739,6 +1856,15 @@ fn is_identity_mat3(expr: &ValueExpr) -> bool {
             is_vec3_literal(&rows[0], [1.0, 0.0, 0.0])
                 && is_vec3_literal(&rows[1], [0.0, 1.0, 0.0])
                 && is_vec3_literal(&rows[2], [0.0, 0.0, 1.0])
+        }
+        _ => false,
+    }
+}
+
+fn is_vec2_literal(expr: &ValueExpr, expected: [f64; 2]) -> bool {
+    match expr {
+        ValueExpr::Vec2(x, y) => {
+            is_float_literal(x, expected[0]) && is_float_literal(y, expected[1])
         }
         _ => false,
     }

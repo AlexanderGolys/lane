@@ -1105,6 +1105,10 @@
           "named": true
         },
         {
+          "type": "directive",
+          "named": true
+        },
+        {
           "type": "inferred_binding_declaration",
           "named": true
         },
@@ -1385,6 +1389,10 @@
   {
     "type": "construct",
     "named": false
+  },
+  {
+    "type": "directive",
+    "named": true
   },
   {
     "type": "gen",

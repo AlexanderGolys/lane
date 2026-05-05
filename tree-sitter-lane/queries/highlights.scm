@@ -8,6 +8,7 @@
 [","] @punctuation.delimiter
 
 (comment) @comment
+(directive) @keyword.directive
 (number) @number
 
 ((type_identifier) @constant.builtin

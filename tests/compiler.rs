@@ -666,6 +666,43 @@ fn supports_object3d_type_alias() {
 }
 
 #[test]
+fn directive_2d_uses_object2d_ambient_space() {
+    let source = "#2D\nObject shape = Box2D(a=2, b=1) + (1, 2)\ngenerate shape\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float scene_sdf(vec2 p) {"));
+    assert!(glsl.contains("vec2 scene_grad(vec2 p) {"));
+    assert!(glsl.contains("sdf0_Box2D((p - vec2(1.0, 2.0)), ParamBox2D(2.0, 1.0))"));
+    assert!(!glsl.contains("scene_sdf(vec3 p)"));
+}
+
+#[test]
+fn directive_2d_supports_2d_isometry_actions() {
+    let source = "#2D\nE2 g = E2(e, (1, 2))\ngenerate g * Box2D(a=2, b=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct E2"));
+    assert!(glsl.contains("float scene_sdf(vec2 p) {"));
+    assert!(glsl.contains("sdf0_Box2D(act_E2(inv_E2(g), p), ParamBox2D(2.0, 1.0))"));
+}
+
+#[test]
+fn directive_2d_rejects_3d_primitives() {
+    let source = "#2D\ngenerate Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("primitive 'Ball3D' is 3D but ambient space is 2D"));
+}
+
+#[test]
+fn directive_2d_rejects_non_initial_directives() {
+    let source = "generate Box2D(a=2, b=1)\n#2D\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("directives must appear before declarations"));
+}
+
+#[test]
 fn supports_full_line_comments() {
     let source =
         "// input animation\nprovided Float time\n// object body\ngenerate Ball3D(r=1 + time)\n";

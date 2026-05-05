@@ -742,6 +742,7 @@ struct OutputDecl {
 
 #[derive(Clone, Debug)]
 struct Program {
+    ambient_dimension: ShapeDimension,
     inputs: Vec<InputDecl>,
     funcs: Vec<FuncDecl>,
     value_bindings: Vec<ValueBindingDecl>,
@@ -1002,6 +1003,7 @@ struct TypedValueBinding {
 
 #[derive(Clone, Debug)]
 struct TypedProgram {
+    ambient_dimension: ShapeDimension,
     inputs: Vec<InputDecl>,
     funcs: Vec<TypedFunc>,
     value_bindings: Vec<TypedValueBinding>,

@@ -117,6 +117,7 @@ generate ball
 Supported declaration forms:
 
 ```lane
+#2D
 provided TYPE name
 provided CATEGORY TypeName
 TYPE name = expression
@@ -136,6 +137,17 @@ stable helper functions named `sdf_name` and `grad_sdf_name` in the generated
 GLSL. Later object expressions reuse those generated helpers instead of
 inlining the object body again. A program must contain exactly one final output
 declaration using `generate` or `gen`.
+
+Directives are optional `#...` lines at the beginning of a program. `#2D`
+switches the ambient SDF space to 2D: unqualified `Object` declarations mean
+`Object2D`, 3D primitives and 3D object operators are rejected, and emitted
+entry points use `vec2`:
+
+```lane
+#2D
+Object shape = Box2D(a=2, b=1) + (1, 2)
+generate shape
+```
 
 ### Types
 
@@ -290,8 +302,8 @@ Every compilation emits:
 - support structs and helper functions for only the used primitives, operators,
   and value functions;
 - user value helper functions named `dsl_name`;
-- `float scene_sdf(vec3 p, ...)`;
-- `vec3 scene_grad(vec3 p, ...)`, computed by the same central-difference
+- `float scene_sdf(vec3 p, ...)`, or `float scene_sdf(vec2 p, ...)` under `#2D`;
+- `vec3 scene_grad(vec3 p, ...)`, or `vec2 scene_grad(vec2 p, ...)` under `#2D`, computed by the same central-difference
   gradient machinery exposed to Lane programs.
 
 Generated GLSL writes decimal and exponent float literals with an `f` suffix

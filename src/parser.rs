@@ -37,6 +37,8 @@ impl<'a> Parser<'a> {
         let mut bindings = Vec::new();
         let mut inferred_bindings = Vec::new();
         let mut output = None;
+        let mut ambient_dimension = ShapeDimension::D3;
+        let mut directives_open = true;
 
         for (line_index, raw_line) in self.source.lines().enumerate() {
             let line_number = line_index + 1;
@@ -44,10 +46,27 @@ impl<'a> Parser<'a> {
             if line.is_empty() {
                 continue;
             }
+            if line.starts_with('#') {
+                if !directives_open {
+                    return Err(Error::new("directives must appear before declarations")
+                        .with_line(line_number));
+                }
+                parse_directive(line, &mut ambient_dimension)
+                    .map_err(|err| err.with_line(line_number))?;
+                continue;
+            }
+            directives_open = false;
 
             match self
-                .parse_decl(line, line_number)
-                .or_else(|_| self.parse_decl_with_custom_types(line, line_number, &custom_types))
+                .parse_decl(line, line_number, ambient_dimension)
+                .or_else(|_| {
+                    self.parse_decl_with_custom_types(
+                        line,
+                        line_number,
+                        &custom_types,
+                        ambient_dimension,
+                    )
+                })
                 .map_err(|err| err.with_line(line_number))?
             {
                 Decl::ProvidedType(provided_type) => {
@@ -88,6 +107,7 @@ impl<'a> Parser<'a> {
         let output = output.ok_or_else(|| Error::new("missing generate declaration"))?;
 
         Ok(Program {
+            ambient_dimension,
             inputs,
             funcs,
             value_bindings,
@@ -97,8 +117,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_decl(&self, line: &str, line_number: usize) -> Result<Decl, Error> {
-        self.parse_decl_with_custom_types(line, line_number, &HashMap::new())
+    fn parse_decl(
+        &self,
+        line: &str,
+        line_number: usize,
+        ambient_dimension: ShapeDimension,
+    ) -> Result<Decl, Error> {
+        self.parse_decl_with_custom_types(line, line_number, &HashMap::new(), ambient_dimension)
     }
 
     fn parse_decl_with_custom_types(
@@ -106,6 +131,7 @@ impl<'a> Parser<'a> {
         line: &str,
         line_number: usize,
         custom_types: &HashMap<String, AlgebraicCategory>,
+        ambient_dimension: ShapeDimension,
     ) -> Result<Decl, Error> {
         if let Some(rest) = line.strip_prefix("provided ") {
             let (ty, name) = split_type_name(rest.trim())?;
@@ -117,7 +143,7 @@ impl<'a> Parser<'a> {
             }
             return Ok(Decl::Input(InputDecl {
                 name: name.to_string(),
-                ty: parse_type_with_custom_types(ty, custom_types)?,
+                ty: parse_type_with_custom_types_for_ambient(ty, custom_types, ambient_dimension)?,
                 line: line_number,
             }));
         }
@@ -163,7 +189,11 @@ impl<'a> Parser<'a> {
             }));
         }
         let (ty_source, name) = split_type_name(left)?;
-        let ty = parse_type_with_custom_types(ty_source.trim(), custom_types)?;
+        let ty = parse_type_with_custom_types_for_ambient(
+            ty_source.trim(),
+            custom_types,
+            ambient_dimension,
+        )?;
         let expr = ExprParser::new(expr_source.trim()).parse()?;
         if matches!(ty, Type::Func(_, _)) {
             if generated {
@@ -203,6 +233,16 @@ impl<'a> Parser<'a> {
 
 fn strip_line_comment(line: &str) -> &str {
     line.split_once("//").map_or(line, |(before, _)| before)
+}
+
+fn parse_directive(line: &str, ambient_dimension: &mut ShapeDimension) -> Result<(), Error> {
+    match line {
+        "#2D" => {
+            *ambient_dimension = ShapeDimension::D2;
+            Ok(())
+        }
+        _ => Err(Error::new(format!("unsupported directive '{}'", line))),
+    }
 }
 
 struct ExprParser {
@@ -633,6 +673,60 @@ fn parse_type_with_custom_types(
         Some(ty) => Ok(ty),
         None => Err(Error::new(format!("unsupported type '{}'", source))),
     }
+}
+
+fn parse_type_with_custom_types_for_ambient(
+    source: &str,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+    ambient_dimension: ShapeDimension,
+) -> Result<Type, Error> {
+    let source = source.trim();
+    if source == "Object" && ambient_dimension == ShapeDimension::D2 {
+        return Ok(Type::Object2D);
+    }
+    if source.starts_with("func(") && source.ends_with(')') {
+        let inner = &source[5..source.len() - 1];
+        let (input, output) = split_arrow_legacy(inner)?;
+        return Ok(Type::func(
+            parse_type_with_custom_types_for_ambient(input, custom_types, ambient_dimension)?,
+            parse_type_with_custom_types_for_ambient(output, custom_types, ambient_dimension)?,
+        ));
+    }
+    if let Some(inner) = strip_type_head(source, "Func") {
+        let (input, output) = split_top_level_comma(inner)?;
+        return Ok(Type::func(
+            parse_type_with_custom_types_for_ambient(input, custom_types, ambient_dimension)?,
+            parse_type_with_custom_types_for_ambient(output, custom_types, ambient_dimension)?,
+        ));
+    }
+    if let Some(inner) = strip_type_head(source, "Hom") {
+        let (input, output) = split_top_level_comma(inner)?;
+        return Ok(Type::func(
+            parse_type_with_custom_types_for_ambient(input, custom_types, ambient_dimension)?,
+            parse_type_with_custom_types_for_ambient(output, custom_types, ambient_dimension)?,
+        ));
+    }
+    if let Some(inner) = strip_type_head(source, "End") {
+        let ty = parse_type_with_custom_types_for_ambient(inner, custom_types, ambient_dimension)?;
+        return Ok(Type::func(ty.clone(), ty));
+    }
+    if let Some(inner) = strip_type_head(source, "Array") {
+        return Ok(Type::Array(Box::new(
+            parse_type_with_custom_types_for_ambient(inner, custom_types, ambient_dimension)?,
+        )));
+    }
+    if let Some(parts) = split_top_level_product(source) {
+        let mut parsed = Vec::new();
+        for part in parts {
+            parsed.push(parse_type_with_custom_types_for_ambient(
+                part,
+                custom_types,
+                ambient_dimension,
+            )?);
+        }
+        return Ok(Type::Product(parsed));
+    }
+    parse_type_with_custom_types(source, custom_types)
 }
 
 fn split_arrow_legacy(source: &str) -> Result<(&str, &str), Error> {

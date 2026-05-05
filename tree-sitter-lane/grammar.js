@@ -22,7 +22,10 @@ module.exports = grammar({
 
         comment: () => token(seq('//', /.*/)),
 
+        directive: () => token(seq('#', /.*/)),
+
         _declaration: ($) => choice(
+            $.directive,
             $.provided_category_declaration,
             $.input_declaration,
             $.output_declaration,

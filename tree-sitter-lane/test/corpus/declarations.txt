@@ -2,6 +2,7 @@
 Declarations
 ==================
 
+#2D
 provided Float time
 construct Object shell = Ball3D(r=1 + time)
 radius = 1 + time
@@ -16,6 +17,7 @@ generate spin(time) * moved
 ---
 
 (source_file
+  (directive)
   (input_declaration
     (type_identifier)
     (identifier))

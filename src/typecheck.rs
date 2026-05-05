@@ -2,7 +2,7 @@ use super::*;
 
 impl TypedProgram {
     pub(super) fn from_program(program: &Program, registry: &Registry) -> Result<Self, Error> {
-        let mut env = Env::new(registry);
+        let mut env = Env::new(registry, program.ambient_dimension);
 
         for input in &program.inputs {
             validate_user_type(&input.ty).map_err(|err| err.with_line(input.line))?;
@@ -140,7 +140,7 @@ impl TypedProgram {
                 let expr = infer_object_expr(&binding.expr, &env)
                     .map_err(|err| err.with_line(binding.line))?;
                 let dimension = object_dimension(&expr, &env);
-                env.insert_value(binding.name.clone(), Type::Object)
+                env.insert_value(binding.name.clone(), object_type_for_dimension(dimension))
                     .map_err(|err| err.with_line(binding.line))?;
                 env.update_object_dimension(&binding.name, dimension);
                 typed_bindings.push(TypedBinding {
@@ -154,7 +154,7 @@ impl TypedProgram {
             match infer_object_expr(&binding.expr, &env) {
                 Ok(expr) => {
                     let dimension = object_dimension(&expr, &env);
-                    env.insert_value(binding.name.clone(), Type::Object)
+                    env.insert_value(binding.name.clone(), object_type_for_dimension(dimension))
                         .map_err(|err| err.with_line(binding.line))?;
                     env.update_object_dimension(&binding.name, dimension);
                     typed_bindings.push(TypedBinding {
@@ -212,8 +212,15 @@ impl TypedProgram {
 
         let output = infer_object_expr(&program.output.expr, &env)
             .map_err(|err| err.with_line(program.output.line))?;
+        if program.ambient_dimension == ShapeDimension::D2
+            && object_dimension(&output, &env) != Some(ShapeDimension::D2)
+        {
+            return Err(Error::new("generate expected Object2D in 2D ambient space")
+                .with_line(program.output.line));
+        }
 
         Ok(Self {
+            ambient_dimension: program.ambient_dimension,
             inputs: program.inputs.clone(),
             funcs: typed_funcs,
             value_bindings: typed_value_bindings,
@@ -226,6 +233,7 @@ impl TypedProgram {
 #[derive(Clone)]
 struct Env<'a> {
     registry: &'a Registry,
+    ambient_dimension: ShapeDimension,
     values: HashMap<String, ValueInfo>,
     funcs: HashMap<String, Vec<FunctionInfo>>,
     object_dimensions: HashMap<String, ShapeDimension>,
@@ -243,7 +251,7 @@ struct FunctionInfo {
 }
 
 impl<'a> Env<'a> {
-    fn new(registry: &'a Registry) -> Self {
+    fn new(registry: &'a Registry, ambient_dimension: ShapeDimension) -> Self {
         let values = HashMap::new();
         let mut funcs: HashMap<String, Vec<FunctionInfo>> = HashMap::new();
         for (name, func) in &registry.value_funcs {
@@ -272,6 +280,7 @@ impl<'a> Env<'a> {
         }
         Self {
             registry,
+            ambient_dimension,
             values,
             funcs,
             object_dimensions: HashMap::new(),
@@ -361,6 +370,13 @@ fn object_type_dimension(ty: &Type) -> Option<ShapeDimension> {
     }
 }
 
+fn object_type_for_dimension(dimension: Option<ShapeDimension>) -> Type {
+    match dimension {
+        Some(ShapeDimension::D2) => Type::Object2D,
+        _ => Type::Object,
+    }
+}
+
 fn function_domain_and_output(ty: &Type) -> Result<(Type, Type), Error> {
     let (inputs, output) = flatten_func_type(ty);
     if inputs.is_empty() {
@@ -407,6 +423,14 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
                     }
                 }
             };
+            if env.ambient_dimension == ShapeDimension::D2
+                && registry::shape_dimension(name) == ShapeDimension::D3
+            {
+                return Err(Error::new(format!(
+                    "primitive '{}' is 3D but ambient space is 2D",
+                    name
+                )));
+            }
             if let Some(fields) = infer_segment_length_constructor(name, args, env)? {
                 return Ok(ObjectExpr::Primitive {
                     name: name.clone(),
@@ -486,12 +510,13 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             right,
         } => {
             let object = infer_object_expr(left, env)?;
-            let offset = infer_value_expr_for_type(right, &Type::Vec3, env, None)?;
-            ensure_type(&offset.ty(), &Type::Vec3, "object shift")?;
+            let offset_ty = ambient_vector_type(env.ambient_dimension);
+            let offset = infer_value_expr_for_type(right, &offset_ty, env, None)?;
+            ensure_type(&offset.ty(), &offset_ty, "object shift")?;
             Ok(ObjectExpr::AmbientTransform {
                 object: Box::new(object),
                 translation: offset,
-                linear: identity_mat3(),
+                linear: ambient_identity_matrix(env.ambient_dimension),
             })
         }
         Expr::Binary {
@@ -502,15 +527,32 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             let action = infer_value_expr(left, env, None)?;
             let object = infer_object_expr(right, env)?;
             match action.ty() {
-                Type::Mat(3, 3) => Ok(ObjectExpr::AmbientTransform {
-                    object: Box::new(object),
-                    translation: zero_vec3(),
-                    linear: action,
-                }),
-                Type::E3 => Ok(ObjectExpr::IsometryTransform {
-                    object: Box::new(object),
-                    transform: action,
-                }),
+                Type::Mat(2, 2) if env.ambient_dimension == ShapeDimension::D2 => {
+                    Ok(ObjectExpr::AmbientTransform {
+                        object: Box::new(object),
+                        translation: zero_vec2(),
+                        linear: action,
+                    })
+                }
+                Type::E2 if env.ambient_dimension == ShapeDimension::D2 => {
+                    Ok(ObjectExpr::IsometryTransform {
+                        object: Box::new(object),
+                        transform: action,
+                    })
+                }
+                Type::Mat(3, 3) if env.ambient_dimension == ShapeDimension::D3 => {
+                    Ok(ObjectExpr::AmbientTransform {
+                        object: Box::new(object),
+                        translation: zero_vec3(),
+                        linear: action,
+                    })
+                }
+                Type::E3 if env.ambient_dimension == ShapeDimension::D3 => {
+                    Ok(ObjectExpr::IsometryTransform {
+                        object: Box::new(object),
+                        transform: action,
+                    })
+                }
                 ty => Err(Error::new(format!(
                     "unsupported object action: {} * Object",
                     format_type(&ty)
@@ -614,6 +656,14 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         .object_ops
         .get(name.as_str())
         .ok_or_else(|| Error::new(format!("unknown object operator '{}'", name)))?;
+    if env.ambient_dimension == ShapeDimension::D2
+        && object_op_output_dimension(op) == ShapeDimension::D3
+    {
+        return Err(Error::new(format!(
+            "operator '{}' produces Object3D but ambient space is 2D",
+            name
+        )));
+    }
     if matches!(name.as_str(), "rot" | "rot2D") {
         return infer_rotation_object_call(&name, &args, op, env);
     }
@@ -667,6 +717,13 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             value_args,
             object_args,
         })
+    }
+}
+
+fn object_op_output_dimension(op: &ObjectOpDef) -> ShapeDimension {
+    match op.glsl_name {
+        "op_revolution" | "op_extrusion" | "op_rot" => ShapeDimension::D3,
+        _ => ShapeDimension::D2,
     }
 }
 
@@ -2116,6 +2173,36 @@ fn zero_vec3() -> ValueExpr {
         Box::new(ValueExpr::Float(0.0)),
         Box::new(ValueExpr::Float(0.0)),
     )
+}
+
+fn ambient_vector_type(dimension: ShapeDimension) -> Type {
+    match dimension {
+        ShapeDimension::D2 => Type::Vec2,
+        ShapeDimension::D3 => Type::Vec3,
+    }
+}
+
+fn ambient_identity_matrix(dimension: ShapeDimension) -> ValueExpr {
+    match dimension {
+        ShapeDimension::D2 => identity_mat2(),
+        ShapeDimension::D3 => identity_mat3(),
+    }
+}
+
+fn identity_mat2() -> ValueExpr {
+    ValueExpr::Matrix {
+        columns: 2,
+        rows: vec![
+            ValueExpr::Vec2(
+                Box::new(ValueExpr::Float(1.0)),
+                Box::new(ValueExpr::Float(0.0)),
+            ),
+            ValueExpr::Vec2(
+                Box::new(ValueExpr::Float(0.0)),
+                Box::new(ValueExpr::Float(1.0)),
+            ),
+        ],
+    }
 }
 
 fn unit_z_vec3() -> ValueExpr {
