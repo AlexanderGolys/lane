@@ -1021,11 +1021,24 @@ enum FunctionExprKind {
     Compose(Box<FunctionExpr>, Box<FunctionExpr>),
     PointwiseBinary {
         op: BinOp,
-        left: Box<FunctionExpr>,
-        right: Box<FunctionExpr>,
+        left: PointwiseCallArg,
+        right: PointwiseCallArg,
+    },
+    PointwiseCall {
+        func: String,
+        args: Vec<PointwiseCallArg>,
     },
     ProductSameDomain(Vec<FunctionExpr>),
     ProductTensor(Box<FunctionExpr>, Box<FunctionExpr>),
+}
+
+#[derive(Clone, Debug)]
+enum PointwiseCallArg {
+    Function {
+        func: Box<FunctionExpr>,
+        expected: Type,
+    },
+    Value(Box<ValueExpr>),
 }
 
 fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
@@ -1052,8 +1065,16 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
         }
         FunctionExprKind::PointwiseBinary { op, left, right } => ValueExpr::Binary {
             op: *op,
-            left: Box::new(apply_function_expr(left, arg.clone())),
-            right: Box::new(apply_function_expr(right, arg)),
+            left: Box::new(apply_pointwise_call_arg(left, arg.clone())),
+            right: Box::new(apply_pointwise_call_arg(right, arg)),
+            ty: func.output.clone(),
+        },
+        FunctionExprKind::PointwiseCall { func: name, args } => ValueExpr::Call {
+            func: name.clone(),
+            args: args
+                .iter()
+                .map(|call_arg| apply_pointwise_call_arg(call_arg, arg.clone()))
+                .collect(),
             ty: func.output.clone(),
         },
         FunctionExprKind::ProductSameDomain(funcs) => product_value(
@@ -1079,6 +1100,29 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             ])
         }
     }
+}
+
+fn apply_pointwise_call_arg(call_arg: &PointwiseCallArg, arg: ValueExpr) -> ValueExpr {
+    match call_arg {
+        PointwiseCallArg::Function {
+            func,
+            expected: expected_ty,
+        } => cast_value_for_expected_type(apply_function_expr(func, arg), expected_ty),
+        PointwiseCallArg::Value(value) => value.as_ref().clone(),
+    }
+}
+
+fn cast_value_for_expected_type(value: ValueExpr, expected_ty: &Type) -> ValueExpr {
+    if value.ty() == *expected_ty {
+        return value;
+    }
+    if value.ty() == Type::Bool && matches!(expected_ty, Type::Float | Type::Int) {
+        return ValueExpr::BoolToNumberCast {
+            value: Box::new(value),
+            ty: expected_ty.clone(),
+        };
+    }
+    value
 }
 
 fn product_value(values: Vec<ValueExpr>) -> ValueExpr {

@@ -728,8 +728,13 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
             collect_object_getter_function_refs(inner, names);
         }
         FunctionExprKind::PointwiseBinary { left, right, .. } => {
-            collect_object_getter_function_refs(left, names);
-            collect_object_getter_function_refs(right, names);
+            collect_object_getter_pointwise_call_arg_refs(left, names);
+            collect_object_getter_pointwise_call_arg_refs(right, names);
+        }
+        FunctionExprKind::PointwiseCall { args, .. } => {
+            for arg in args {
+                collect_object_getter_pointwise_call_arg_refs(arg, names);
+            }
         }
         FunctionExprKind::ProductSameDomain(funcs) => {
             for func in funcs {
@@ -740,6 +745,16 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
             collect_object_getter_function_refs(left, names);
             collect_object_getter_function_refs(right, names);
         }
+    }
+}
+
+fn collect_object_getter_pointwise_call_arg_refs(
+    arg: &PointwiseCallArg,
+    names: &mut BTreeSet<String>,
+) {
+    match arg {
+        PointwiseCallArg::Function { func, .. } => collect_object_getter_function_refs(func, names),
+        PointwiseCallArg::Value(value) => collect_object_getter_value_refs(value, names),
     }
 }
 
@@ -2028,8 +2043,14 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
             collect_function_support(inner, names);
         }
         FunctionExprKind::PointwiseBinary { left, right, .. } => {
-            collect_function_support(left, names);
-            collect_function_support(right, names);
+            collect_pointwise_call_arg_support(left, names);
+            collect_pointwise_call_arg_support(right, names);
+        }
+        FunctionExprKind::PointwiseCall { func, args } => {
+            names.insert(func.clone());
+            for arg in args {
+                collect_pointwise_call_arg_support(arg, names);
+            }
         }
         FunctionExprKind::ProductSameDomain(funcs) => {
             for func in funcs {
@@ -2040,6 +2061,13 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
             collect_function_support(left, names);
             collect_function_support(right, names);
         }
+    }
+}
+
+fn collect_pointwise_call_arg_support(arg: &PointwiseCallArg, names: &mut BTreeSet<String>) {
+    match arg {
+        PointwiseCallArg::Function { func, .. } => collect_function_support(func, names),
+        PointwiseCallArg::Value(value) => collect_value_support(value, names),
     }
 }
 fn emit_value_expr(
@@ -2235,6 +2263,24 @@ fn emit_binary_expr(
 ) -> String {
     let left_ty = left.ty();
     let right_ty = right.ty();
+    if left_ty == Type::Bool {
+        if let Some(cast_ty) = bool_numeric_cast_type_for_emit(&right_ty) {
+            let left = ValueExpr::BoolToNumberCast {
+                value: Box::new(left.clone()),
+                ty: cast_ty,
+            };
+            return emit_binary_expr(op, &left, right, helper_names, value_names);
+        }
+    }
+    if right_ty == Type::Bool {
+        if let Some(cast_ty) = bool_numeric_cast_type_for_emit(&left_ty) {
+            let right = ValueExpr::BoolToNumberCast {
+                value: Box::new(right.clone()),
+                ty: cast_ty,
+            };
+            return emit_binary_expr(op, left, &right, helper_names, value_names);
+        }
+    }
     let left = emit_value_expr(left, helper_names, value_names);
     let right = emit_value_expr(right, helper_names, value_names);
 
@@ -2284,6 +2330,19 @@ fn emit_binary_expr(
             )
         }
         _ => format!("({} {} {})", left, op.symbol(), right),
+    }
+}
+
+fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
+    if other == &Type::Int {
+        Some(Type::Int)
+    } else if other == &Type::Float
+        || has_category(other, AlgebraicCategory::VectR)
+        || has_category(other, AlgebraicCategory::RAlg)
+    {
+        Some(Type::Float)
+    } else {
+        None
     }
 }
 

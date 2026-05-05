@@ -43,118 +43,8 @@ impl TypedProgram {
         }
 
         let mut typed_funcs = Vec::new();
-        for func in &program.funcs {
-            let (input_ty, output_ty) = match &func.ty {
-                Type::Func(input, output) => ((**input).clone(), (**output).clone()),
-                other => {
-                    return Err(Error::new(format!(
-                        "function '{}' must have a function type, got {}",
-                        func.name,
-                        format_type(other)
-                    ))
-                    .with_line(func.line))
-                }
-            };
-            validate_user_type(&input_ty).map_err(|err| err.with_line(func.line))?;
-            if !matches!(
-                output_ty,
-                Type::Bool
-                    | Type::Float
-                    | Type::Int
-                    | Type::Complex
-                    | Type::Quat
-                    | Type::E2
-                    | Type::E3
-                    | Type::Custom { .. }
-                    | Type::Vec2
-                    | Type::Vec3
-                    | Type::Vec4
-                    | Type::Mat(_, _)
-                    | Type::Array(_)
-            ) {
-                return Err(Error::new(format!(
-                    "function '{}' currently only supports scalar, vector, matrix, or array outputs",
-                    func.name
-                ))
-                .with_line(func.line));
-            }
-
-            let expr = match infer_function_expr_for_type(&func.expr, &env, &input_ty, &output_ty) {
-                Ok(func_expr) => apply_function_expr(
-                    &func_expr,
-                    ValueExpr::Var {
-                        name: "t".to_string(),
-                        ty: input_ty.clone(),
-                        array_len: None,
-                    },
-                ),
-                Err(_) => infer_value_expr_for_type(&func.expr, &output_ty, &env, Some("t"))
-                    .map_err(|err| err.with_line(func.line))?,
-            };
-            ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
-                .map_err(|err| err.with_line(func.line))?;
-            ensure_lift_param_type(&expr, "t", &input_ty)
-                .map_err(|err| err.with_line(func.line))?;
-            typed_funcs.push(TypedFunc {
-                name: func.name.clone(),
-                input: input_ty,
-                output: output_ty,
-                expr,
-                generated: func.generated,
-            });
-        }
-
         let mut typed_value_bindings = Vec::new();
-        for binding in &program.value_bindings {
-            let expr = infer_value_expr_for_type(&binding.expr, &binding.ty, &env, None)
-                .map_err(|err| err.with_line(binding.line))?;
-            ensure_type(
-                &expr.ty(),
-                &binding.ty,
-                &format!("binding '{}'", binding.name),
-            )
-            .map_err(|err| err.with_line(binding.line))?;
-            env.update_array_len(&binding.name, expr.array_len());
-            typed_value_bindings.push(TypedValueBinding {
-                name: binding.name.clone(),
-                ty: binding.ty.clone(),
-                expr,
-                generated: binding.generated,
-            });
-        }
-
         let mut typed_bindings = Vec::new();
-        for binding in &program.bindings {
-            ensure_type(
-                &binding.ty,
-                &Type::Object,
-                &format!("binding '{}'", binding.name),
-            )
-            .or_else(|_| {
-                ensure_type(
-                    &binding.ty,
-                    &Type::Object2D,
-                    &format!("binding '{}'", binding.name),
-                )
-            })
-            .map_err(|err| err.with_line(binding.line))?;
-            let expr = infer_object_expr(&binding.expr, &env)
-                .map_err(|err| err.with_line(binding.line))?;
-            let dimension = object_dimension(&expr, &env);
-            if binding.ty == Type::Object2D && dimension != Some(ShapeDimension::D2) {
-                return Err(
-                    Error::new(format!("binding '{}' expected Object2D", binding.name))
-                        .with_line(binding.line),
-                );
-            }
-            env.update_object_dimension(&binding.name, dimension);
-            typed_bindings.push(TypedBinding {
-                name: binding.name.clone(),
-                expr,
-                generated: binding.generated,
-                dimension,
-            });
-        }
 
         for binding in &program.inferred_bindings {
             match infer_object_expr(&binding.expr, &env) {
@@ -231,6 +121,117 @@ impl TypedProgram {
                     });
                 }
             }
+        }
+
+        for func in &program.funcs {
+            let (input_ty, output_ty) = match &func.ty {
+                Type::Func(input, output) => ((**input).clone(), (**output).clone()),
+                other => {
+                    return Err(Error::new(format!(
+                        "function '{}' must have a function type, got {}",
+                        func.name,
+                        format_type(other)
+                    ))
+                    .with_line(func.line))
+                }
+            };
+            validate_user_type(&input_ty).map_err(|err| err.with_line(func.line))?;
+            if !matches!(
+                output_ty,
+                Type::Bool
+                    | Type::Float
+                    | Type::Int
+                    | Type::Complex
+                    | Type::Quat
+                    | Type::E2
+                    | Type::E3
+                    | Type::Custom { .. }
+                    | Type::Vec2
+                    | Type::Vec3
+                    | Type::Vec4
+                    | Type::Mat(_, _)
+                    | Type::Array(_)
+            ) {
+                return Err(Error::new(format!(
+                    "function '{}' currently only supports scalar, vector, matrix, or array outputs",
+                    func.name
+                ))
+                .with_line(func.line));
+            }
+
+            let expr = match infer_function_expr_for_type(&func.expr, &env, &input_ty, &output_ty) {
+                Ok(func_expr) => apply_function_expr(
+                    &func_expr,
+                    ValueExpr::Var {
+                        name: "t".to_string(),
+                        ty: input_ty.clone(),
+                        array_len: None,
+                    },
+                ),
+                Err(_) => infer_value_expr_for_type(&func.expr, &output_ty, &env, Some("t"))
+                    .map_err(|err| err.with_line(func.line))?,
+            };
+            ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
+                .map_err(|err| err.with_line(func.line))?;
+            ensure_lift_param_type(&expr, "t", &input_ty)
+                .map_err(|err| err.with_line(func.line))?;
+            typed_funcs.push(TypedFunc {
+                name: func.name.clone(),
+                input: input_ty,
+                output: output_ty,
+                expr,
+                generated: func.generated,
+            });
+        }
+
+        for binding in &program.value_bindings {
+            let expr = infer_value_expr_for_type(&binding.expr, &binding.ty, &env, None)
+                .map_err(|err| err.with_line(binding.line))?;
+            ensure_type(
+                &expr.ty(),
+                &binding.ty,
+                &format!("binding '{}'", binding.name),
+            )
+            .map_err(|err| err.with_line(binding.line))?;
+            env.update_array_len(&binding.name, expr.array_len());
+            typed_value_bindings.push(TypedValueBinding {
+                name: binding.name.clone(),
+                ty: binding.ty.clone(),
+                expr,
+                generated: binding.generated,
+            });
+        }
+
+        for binding in &program.bindings {
+            ensure_type(
+                &binding.ty,
+                &Type::Object,
+                &format!("binding '{}'", binding.name),
+            )
+            .or_else(|_| {
+                ensure_type(
+                    &binding.ty,
+                    &Type::Object2D,
+                    &format!("binding '{}'", binding.name),
+                )
+            })
+            .map_err(|err| err.with_line(binding.line))?;
+            let expr = infer_object_expr(&binding.expr, &env)
+                .map_err(|err| err.with_line(binding.line))?;
+            let dimension = object_dimension(&expr, &env);
+            if binding.ty == Type::Object2D && dimension != Some(ShapeDimension::D2) {
+                return Err(
+                    Error::new(format!("binding '{}' expected Object2D", binding.name))
+                        .with_line(binding.line),
+                );
+            }
+            env.update_object_dimension(&binding.name, dimension);
+            typed_bindings.push(TypedBinding {
+                name: binding.name.clone(),
+                expr,
+                generated: binding.generated,
+                dimension,
+            });
         }
 
         let output = program
@@ -1058,6 +1059,9 @@ fn infer_value_expr(
             if let Some(result) = infer_monoid_pow_call(name, args, env, lift_param)? {
                 return Ok(result);
             }
+            if let Some(result) = infer_pointwise_value_call(name, args, env, lift_param, None)? {
+                return Ok(result);
+            }
             infer_value_call(name, args, env, lift_param, None)
         }
         Expr::Binary {
@@ -1262,10 +1266,48 @@ fn infer_value_expr_for_type(
                     return Ok(result);
                 }
             }
+            if let Some(result) =
+                infer_pointwise_value_call(name, args, env, lift_param, Some(expected_ty))?
+            {
+                return Ok(result);
+            }
             infer_value_call(name, args, env, lift_param, Some(expected_ty))
         }
         _ => infer_value_expr(expr, env, lift_param),
     }
+}
+
+fn infer_pointwise_value_call(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+    expected_output: Option<&Type>,
+) -> Result<Option<ValueExpr>, Error> {
+    let Some(param_name) = lift_param else {
+        return Ok(None);
+    };
+    let candidates = infer_pointwise_call_function_candidates(name, args, env)?;
+    let matches = candidates
+        .into_iter()
+        .filter(|func| {
+            expected_output
+                .map(|expected| types_compatible_for_expected(&func.output, expected))
+                .unwrap_or(true)
+        })
+        .collect::<Vec<_>>();
+    if matches.len() != 1 {
+        return Ok(None);
+    }
+    let func = matches.into_iter().next().unwrap();
+    Ok(Some(apply_function_expr(
+        &func,
+        ValueExpr::Var {
+            name: param_name.to_string(),
+            ty: func.input.clone(),
+            array_len: None,
+        },
+    )))
 }
 
 fn infer_lifted_value_function(
@@ -2409,6 +2451,12 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             left,
             right,
         } => infer_tensor_function_product_candidates(left, right, env),
+        Expr::Call { callee, args } => {
+            let Expr::Ident(name) = &**callee else {
+                return Err(Error::new("unsupported function call expression"));
+            };
+            infer_pointwise_call_function_candidates(name, args, env)
+        }
         Expr::Binary { op, left, right } => {
             infer_pointwise_binary_function_candidates(*op, left, right, env)
         }
@@ -2424,22 +2472,32 @@ fn infer_pointwise_binary_function_candidates(
     right: &Expr,
     env: &Env<'_>,
 ) -> Result<Vec<FunctionExpr>, Error> {
-    let left_candidates = infer_function_expr_candidates(left, env)?;
-    let right_candidates = infer_function_expr_candidates(right, env)?;
+    let left_candidates = infer_pointwise_binary_arg_candidates(left, env);
+    let right_candidates = infer_pointwise_binary_arg_candidates(right, env);
     let mut candidates = Vec::new();
     for left in &left_candidates {
         for right in &right_candidates {
-            if !types_equivalent(&left.input, &right.input) {
+            let input = match (&left.domain, &right.domain) {
+                (Some(left_input), Some(right_input))
+                    if types_equivalent(left_input, right_input) =>
+                {
+                    normalize_scalar_product_type(left_input)
+                }
+                (Some(input), None) | (None, Some(input)) => normalize_scalar_product_type(input),
+                (None, None) => continue,
+                _ => continue,
+            };
+            if !left.lifted && !right.lifted {
                 continue;
             }
             if let Ok(output) = infer_binary_type(op, &left.output, &right.output) {
                 candidates.push(FunctionExpr {
-                    input: normalize_scalar_product_type(&left.input),
+                    input,
                     output,
                     kind: FunctionExprKind::PointwiseBinary {
                         op,
-                        left: Box::new(left.clone()),
-                        right: Box::new(right.clone()),
+                        left: left.arg.clone(),
+                        right: right.arg.clone(),
                     },
                 });
             }
@@ -2451,6 +2509,141 @@ fn infer_pointwise_binary_function_candidates(
         ));
     }
     Ok(candidates)
+}
+
+#[derive(Clone)]
+struct PointwiseBinaryArgCandidate {
+    arg: PointwiseCallArg,
+    output: Type,
+    domain: Option<Type>,
+    lifted: bool,
+}
+
+fn infer_pointwise_binary_arg_candidates(
+    expr: &Expr,
+    env: &Env<'_>,
+) -> Vec<PointwiseBinaryArgCandidate> {
+    let mut candidates = Vec::new();
+    if let Ok(funcs) = infer_function_expr_candidates(expr, env) {
+        candidates.extend(funcs.into_iter().map(|func| PointwiseBinaryArgCandidate {
+            output: func.output.clone(),
+            domain: Some(func.input.clone()),
+            lifted: true,
+            arg: PointwiseCallArg::Function {
+                expected: func.output.clone(),
+                func: Box::new(func),
+            },
+        }));
+    }
+    if let Ok(value) = infer_value_expr(expr, env, None) {
+        candidates.push(PointwiseBinaryArgCandidate {
+            output: value.ty(),
+            domain: None,
+            lifted: false,
+            arg: PointwiseCallArg::Value(Box::new(value)),
+        });
+    }
+    candidates
+}
+
+fn infer_pointwise_call_function_candidates(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+) -> Result<Vec<FunctionExpr>, Error> {
+    let Some(overloads) = env.function_overloads(name) else {
+        return Err(Error::new(format!("unknown function '{}'", name)));
+    };
+    let mut candidates = Vec::new();
+
+    for overload in overloads {
+        let Ok((inputs, output)) = call_inputs_and_output(&overload.ty) else {
+            continue;
+        };
+        if args.len() != inputs.len() || inputs.iter().any(|ty| matches!(ty, Type::Func(_, _))) {
+            continue;
+        }
+
+        let mut call_args = Vec::new();
+        let mut domain: Option<Type> = None;
+        let mut lifted = false;
+        let mut ok = true;
+
+        for (arg, input_ty) in args.iter().zip(inputs.iter()) {
+            match infer_pointwise_call_function_arg(arg, input_ty, env) {
+                Ok(Some(func)) => {
+                    if let Some(existing_domain) = &domain {
+                        if !types_equivalent(existing_domain, &func.input) {
+                            ok = false;
+                            break;
+                        }
+                    } else {
+                        domain = Some(func.input.clone());
+                    }
+                    lifted = true;
+                    call_args.push(PointwiseCallArg::Function {
+                        func: Box::new(func),
+                        expected: input_ty.clone(),
+                    });
+                }
+                Ok(None) => {
+                    let Ok(value) = infer_value_expr_for_type(arg, input_ty, env, None) else {
+                        ok = false;
+                        break;
+                    };
+                    if ensure_type(&value.ty(), input_ty, &format!("call '{}(...)'", name)).is_err()
+                    {
+                        ok = false;
+                        break;
+                    }
+                    call_args.push(PointwiseCallArg::Value(Box::new(value)));
+                }
+                Err(_) => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+
+        if ok && lifted {
+            candidates.push(FunctionExpr {
+                input: normalize_scalar_product_type(&domain.unwrap()),
+                output,
+                kind: FunctionExprKind::PointwiseCall {
+                    func: name.to_string(),
+                    args: call_args,
+                },
+            });
+        }
+    }
+
+    Ok(candidates)
+}
+
+fn infer_pointwise_call_function_arg(
+    arg: &Expr,
+    expected_output: &Type,
+    env: &Env<'_>,
+) -> Result<Option<FunctionExpr>, Error> {
+    let Ok(candidates) = infer_function_expr_candidates(arg, env) else {
+        return Ok(None);
+    };
+    let candidates = candidates
+        .into_iter()
+        .filter(|func| {
+            types_equivalent(&func.output, expected_output)
+                || can_cast_function_output_to_expected(&func.output, expected_output)
+        })
+        .collect::<Vec<_>>();
+    if candidates.len() == 1 {
+        Ok(Some(candidates.into_iter().next().unwrap()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn can_cast_function_output_to_expected(output: &Type, expected: &Type) -> bool {
+    output == &Type::Bool && matches!(expected, Type::Float | Type::Int)
 }
 
 fn infer_same_domain_function_product_candidates(
@@ -2749,6 +2942,18 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         return Ok(Type::Bool);
     }
 
+    if left == &Type::Bool {
+        if let Some(cast_ty) = bool_numeric_cast_type_for_binary(right) {
+            return infer_binary_type(op, &cast_ty, right);
+        }
+    }
+
+    if right == &Type::Bool {
+        if let Some(cast_ty) = bool_numeric_cast_type_for_binary(left) {
+            return infer_binary_type(op, left, &cast_ty);
+        }
+    }
+
     if has_category(left, AlgebraicCategory::RAlg) && right == &Type::Float {
         return Ok(left.clone());
     }
@@ -2790,6 +2995,19 @@ fn is_equality_comparable_type(ty: &Type) -> bool {
 
 fn is_ordered_comparable_type(ty: &Type) -> bool {
     matches!(ty, Type::Float | Type::Int)
+}
+
+fn bool_numeric_cast_type_for_binary(other: &Type) -> Option<Type> {
+    if other == &Type::Int {
+        Some(Type::Int)
+    } else if other == &Type::Float
+        || has_category(other, AlgebraicCategory::VectR)
+        || has_category(other, AlgebraicCategory::RAlg)
+    {
+        Some(Type::Float)
+    } else {
+        None
+    }
 }
 
 fn try_int_literal_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {

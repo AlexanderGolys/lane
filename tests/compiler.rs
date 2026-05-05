@@ -578,6 +578,46 @@ fn supports_pointwise_function_arithmetic() {
 }
 
 #[test]
+fn supports_pointwise_function_arithmetic_with_value_constants() {
+    let source = "provided Hom(R2, R) f\nconst Hom(R2, R) h = f + 1\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float h(vec2 t)"));
+    assert!(glsl.contains("return (f(t) + 1.0);"));
+}
+
+#[test]
+fn lifts_value_calls_over_function_arguments() {
+    let source =
+        "#2D\nconst Object2D rect = Box2D(a=1, b=2)\nconst Hom(R2, R) m = max(rect.sdf, 0.01)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float m(vec2 t)"));
+    assert!(glsl.contains("return max(sdf_rect(t), 0.01);"));
+}
+
+#[test]
+fn supports_pointwise_bool_masks_for_vector_functions() {
+    let source = "#2D\nprovided R time\nconst Object2D rect = Box2D(a=1, b=2)\nconst Object2D ball = Ball2D(r=1.2)\nconst Object2D scene = union(rect, ball)\nHom(R2, R4) blend = (max(rect.sdf, 0.01) * (0.9, 0.5, 0.5, 1) + max(ball.sdf, 0.01) * (0.5, 0.5, 0.9, 1)) / (max(rect.sdf, 0.01) + max(ball.sdf, 0.01))\nconst Hom(R2, R4) color = blend * (scene.sdf > 0)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec4 blend(vec2 t)"));
+    assert!(glsl.contains("max(sdf_rect(t), 0.01)"));
+    assert!(glsl.contains("vec4 color(vec2 t)"));
+    assert!(glsl.contains("return (blend(t) * ((sdf_scene(t) > 0.0) ? 1.0 : 0.0));"));
+}
+
+#[test]
+fn typed_declarations_can_reference_inferred_bindings() {
+    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin * 2, cos * 2)\nconst ball = Ball2D(r=1.2) + center(time)\nblend = (max(rect.sdf, 0.01) * color2 + max(ball.sdf, 0.01) * color1) / (max(rect.sdf, 0.01) + max(ball.sdf, 0.01))\nconst scene = union(rect, ball)\nconst Hom(R2, R4) color = blend * (scene.sdf > 0)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec4 blend(vec2 t)"));
+    assert!(glsl.contains("vec4 color(vec2 t)"));
+    assert!(glsl.contains("return (blend(t) * ((sdf_scene(t) > 0.0) ? 1.0 : 0.0));"));
+}
+
+#[test]
 fn supports_pointwise_function_arithmetic_support_dependencies() {
     let source = "provided Hom(R, C) f\nprovided Hom(R, C) g\nHom(R, C) h = f * g\nconst Object output = Ball3D(r=length(h(1)))\n";
     let glsl = compile_program(source).unwrap();

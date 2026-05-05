@@ -632,6 +632,17 @@ supports the corresponding operation.
 Hom(R2, R) h = f + g
 ```
 
+Pointwise arithmetic and value function calls can mix functions with ordinary
+values. When a call overload expects a value type and one or more arguments are
+functions, Lane lifts the call over the shared function domain and treats value
+arguments as constants over that domain. Function-typed parameters are passed as
+functions rather than lifted.
+
+```lane
+Hom(R2, R) clipped = max(shape.sdf, 0)
+Hom(R2, R4) color = blend * (shape.sdf > 0)
+```
+
 ### Function Products
 
 Tuples of functions with the same domain form a product-valued function. Products
