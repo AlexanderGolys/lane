@@ -608,6 +608,19 @@ fn supports_pointwise_bool_masks_for_vector_functions() {
 }
 
 #[test]
+fn forward_declares_object_helpers_used_by_functions() {
+    let source = "#2D\nconst Object2D rect = Box2D(a=1, b=2)\nconst Object2D scene = rect\nconst Hom(R2, R4) color = if(scene.sdf > 0) (1, 0, 0, 1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    let sdf_decl = glsl.find("float sdf_scene(vec2 p);").unwrap();
+    let color_def = glsl.find("vec4 color(vec2 t) {").unwrap();
+    let sdf_def = glsl.find("float sdf_scene(vec2 p) {").unwrap();
+    assert!(sdf_decl < color_def);
+    assert!(color_def < sdf_def);
+    assert!(glsl.contains("return ((sdf_scene(t) > 0.0) ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0));"));
+}
+
+#[test]
 fn typed_declarations_can_reference_inferred_bindings() {
     let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin * 2, cos * 2)\nconst ball = Ball2D(r=1.2) + center(time)\nblend = (max(rect.sdf, 0.01) * color2 + max(ball.sdf, 0.01) * color1) / (max(rect.sdf, 0.01) + max(ball.sdf, 0.01))\nconst scene = union(rect, ball)\nconst Hom(R2, R4) color = blend * (scene.sdf > 0)\n";
     let glsl = compile_program(source).unwrap();

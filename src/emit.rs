@@ -18,6 +18,21 @@ impl TypedProgram {
         let global_value_names = self.global_value_binding_names();
         let emitted_func_names = self.emitted_func_names();
         let helper_names = self.func_names();
+        let scene_input_names = self.scene_input_names();
+        let object_bindings = self.object_bindings();
+        let object_getter_bindings = self.object_getter_bindings();
+
+        let func_object_getter_bindings =
+            self.object_getter_bindings_used_by_emitted_funcs(&emitted_func_names);
+        for line in
+            self.emit_object_helper_forward_declarations(&func_object_getter_bindings, &locals)
+        {
+            lines.push(line);
+        }
+        if !func_object_getter_bindings.is_empty() {
+            lines.push(String::new());
+        }
+
         for line in self.emit_global_value_binding_lines(&global_value_names, &helper_names) {
             lines.push(line);
         }
@@ -46,9 +61,6 @@ impl TypedProgram {
         }
 
         let signature = self.scene_signature(&locals.point);
-        let scene_input_names = self.scene_input_names();
-        let object_bindings = self.object_bindings();
-        let object_getter_bindings = self.object_getter_bindings();
 
         for binding in &self.bindings {
             if !binding.generated && !object_getter_bindings.contains(&binding.name) {
@@ -112,6 +124,48 @@ impl TypedProgram {
         }
 
         suffix_glsl_float_literals(&lines.join("\n"))
+    }
+
+    fn emit_object_helper_forward_declarations(
+        &self,
+        object_getter_bindings: &BTreeSet<String>,
+        locals: &EmitLocals,
+    ) -> Vec<String> {
+        let mut lines = Vec::new();
+        for binding in &self.bindings {
+            if !object_getter_bindings.contains(&binding.name) {
+                continue;
+            }
+            let dimension = binding.dimension.unwrap_or(self.ambient_dimension);
+            let signature = self.object_helper_signature(&locals.point, dimension);
+            lines.push(format!(
+                "float sdf_{}({});",
+                binding.name,
+                signature.join(", ")
+            ));
+            if dimension == ShapeDimension::D3 {
+                lines.push(format!(
+                    "{} grad_sdf_{}({});",
+                    ambient_vector_glsl_type(dimension),
+                    binding.name,
+                    signature.join(", ")
+                ));
+            }
+        }
+        lines
+    }
+
+    fn object_getter_bindings_used_by_emitted_funcs(
+        &self,
+        emitted_func_names: &BTreeSet<String>,
+    ) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        for func in &self.funcs {
+            if emitted_func_names.contains(&func.name) {
+                collect_object_getter_value_refs(&func.expr, &mut names);
+            }
+        }
+        names
     }
 
     fn scene_signature(&self, point_name: &str) -> Vec<String> {
