@@ -26,9 +26,10 @@ impl TypedProgram {
         for func in &self.funcs {
             let func_var_names = HashMap::from([("t".to_string(), locals.func_param.clone())]);
             lines.push(format!(
-                "{} {}(float {}) {{",
+                "{} {}({} {}) {{",
                 func.output.glsl_name(),
                 helper_name(&func.name),
+                func.input.glsl_name(),
                 locals.func_param
             ));
             lines.push(format!(
@@ -114,52 +115,15 @@ impl TypedProgram {
     }
 
     fn object_helper_signature(&self, point_name: &str, dimension: ShapeDimension) -> Vec<String> {
-        let mut signature = vec![format!(
+        vec![format!(
             "{} {}",
             ambient_vector_glsl_type(dimension),
             point_name
-        )];
-        for input in &self.inputs {
-            match input.ty {
-                Type::Float
-                | Type::Int
-                | Type::Complex
-                | Type::Quat
-                | Type::E2
-                | Type::E3
-                | Type::Custom { .. }
-                | Type::Vec2
-                | Type::Vec3
-                | Type::Vec4
-                | Type::Mat(_, _)
-                | Type::Array(_) => {
-                    signature.push(format!("{} {}", input.ty.glsl_name(), input.name))
-                }
-                Type::Object | Type::Object2D | Type::Product(_) | Type::Func(_, _) => {}
-            }
-        }
-        signature
+        )]
     }
 
     fn scene_input_names(&self) -> Vec<String> {
-        self.inputs
-            .iter()
-            .filter_map(|input| match input.ty {
-                Type::Float
-                | Type::Int
-                | Type::Complex
-                | Type::Quat
-                | Type::E2
-                | Type::E3
-                | Type::Custom { .. }
-                | Type::Vec2
-                | Type::Vec3
-                | Type::Vec4
-                | Type::Mat(_, _)
-                | Type::Array(_) => Some(input.name.clone()),
-                Type::Object | Type::Object2D | Type::Product(_) | Type::Func(_, _) => None,
-            })
-            .collect()
+        Vec::new()
     }
 
     fn emit_value_binding_lines(
@@ -205,7 +169,8 @@ impl TypedProgram {
     fn global_value_binding_names(&self) -> BTreeSet<String> {
         let mut names = BTreeSet::new();
         for binding in &self.value_bindings {
-            if is_global_const_value_expr(&binding.expr, &names)
+            if (binding.generated || is_global_const_value_expr(&binding.expr, &names))
+                && is_global_const_value_expr(&binding.expr, &names)
                 && !matches!(binding.ty, Type::Array(_))
             {
                 names.insert(binding.name.clone());

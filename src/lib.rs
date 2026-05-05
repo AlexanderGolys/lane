@@ -753,6 +753,7 @@ struct ValueBindingDecl {
     name: String,
     ty: Type,
     expr: Expr,
+    generated: bool,
     line: usize,
 }
 
@@ -761,6 +762,7 @@ struct InferredBindingDecl {
     name: String,
     expr: Expr,
     generated: bool,
+    construct: bool,
     final_output: bool,
     line: usize,
 }
@@ -1051,6 +1053,7 @@ enum ObjectExpr {
 #[derive(Clone, Debug)]
 struct TypedFunc {
     name: String,
+    input: Type,
     output: Type,
     expr: ValueExpr,
 }
@@ -1068,6 +1071,7 @@ struct TypedValueBinding {
     name: String,
     ty: Type,
     expr: ValueExpr,
+    generated: bool,
 }
 
 #[derive(Clone, Debug)]

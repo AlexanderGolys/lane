@@ -414,7 +414,7 @@ fn supports_new_type_syntax_aliases() {
     let source = "provided R time\nprovided C z\nprovided Hom(R3, R) density\nprovided End(R) loop\nconst Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, float time, vec2 z) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
 }
 
 #[test]
@@ -586,7 +586,7 @@ fn supports_provided_group_category_types() {
     let source = "provided Grp G\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, G a, G b) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
 }
 
@@ -678,7 +678,7 @@ fn supports_provided_vector_space_category_types() {
     let source = "provided VectR V\nprovided V v\nprovided Hom(V, R) norm\nR radius = norm(2 * (v / 3))\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, V v) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("float radius = norm(scale_V(scale_V(v, (1.0 / 3.0)), 2.0));"));
 }
 
@@ -800,6 +800,28 @@ fn supports_multiple_const_object_declarations() {
 }
 
 #[test]
+fn const_value_and_function_declarations_emit_even_when_unused() {
+    let source = "const R radius = 1\nconst tint = (.5, .5, .9, 1)\nconst Hom(R, R) wave = sin\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("const float radius = 1.0;"));
+    assert!(glsl.contains("const vec4 tint = vec4(0.5, 0.5, 0.9, 1.0);"));
+    assert!(glsl.contains("float dsl_wave(float t) {"));
+    assert!(glsl.contains("return sin(t);"));
+}
+
+#[test]
+fn const_value_expressions_lift_object_getters_over_points() {
+    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\nconst color = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec4 dsl_color(vec2 t) {"));
+    assert!(glsl.contains("sdf_rect(t) * color1"));
+    assert!(glsl.contains("sdf_ball(t) * color2"));
+    assert!(glsl.contains("float sdf_scene(vec2 p) {"));
+}
+
+#[test]
 fn object_declarations_do_not_require_an_explicit_scene() {
     let source = "Object a = Ball3D(r=1)\nObject b = Ball3D(r=2)\n";
     let glsl = compile_program(source).unwrap();
@@ -908,7 +930,7 @@ fn supports_full_line_comments() {
         "// input animation\nprovided Float time\n// object body\nconst Object output = Ball3D(r=1 + time)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("ParamBall3D((1.0 + time))"));
 }
 
@@ -917,7 +939,7 @@ fn supports_trailing_line_comments() {
     let source = "provided Float time // animation clock\nObject A = Ball3D(r=1) + (1, 0, 0) // translated sphere\nconst Object output = A // final object\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, float time) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("sdf0_Ball3D((p - vec3(1.0, 0.0, 0.0)), ParamBall3D(1.0))"));
 }
 
@@ -932,14 +954,14 @@ fn emits_generated_object_helpers() {
 }
 
 #[test]
-fn generated_helpers_capture_scene_inputs_in_their_signatures() {
+fn generated_helpers_use_provided_inputs_as_globals() {
     let source =
         "provided Float time\nconstruct Object shell = Ball3D(r=1 + time)\nconst Object output = shell\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
-    assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p, float time) {"));
-    assert!(glsl.contains("return normalize(vec3(((sdf_shell(p + vec3(eps, 0.0, 0.0), time) - sdf_shell(p - vec3(eps, 0.0, 0.0), time)) / (2.0 * eps))"));
+    assert!(glsl.contains("float sdf_shell(vec3 p) {"));
+    assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p) {"));
+    assert!(glsl.contains("return normalize(vec3(((sdf_shell(p + vec3(eps, 0.0, 0.0)) - sdf_shell(p - vec3(eps, 0.0, 0.0))) / (2.0 * eps))"));
 }
 
 #[test]
@@ -947,21 +969,21 @@ fn object_sdf_and_grad_getters_emit_helpers_for_plain_bindings() {
     let source = "provided R3 q\nObject shell = Ball3D(r=2) + (1, 0, 0)\nR d = shell.sdf(q)\nR3 g = shell.grad(q)\nconst Object output = Ball3D(r=d + length(g))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float sdf_shell(vec3 p, vec3 q) {"));
-    assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p, vec3 q) {"));
-    assert!(glsl.contains("float d = sdf_shell(q, q);"));
-    assert!(glsl.contains("vec3 g = grad_sdf_shell(q, q);"));
+    assert!(glsl.contains("float sdf_shell(vec3 p) {"));
+    assert!(glsl.contains("vec3 grad_sdf_shell(vec3 p) {"));
+    assert!(glsl.contains("float d = sdf_shell(q);"));
+    assert!(glsl.contains("vec3 g = grad_sdf_shell(q);"));
 }
 
 #[test]
-fn object_sdf_getter_closure_captures_scene_inputs() {
+fn object_sdf_getter_closure_uses_provided_inputs_as_globals() {
     let source = "provided R time\nObject shell = Ball3D(r=1 + time)\nR3 p0 = (0, 0, 0)\nR3 g = gradient(shell.sdf)(p0)\nconst Object output = Ball3D(r=length(g))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float sdf_shell(vec3 p, float time) {"));
+    assert!(glsl.contains("float sdf_shell(vec3 p) {"));
     assert!(glsl.contains("return sdf0_Ball3D(p, ParamBall3D((1.0 + time)));"));
     assert!(glsl.contains("vec3 g = vec3("));
-    assert!(glsl.contains("sdf_shell((p0 + vec3(0.01, 0.0, 0.0)), time)"));
+    assert!(glsl.contains("sdf_shell((p0 + vec3(0.01, 0.0, 0.0)))"));
 }
 
 #[test]
@@ -996,7 +1018,7 @@ fn renames_generated_locals_on_name_conflicts() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p_r"));
-    assert!(glsl.contains(", float p, float eps)"));
+    assert!(!glsl.contains(", float p, float eps)"));
     assert!(glsl.contains("float eps_r"));
     assert!(glsl.contains("scene_sdf(p_r"));
     assert!(glsl.contains("vec3(eps_r"));
@@ -1071,7 +1093,7 @@ fn rejects_construct_on_non_object_bindings() {
     let source = "construct R radius = 2\nconst Object output = Ball3D(r=radius)\n";
     let error = compile_program(source).unwrap_err().to_string();
 
-    assert!(error.contains("'construct' and 'const' currently only support Object bindings"));
+    assert!(error.contains("'construct' currently only supports Object bindings"));
 }
 
 #[test]
@@ -1374,7 +1396,7 @@ fn emits_rotation_action_from_mat3_input() {
     let source = "provided Mat3 R\nconst Object output = R * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, mat3 R) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("sdf0_Ball3D((transpose(R) * p), ParamBall3D(1.0))"));
 }
 
@@ -1488,7 +1510,7 @@ fn treats_square_matrices_as_rings_by_shape() {
         "provided Mat3 a\nprovided Mat3 b\nMat3 c = (a * b) + a\nconst Object output = c * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p, mat3 a, mat3 b) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("mat3 c = ((a * b) + a);"));
 }
 
@@ -1633,7 +1655,7 @@ fn emits_array_types_for_inputs_and_function_returns() {
 
     assert!(glsl.contains("float[] dsl_pair(float t) {"));
     assert!(glsl.contains("return float[2](sin(t), cos(t));"));
-    assert!(glsl.contains("float scene_sdf(vec3 p, float[] weights) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("float radius = (weights[0] + dsl_pair(0.0)[1]);"));
 }
 

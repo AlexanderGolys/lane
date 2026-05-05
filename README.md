@@ -92,7 +92,8 @@ vim.lsp.enable("lane_lsp")
 ## Program Structure
 
 Lane source is line-oriented. Each non-empty, non-comment line is one
-declaration. `const Object` declarations export object helper functions.
+declaration. `const` emits a value, function, or object even if nothing later
+references it. For objects, `const` exports object helper functions.
 `const Object output` also keeps the legacy `scene_sdf` and `scene_grad`
 entrypoints, but a program does not need an explicit scene.
 
@@ -157,8 +158,9 @@ Func(R, R) slope = derivative(0.0001)(sin)
 
 ### `provided TYPE name`
 
-Declares a GLSL input. The input appears as a parameter of `scene_sdf`,
-`scene_grad`, and generated object helpers that capture it.
+Declares an external GLSL value, such as a uniform or global constant. Generated
+SDF helpers and scene entrypoints reference provided values by name; they do not
+thread provided values through helper parameters.
 
 ```lane
 provided R time
@@ -274,7 +276,29 @@ const Object output = Ball3D(r=d + length(normal + finite_diff_normal))
 `obj.sdf` has type `Hom(R3, R)` for 3D objects and `Hom(R2, R)` for 2D
 objects. `obj.grad` returns the matching ambient vector type. Using either
 getter emits the same helper functions as `construct`, even for a plain
-`Object` binding.
+`Object` binding. In a generated value/function expression, bare object getters
+lift over the ambient point:
+
+```lane
+#2D
+const rect = Box2D(a=1, b=2)
+const color = rect.sdf * (.5, .5, .9, 1)
+```
+
+Here `color` is emitted as `Hom(R2, R4)`.
+
+### `const name = expression`
+
+Emits an inferred value, function, or object. Object-valued declarations emit
+SDF helpers; function-valued declarations emit GLSL helper functions; values
+that can be represented as top-level GLSL constants are emitted as `const`
+globals.
+
+```lane
+const radius = 1.5
+const pulse = sin
+const shell = Ball3D(r=radius)
+```
 
 ### `const Object name = object_expression`
 
@@ -316,9 +340,9 @@ Func(R, R) pulse = sin
 Func(R, R3) path = (sin, cos, 0)
 ```
 
-User-defined function bodies currently support `R` inputs. Inside a
-`Func(R, T)` binding, bare unary functions are implicitly applied to the
-generated parameter `t`:
+User-defined function bodies support value inputs such as `R`, `R2`, and `R3`.
+Inside a `Func(R, T)` binding, bare unary functions are implicitly applied to
+the generated parameter `t`:
 
 ```lane
 Func(R, R) wobble = pow2 @ sin + .5
@@ -822,8 +846,8 @@ Every compilation emits:
 - user value functions named `dsl_name`;
 - generated object helpers for `construct` or `const Object` bindings:
   `sdf_name` and `grad_sdf_name` for 3D objects, and `sdf_name` for 2D objects;
-- legacy `float scene_sdf(vec3 p, ...)` and `vec3 scene_grad(vec3 p, ...)`
-  entrypoints only when `const Object output` is present.
+- legacy `float scene_sdf(vec3 p)` and `vec3 scene_grad(vec3 p)` entrypoints
+  only when `const Object output` is present.
 
 Scene-invariant value bindings are emitted as global `const` values when
 possible. Generated local names are renamed if they would collide with user

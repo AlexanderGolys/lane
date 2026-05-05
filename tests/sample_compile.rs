@@ -76,22 +76,22 @@ vec3 dsl_centerB(float t) {
     return (vec3(1.0, sin(t), cos(t)) + (centerA(t) / 2.0));
 }
 
-float sdf_output(vec3 p, float time) {
+float sdf_output(vec3 p) {
     return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time))), dsl_hardness(time));
 }
 
-vec3 grad_sdf_output(vec3 p, float time) {
+vec3 grad_sdf_output(vec3 p) {
     float eps = 0.0005;
-    return normalize(vec3(((sdf_output(p + vec3(eps, 0.0, 0.0), time) - sdf_output(p - vec3(eps, 0.0, 0.0), time)) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, eps, 0.0), time) - sdf_output(p - vec3(0.0, eps, 0.0), time)) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, 0.0, eps), time) - sdf_output(p - vec3(0.0, 0.0, eps), time)) / (2.0 * eps))));
+    return normalize(vec3(((sdf_output(p + vec3(eps, 0.0, 0.0)) - sdf_output(p - vec3(eps, 0.0, 0.0))) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, eps, 0.0)) - sdf_output(p - vec3(0.0, eps, 0.0))) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, 0.0, eps)) - sdf_output(p - vec3(0.0, 0.0, eps))) / (2.0 * eps))));
 }
 
-float scene_sdf(vec3 p, float time) {
+float scene_sdf(vec3 p) {
     return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - dsl_centerB(time)), ParamBall3D(rB(time))), dsl_hardness(time));
 }
 
-vec3 scene_grad(vec3 p, float time) {
+vec3 scene_grad(vec3 p) {
     float eps = 0.0005;
-    return normalize(vec3(((scene_sdf(p + vec3(eps, 0.0, 0.0), time) - scene_sdf(p - vec3(eps, 0.0, 0.0), time)) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, eps, 0.0), time) - scene_sdf(p - vec3(0.0, eps, 0.0), time)) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, 0.0, eps), time) - scene_sdf(p - vec3(0.0, 0.0, eps), time)) / (2.0 * eps))));
+    return normalize(vec3(((scene_sdf(p + vec3(eps, 0.0, 0.0)) - scene_sdf(p - vec3(eps, 0.0, 0.0))) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, eps, 0.0)) - scene_sdf(p - vec3(0.0, eps, 0.0))) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, 0.0, eps)) - scene_sdf(p - vec3(0.0, 0.0, eps))) / (2.0 * eps))));
 }"#;
 
     assert_eq!(glsl, expected);
@@ -105,8 +105,8 @@ fn compiles_showcase_program_to_glsl() {
     assert!(glsl.contains("float op_union(float a, float b) {"));
     assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
     assert!(glsl.contains("mat3 dsl_spin(float t) {"));
-    assert!(glsl.contains("float scene_sdf(vec3 p, float time, mat3 frame) {"));
-    assert!(glsl.contains("vec3 scene_grad(vec3 p, float time, mat3 frame) {"));
+    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("vec3 scene_grad(vec3 p) {"));
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn compiles_all_features_samples_to_glsl() {
     let glsl = compile_program(&source).unwrap();
 
     assert!(glsl.contains("struct Motion"));
-    assert!(glsl.contains("float scene_sdf(vec3 p, float time"));
+    assert!(glsl.contains("float scene_sdf(vec3 p"));
 
     let source_2d = fs::read_to_string("all_features_2d.lane").unwrap();
     let glsl_2d = compile_program(&source_2d).unwrap();

@@ -217,6 +217,7 @@ impl<'a> Parser<'a> {
                 name: left.to_string(),
                 expr,
                 generated,
+                construct: is_construct,
                 final_output: is_const && left == "output",
                 line: line_number,
             }));
@@ -229,9 +230,9 @@ impl<'a> Parser<'a> {
         )?;
         let expr = ExprParser::new(expr_source.trim()).parse()?;
         if matches!(ty, Type::Func(_, _)) {
-            if generated {
+            if is_construct {
                 return Err(Error::new(
-                    "'construct' and 'const' currently only support Object bindings",
+                    "'construct' currently only supports Object bindings",
                 ));
             }
             return Ok(Decl::Func(FuncDecl {
@@ -242,15 +243,16 @@ impl<'a> Parser<'a> {
             }));
         }
         if !matches!(ty, Type::Object | Type::Object2D) {
-            if generated {
+            if is_construct {
                 return Err(Error::new(
-                    "'construct' and 'const' currently only support Object bindings",
+                    "'construct' currently only supports Object bindings",
                 ));
             }
             return Ok(Decl::ValueBinding(ValueBindingDecl {
                 name: name.to_string(),
                 ty,
                 expr,
+                generated,
                 line: line_number,
             }));
         }

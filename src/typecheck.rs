@@ -55,13 +55,7 @@ impl TypedProgram {
                     .with_line(func.line))
                 }
             };
-            if input_ty != Type::Float {
-                return Err(Error::new(format!(
-                    "function '{}' currently only supports float inputs",
-                    func.name
-                ))
-                .with_line(func.line));
-            }
+            validate_user_type(&input_ty).map_err(|err| err.with_line(func.line))?;
             if !matches!(
                 output_ty,
                 Type::Float
@@ -88,8 +82,11 @@ impl TypedProgram {
                 .map_err(|err| err.with_line(func.line))?;
             ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
                 .map_err(|err| err.with_line(func.line))?;
+            ensure_lift_param_type(&expr, "t", &input_ty)
+                .map_err(|err| err.with_line(func.line))?;
             typed_funcs.push(TypedFunc {
                 name: func.name.clone(),
+                input: input_ty,
                 output: output_ty,
                 expr,
             });
@@ -110,6 +107,7 @@ impl TypedProgram {
                 name: binding.name.clone(),
                 ty: binding.ty.clone(),
                 expr,
+                generated: binding.generated,
             });
         }
 
@@ -147,22 +145,6 @@ impl TypedProgram {
         }
 
         for binding in &program.inferred_bindings {
-            if binding.generated {
-                let expr = infer_object_expr(&binding.expr, &env)
-                    .map_err(|err| err.with_line(binding.line))?;
-                let dimension = object_dimension(&expr, &env);
-                env.insert_value(binding.name.clone(), object_type_for_dimension(dimension))
-                    .map_err(|err| err.with_line(binding.line))?;
-                env.update_object_dimension(&binding.name, dimension);
-                typed_bindings.push(TypedBinding {
-                    name: binding.name.clone(),
-                    expr,
-                    generated: true,
-                    dimension,
-                });
-                continue;
-            }
-
             match infer_object_expr(&binding.expr, &env) {
                 Ok(expr) => {
                     let dimension = object_dimension(&expr, &env);
@@ -172,23 +154,35 @@ impl TypedProgram {
                     typed_bindings.push(TypedBinding {
                         name: binding.name.clone(),
                         expr,
-                        generated: false,
+                        generated: binding.generated,
                         dimension,
                     });
                 }
-                Err(_) => {
+                Err(object_err) => {
+                    if binding.construct {
+                        return Err(object_err.with_line(binding.line));
+                    }
                     let expr = match infer_value_expr(&binding.expr, &env, None) {
                         Ok(expr) => expr,
                         Err(value_err) => {
+                            if let Ok((input, output, expr)) =
+                                infer_lifted_value_function(&binding.expr, &env)
+                            {
+                                env.insert_func(
+                                    binding.name.clone(),
+                                    Type::func(input.clone(), output.clone()),
+                                )
+                                .map_err(|err| err.with_line(binding.line))?;
+                                typed_funcs.push(TypedFunc {
+                                    name: binding.name.clone(),
+                                    input,
+                                    output,
+                                    expr,
+                                });
+                                continue;
+                            }
                             let func = infer_function_expr(&binding.expr, &env)
                                 .map_err(|_| value_err.with_line(binding.line))?;
-                            if func.input != Type::Float {
-                                return Err(Error::new(format!(
-                                    "function '{}' currently only supports float inputs",
-                                    binding.name
-                                ))
-                                .with_line(binding.line));
-                            }
                             env.insert_func(
                                 binding.name.clone(),
                                 Type::func(func.input.clone(), func.output.clone()),
@@ -196,12 +190,13 @@ impl TypedProgram {
                             .map_err(|err| err.with_line(binding.line))?;
                             typed_funcs.push(TypedFunc {
                                 name: binding.name.clone(),
+                                input: func.input.clone(),
                                 output: func.output.clone(),
                                 expr: apply_function_expr(
                                     &func,
                                     ValueExpr::Var {
                                         name: "t".to_string(),
-                                        ty: Type::Float,
+                                        ty: func.input.clone(),
                                         array_len: None,
                                     },
                                 ),
@@ -218,6 +213,7 @@ impl TypedProgram {
                         name: binding.name.clone(),
                         ty,
                         expr,
+                        generated: binding.generated,
                     });
                 }
             }
@@ -267,7 +263,6 @@ struct Env<'a> {
     registry: &'a Registry,
     ambient_dimension: ShapeDimension,
     derivative_epsilon: f64,
-    scene_inputs: Vec<(String, Type, Option<usize>)>,
     product_types: HashMap<String, ProductTypeDecl>,
     values: HashMap<String, ValueInfo>,
     funcs: HashMap<String, Vec<FunctionInfo>>,
@@ -291,7 +286,7 @@ impl<'a> Env<'a> {
         registry: &'a Registry,
         ambient_dimension: ShapeDimension,
         derivative_epsilon: f64,
-        inputs: &[InputDecl],
+        _inputs: &[InputDecl],
         product_types: &[ProductTypeDecl],
     ) -> Self {
         let values = HashMap::new();
@@ -335,11 +330,6 @@ impl<'a> Env<'a> {
             registry,
             ambient_dimension,
             derivative_epsilon,
-            scene_inputs: inputs
-                .iter()
-                .filter(|input| value_type_scene_input(&input.ty))
-                .map(|input| (input.name.clone(), input.ty.clone(), None))
-                .collect(),
             product_types: product_types
                 .iter()
                 .map(|decl| (decl.name.clone(), decl.clone()))
@@ -432,14 +422,7 @@ impl<'a> Env<'a> {
     }
 
     fn scene_input_values(&self) -> Vec<ValueExpr> {
-        self.scene_inputs
-            .iter()
-            .map(|(name, ty, array_len)| ValueExpr::Var {
-                name: name.clone(),
-                ty: ty.clone(),
-                array_len: *array_len,
-            })
-            .collect()
+        Vec::new()
     }
 
     fn product_type(&self, name: &str) -> Option<&ProductTypeDecl> {
@@ -1011,6 +994,17 @@ fn infer_value_expr(
     match expr {
         Expr::Number(value) => Ok(ValueExpr::Float(*value)),
         Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
+        Expr::FieldAccess { .. } if lift_param.is_some() => {
+            let func = infer_function_expr(expr, env)?;
+            Ok(apply_function_expr(
+                &func,
+                ValueExpr::Var {
+                    name: lift_param.unwrap().to_string(),
+                    ty: func.input.clone(),
+                    array_len: None,
+                },
+            ))
+        }
         Expr::FieldAccess { .. } => Err(Error::new(
             "object getters are functions and must be called or passed as closures",
         )),
@@ -1181,6 +1175,109 @@ fn infer_value_expr_for_type(
         }
         _ => infer_value_expr(expr, env, lift_param),
     }
+}
+
+fn infer_lifted_value_function(
+    expr: &Expr,
+    env: &Env<'_>,
+) -> Result<(Type, Type, ValueExpr), Error> {
+    let typed = infer_value_expr(expr, env, Some("t"))?;
+    let Some(input) = lifted_param_type(&typed, "t")? else {
+        return Err(Error::new("expression is not a function"));
+    };
+    let output = typed.ty();
+    Ok((input, output, typed))
+}
+
+fn ensure_lift_param_type(expr: &ValueExpr, name: &str, expected: &Type) -> Result<(), Error> {
+    if let Some(actual) = lifted_param_type(expr, name)? {
+        ensure_type(&actual, expected, "function parameter")?;
+    }
+    Ok(())
+}
+
+fn lifted_param_type(expr: &ValueExpr, name: &str) -> Result<Option<Type>, Error> {
+    let mut ty = None;
+    collect_lifted_param_type(expr, name, &mut ty)?;
+    Ok(ty)
+}
+
+fn collect_lifted_param_type(
+    expr: &ValueExpr,
+    name: &str,
+    ty: &mut Option<Type>,
+) -> Result<(), Error> {
+    match expr {
+        ValueExpr::Float(_) | ValueExpr::Int(_) | ValueExpr::Neutral { .. } => {}
+        ValueExpr::Var {
+            name: var_name,
+            ty: var_ty,
+            ..
+        } if var_name == name => match ty {
+            Some(existing) => ensure_type(var_ty, existing, "lifted function parameter")?,
+            None => *ty = Some(var_ty.clone()),
+        },
+        ValueExpr::Var { .. } => {}
+        ValueExpr::Call { args, .. } | ValueExpr::Array { elements: args, .. } => {
+            for arg in args {
+                collect_lifted_param_type(arg, name, ty)?;
+            }
+        }
+        ValueExpr::ObjectGetterCall {
+            point, captures, ..
+        } => {
+            collect_lifted_param_type(point, name, ty)?;
+            for capture in captures {
+                collect_lifted_param_type(capture, name, ty)?;
+            }
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_lifted_param_type(array, name, ty)?;
+            collect_lifted_param_type(index, name, ty)?;
+        }
+        ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
+            collect_lifted_param_type(left, name, ty)?;
+            collect_lifted_param_type(right, name, ty)?;
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_lifted_param_type(x, name, ty)?;
+            collect_lifted_param_type(y, name, ty)?;
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_lifted_param_type(x, name, ty)?;
+            collect_lifted_param_type(y, name, ty)?;
+            collect_lifted_param_type(z, name, ty)?;
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_lifted_param_type(x, name, ty)?;
+            collect_lifted_param_type(y, name, ty)?;
+            collect_lifted_param_type(z, name, ty)?;
+            collect_lifted_param_type(w, name, ty)?;
+        }
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_lifted_param_type(row, name, ty)?;
+            }
+        }
+        ValueExpr::Derivative { epsilon, at, .. }
+        | ValueExpr::Partial { epsilon, at, .. }
+        | ValueExpr::Gradient { epsilon, at, .. }
+        | ValueExpr::Divergence { epsilon, at, .. } => {
+            collect_lifted_param_type(epsilon, name, ty)?;
+            collect_lifted_param_type(at, name, ty)?;
+        }
+        ValueExpr::DirectionalDerivative {
+            epsilon,
+            direction,
+            at,
+            ..
+        } => {
+            collect_lifted_param_type(epsilon, name, ty)?;
+            collect_lifted_param_type(direction, name, ty)?;
+            collect_lifted_param_type(at, name, ty)?;
+        }
+    }
+    Ok(())
 }
 
 fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKind> {
@@ -1370,24 +1467,6 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
 }
 
 fn is_value_type(ty: &Type) -> bool {
-    matches!(
-        ty,
-        Type::Float
-            | Type::Int
-            | Type::Complex
-            | Type::Quat
-            | Type::E2
-            | Type::E3
-            | Type::Custom { .. }
-            | Type::Vec2
-            | Type::Vec3
-            | Type::Vec4
-            | Type::Mat(_, _)
-            | Type::Array(_)
-    )
-}
-
-fn value_type_scene_input(ty: &Type) -> bool {
     matches!(
         ty,
         Type::Float
