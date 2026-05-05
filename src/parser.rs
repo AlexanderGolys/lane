@@ -202,7 +202,6 @@ impl<'a> Parser<'a> {
         let is_construct = line.starts_with("construct ");
         let is_const = line.starts_with("const ");
         let generated = is_construct || is_const;
-        let final_output = is_const;
         let line = line
             .strip_prefix("construct ")
             .or_else(|| line.strip_prefix("const "))
@@ -220,7 +219,7 @@ impl<'a> Parser<'a> {
                 name: left.to_string(),
                 expr,
                 generated,
-                final_output,
+                final_output: is_const && left == "output",
                 line: line_number,
             }));
         }
@@ -262,7 +261,7 @@ impl<'a> Parser<'a> {
             ty,
             expr,
             generated,
-            final_output,
+            final_output: is_const && name == "output",
             line: line_number,
         }))
     }

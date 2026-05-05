@@ -89,8 +89,8 @@ vim.lsp.enable("lane_lsp")
 ## Program Structure
 
 Lane source is line-oriented. Each non-empty, non-comment line is one
-declaration. A program must contain exactly one `const Object` binding, which
-marks the final scene.
+declaration. A program must contain exactly one `const Object output` binding,
+which marks the final scene.
 
 ```lane
 provided R time
@@ -274,9 +274,11 @@ getter emits the same helper functions as `construct`, even for a plain
 
 ### `const Object name = object_expression`
 
-Sets the final scene. Use exactly once.
+Exports a reusable SDF helper like `construct`, and also marks the final scene
+when the name is `output`. Use `const Object output = ...` exactly once.
 
 ```lane
+const Object shell = Ball3D(r=2)
 const Object output = Ball3D(r=1)
 ```
 

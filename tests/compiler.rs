@@ -776,11 +776,13 @@ fn supports_const_output_declaration() {
 }
 
 #[test]
-fn rejects_multiple_const_output_declarations() {
-    let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2)\n";
-    let error = compile_program(source).unwrap_err().to_string();
+fn supports_multiple_const_object_declarations() {
+    let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2)\nconst Object output = union(a, b)\n";
+    let glsl = compile_program(source).unwrap();
 
-    assert!(error.contains("multiple const output declarations are not supported"));
+    assert!(glsl.contains("float sdf_a("));
+    assert!(glsl.contains("float sdf_b("));
+    assert!(glsl.contains("op_union"));
 }
 
 #[test]
