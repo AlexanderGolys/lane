@@ -1,4 +1,5 @@
 const PREC = {
+    compare: 0,
     add: 1,
     multiply: 2,
     compose: 3,
@@ -153,6 +154,7 @@ module.exports = grammar({
         ),
 
         _expression: ($) => choice(
+            $.conditional_expression,
             $.binary_expression,
             $.call_expression,
             $.field_access_expression,
@@ -227,12 +229,27 @@ module.exports = grammar({
             field('value', $._expression),
         ),
 
+        conditional_expression: ($) => prec.right(seq(
+            'if',
+            '(',
+            field('condition', $._expression),
+            ')',
+            field('then', $._expression),
+            optional(seq('else', field('else', $._expression))),
+        )),
+
         unary_expression: ($) => prec.right(PREC.unary, seq(
             field('operator', '-'),
             field('argument', $._expression),
         )),
 
         binary_expression: ($) => choice(
+            prec.left(PREC.compare, seq(field('left', $._expression), field('operator', '=='), field('right', $._expression))),
+            prec.left(PREC.compare, seq(field('left', $._expression), field('operator', '!='), field('right', $._expression))),
+            prec.left(PREC.compare, seq(field('left', $._expression), field('operator', '<'), field('right', $._expression))),
+            prec.left(PREC.compare, seq(field('left', $._expression), field('operator', '<='), field('right', $._expression))),
+            prec.left(PREC.compare, seq(field('left', $._expression), field('operator', '>'), field('right', $._expression))),
+            prec.left(PREC.compare, seq(field('left', $._expression), field('operator', '>='), field('right', $._expression))),
             prec.left(PREC.add, seq(field('left', $._expression), field('operator', '+'), field('right', $._expression))),
             prec.left(PREC.add, seq(field('left', $._expression), field('operator', '-'), field('right', $._expression))),
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '*'), field('right', $._expression))),

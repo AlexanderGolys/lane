@@ -120,6 +120,38 @@ R3 g = gradient(shell.sdf)(p) + shell.grad(p)
           (identifier))))))
 
 ==================
+Conditional Expressions
+==================
+
+const Hom(R2, R4) color = if(shape.sdf > 0) foreground else background
+const R masked = if(inside) distance
+
+---
+
+(source_file
+  (binding_declaration
+    (gen_modifier)
+    (hom_type
+      (type_identifier)
+      (type_identifier))
+    (identifier)
+    (conditional_expression
+      (binary_expression
+        (field_access_expression
+          (identifier)
+          (identifier))
+        (number))
+      (identifier)
+      (identifier)))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (conditional_expression
+      (identifier)
+      (identifier))))
+
+==================
 Arrays
 ==================
 

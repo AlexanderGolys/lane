@@ -1,8 +1,8 @@
-["provided" "construct" "const" "Func" "Hom" "End" "Array"] @keyword
+["provided" "construct" "const" "Func" "Hom" "End" "Array" "if" "else"] @keyword
 
 (gen_modifier) @keyword
 
-["+" "-" "*" "/" "@" "=" "×" "x"] @operator
+["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x"] @operator
 
 ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
 ["," "."] @punctuation.delimiter
