@@ -178,7 +178,7 @@ impl<'a> Parser<'a> {
                 line: line_number,
             }));
         }
-        if !matches!(ty, Type::Object) {
+        if !matches!(ty, Type::Object | Type::Object2D) {
             if generated {
                 return Err(Error::new(
                     "'construct' currently only supports Object bindings",

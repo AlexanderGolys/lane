@@ -110,9 +110,24 @@ impl TypedProgram {
                 &Type::Object,
                 &format!("binding '{}'", binding.name),
             )
+            .or_else(|_| {
+                ensure_type(
+                    &binding.ty,
+                    &Type::Object2D,
+                    &format!("binding '{}'", binding.name),
+                )
+            })
             .map_err(|err| err.with_line(binding.line))?;
             let expr = infer_object_expr(&binding.expr, &env)
                 .map_err(|err| err.with_line(binding.line))?;
+            let dimension = object_dimension(&expr, &env);
+            if binding.ty == Type::Object2D && dimension != Some(ShapeDimension::D2) {
+                return Err(
+                    Error::new(format!("binding '{}' expected Object2D", binding.name))
+                        .with_line(binding.line),
+                );
+            }
+            env.update_object_dimension(&binding.name, dimension);
             typed_bindings.push(TypedBinding {
                 name: binding.name.clone(),
                 expr,
@@ -124,8 +139,10 @@ impl TypedProgram {
             if binding.generated {
                 let expr = infer_object_expr(&binding.expr, &env)
                     .map_err(|err| err.with_line(binding.line))?;
+                let dimension = object_dimension(&expr, &env);
                 env.insert_value(binding.name.clone(), Type::Object)
                     .map_err(|err| err.with_line(binding.line))?;
+                env.update_object_dimension(&binding.name, dimension);
                 typed_bindings.push(TypedBinding {
                     name: binding.name.clone(),
                     expr,
@@ -136,8 +153,10 @@ impl TypedProgram {
 
             match infer_object_expr(&binding.expr, &env) {
                 Ok(expr) => {
+                    let dimension = object_dimension(&expr, &env);
                     env.insert_value(binding.name.clone(), Type::Object)
                         .map_err(|err| err.with_line(binding.line))?;
+                    env.update_object_dimension(&binding.name, dimension);
                     typed_bindings.push(TypedBinding {
                         name: binding.name.clone(),
                         expr,
@@ -209,6 +228,7 @@ struct Env<'a> {
     registry: &'a Registry,
     values: HashMap<String, ValueInfo>,
     funcs: HashMap<String, Vec<FunctionInfo>>,
+    object_dimensions: HashMap<String, ShapeDimension>,
 }
 
 #[derive(Clone)]
@@ -254,6 +274,7 @@ impl<'a> Env<'a> {
             registry,
             values,
             funcs,
+            object_dimensions: HashMap::new(),
         }
     }
 
@@ -261,13 +282,17 @@ impl<'a> Env<'a> {
         if self.values.contains_key(&name) || self.funcs.contains_key(&name) {
             return Err(Error::new(format!("duplicate declaration for '{}'", name)));
         }
+        let dimension = object_type_dimension(&ty);
         self.values.insert(
-            name,
+            name.clone(),
             ValueInfo {
                 ty,
                 array_len: None,
             },
         );
+        if let Some(dimension) = dimension {
+            self.object_dimensions.insert(name, dimension);
+        }
         Ok(())
     }
 
@@ -317,6 +342,23 @@ impl<'a> Env<'a> {
             info.array_len = array_len;
         }
     }
+
+    fn update_object_dimension(&mut self, name: &str, dimension: Option<ShapeDimension>) {
+        if let Some(dimension) = dimension {
+            self.object_dimensions.insert(name.to_string(), dimension);
+        }
+    }
+
+    fn object_dimension(&self, name: &str) -> Option<ShapeDimension> {
+        self.object_dimensions.get(name).copied()
+    }
+}
+
+fn object_type_dimension(ty: &Type) -> Option<ShapeDimension> {
+    match ty {
+        Type::Object2D => Some(ShapeDimension::D2),
+        _ => None,
+    }
 }
 
 fn function_domain_and_output(ty: &Type) -> Result<(Type, Type), Error> {
@@ -341,7 +383,9 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             let ty = env
                 .get(name)
                 .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
-            ensure_type(ty, &Type::Object, &format!("identifier '{}'", name))?;
+            if !matches!(ty, Type::Object | Type::Object2D) {
+                ensure_type(ty, &Type::Object, &format!("identifier '{}'", name))?;
+            }
             Ok(ObjectExpr::Var(name.clone()))
         }
         Expr::Constructor { name, args } => {
@@ -481,6 +525,25 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     }
 }
 
+fn object_dimension(expr: &ObjectExpr, env: &Env<'_>) -> Option<ShapeDimension> {
+    match expr {
+        ObjectExpr::Var(name) => env.object_dimension(name),
+        ObjectExpr::Primitive { name, .. } => Some(registry::shape_dimension(name)),
+        ObjectExpr::AmbientTransform { object, .. }
+        | ObjectExpr::IsometryTransform { object, .. } => object_dimension(object, env),
+        ObjectExpr::RegisteredOp {
+            glsl_name,
+            object_args,
+            ..
+        } => match glsl_name.as_str() {
+            "op_revolution" | "op_extrusion" => Some(ShapeDimension::D3),
+            _ => object_args
+                .first()
+                .and_then(|object| object_dimension(object, env)),
+        },
+    }
+}
+
 fn infer_segment_length_constructor(
     name: &str,
     args: &ConstructorArgs,
@@ -588,6 +651,7 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     for expr in &args[op.value_arg_types.len()..] {
         object_args.push(infer_object_expr(expr, env)?);
     }
+    ensure_object_op_arg_dimensions(op, &object_args, env)?;
 
     if op.associative_binary {
         Ok(fold_associative_registered_op(
@@ -629,6 +693,7 @@ fn infer_rotation_object_call(
         .iter()
         .map(|arg| infer_object_expr(arg, env))
         .collect::<Result<Vec<_>, _>>()?;
+    ensure_object_op_arg_dimensions(op, &object_args, env)?;
 
     Ok(ObjectExpr::RegisteredOp {
         name: op.name.to_string(),
@@ -636,6 +701,25 @@ fn infer_rotation_object_call(
         value_args,
         object_args,
     })
+}
+
+fn ensure_object_op_arg_dimensions(
+    op: &ObjectOpDef,
+    object_args: &[ObjectExpr],
+    env: &Env<'_>,
+) -> Result<(), Error> {
+    if op.name != "Revolution" {
+        return Ok(());
+    }
+    let Some(object) = object_args.first() else {
+        return Ok(());
+    };
+    if object_dimension(object, env) == Some(ShapeDimension::D2) {
+        return Ok(());
+    }
+    Err(Error::new(
+        "operator 'Revolution' expects an Object2D argument",
+    ))
 }
 
 fn rotation_value_arg_count(name: &str, args: &[&Expr]) -> Result<usize, Error> {
@@ -1746,7 +1830,7 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                 | Type::Array(_) => {
                     Err(Error::new(format!("'{}' is a value, not a function", name)))
                 }
-                Type::Object | Type::Product(_) => Err(Error::new(format!(
+                Type::Object | Type::Object2D | Type::Product(_) => Err(Error::new(format!(
                     "object '{}' is not a function expression",
                     name
                 ))),
@@ -1888,7 +1972,7 @@ fn infer_identifier_value(
                 ty: (*output).clone(),
             })
         }
-        Type::Object | Type::Product(_) => Err(Error::new(format!(
+        Type::Object | Type::Object2D | Type::Product(_) => Err(Error::new(format!(
             "object '{}' is not a value expression",
             name
         ))),

@@ -157,7 +157,8 @@ representations.
 | `Mat3` | | `mat3` |
 | `Mat4` | | `mat4` |
 | `MatNxM` | `N,M in {2,3,4}` | GLSL `matMxN` |
-| `Object` | `Object3D` | SDF object |
+| `Object` | `Object3D` | 3D SDF object |
+| `Object2D` | | 2D SDF object |
 
 Function types use `Func(input, output)` or `Hom(input, output)`:
 
@@ -345,7 +346,7 @@ This exports `sdf_shell(...)` and `grad_sdf_shell(...)` in addition to the final
 ### 2D Profile Lifted Into 3D
 
 ```lane
-Object profile = Triangle2D(p0=(0, -.5), p1=(.5, 0), p2=(0, .5))
+Object2D profile = Triangle2D(p0=(0, -.5), p1=(.5, 0), p2=(0, .5))
 Object lathe = Revolution(1.25)(profile)
 Object slab = Extrusion(.2)(Box2D(1, .5)) + (0, 0, 1)
 generate Union(lathe, slab)
@@ -396,7 +397,7 @@ scene using most registered primitives and operators.
 | `SmoothIntersection` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
 | `SmoothDifference` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
 | `SmoothXor` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
-| `Revolution` | `Hom(R, Hom(Object, Object))` | Lifts a 2D profile with `vec2(length(p.xz) - offset, p.y)`. |
+| `Revolution` | `Hom(R, Hom(Object2D, Object))` | Lifts a 2D profile with `vec2(length(p.xz) - offset, p.y)`. |
 | `Extrusion` | `Hom(R, Hom(Object, Object))` | Lifts a 2D profile along the `z` axis. |
 
 ### Categories, Value Functions, And Type Aliases

@@ -322,7 +322,7 @@ fn lists_builtin_lane_objects() {
         object.name == "SmoothUnion" && object.ty == "Hom(R, Hom(Object × Object, Object))"
     }));
     assert!(objects.iter().any(|object| {
-        object.name == "Revolution" && object.ty == "Hom(R, Hom(Object, Object))"
+        object.name == "Revolution" && object.ty == "Hom(R, Hom(Object2D, Object))"
     }));
     assert!(objects.iter().any(|object| {
         object.name == "Extrusion" && object.ty == "Hom(R, Hom(Object, Object))"
@@ -357,7 +357,7 @@ fn looks_up_builtin_object_detail() {
     let field = known_builtin_object("Field").unwrap();
     let gradient = known_builtin_object("gradient").unwrap();
 
-    assert_eq!(revolution.ty, "Hom(R, Hom(Object, Object))");
+    assert_eq!(revolution.ty, "Hom(R, Hom(Object2D, Object))");
     assert!(revolution
         .body
         .contains("vec3 op_revolution_point(vec3 p, float offset)"));
@@ -1075,11 +1075,20 @@ fn emits_translation_action_from_addition_sugar() {
 
 #[test]
 fn emits_revolution_operator() {
-    let source = "generate Revolution(1.5)(Segment2D(a=(0, -1), b=(0, 1)))\n";
+    let source =
+        "Object2D profile = Segment2D(a=(0, -1), b=(0, 1))\ngenerate Revolution(1.5)(profile)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec3 op_revolution_point(vec3 p, float offset)"));
     assert!(glsl.contains("sdf0_Segment2D((op_revolution_point(p, 1.5)).xy, ParamSegment2D(vec2(0.0, (-1.0)), vec2(0.0, 1.0)))"));
+}
+
+#[test]
+fn rejects_revolution_of_3d_object() {
+    let source = "generate Revolution(1.5)(Ball3D(r=1))\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("operator 'Revolution' expects an Object2D argument"));
 }
 
 #[test]

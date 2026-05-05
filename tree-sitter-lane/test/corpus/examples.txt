@@ -20,6 +20,8 @@ Object v34 = Segment3D(p3, p4)
 
 const Object v = Union(b1, b2, b3, b4)
 construct Object e = Union(v12, v23, v34)
+Object2D profile = Segment2D(a=(0, -1), b=(0, 1))
+Object lathe = Revolution(.25)(profile)
 
 gen SmoothUnion(.5)(v, e)
 
@@ -133,6 +135,33 @@ gen SmoothUnion(.5)(v, e)
       (argument_list
         (identifier)
         (identifier)
+        (identifier))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (named_argument
+          (identifier)
+          (tuple_expression
+            (number)
+            (unary_expression
+              (number))))
+        (named_argument
+          (identifier)
+          (tuple_expression
+            (number)
+            (number))))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (call_expression
+        (identifier)
+        (argument_list
+          (number)))
+      (argument_list
         (identifier))))
   (output_declaration
     (call_expression

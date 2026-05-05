@@ -106,7 +106,7 @@ impl TypedProgram {
                 | Type::Array(_) => {
                     signature.push(format!("{} {}", input.ty.glsl_name(), input.name))
                 }
-                Type::Object | Type::Product(_) | Type::Func(_, _) => {}
+                Type::Object | Type::Object2D | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
         signature
@@ -128,7 +128,7 @@ impl TypedProgram {
                 | Type::Vec4
                 | Type::Mat(_, _)
                 | Type::Array(_) => Some(input.name.clone()),
-                Type::Object | Type::Product(_) | Type::Func(_, _) => None,
+                Type::Object | Type::Object2D | Type::Product(_) | Type::Func(_, _) => None,
             })
             .collect()
     }
@@ -303,7 +303,7 @@ impl TypedProgram {
                 | Type::Array(_) => {
                     forbidden.insert(input.name.clone());
                 }
-                Type::Object | Type::Product(_) | Type::Func(_, _) => {}
+                Type::Object | Type::Object2D | Type::Product(_) | Type::Func(_, _) => {}
             }
         }
         for binding in &self.value_bindings {
@@ -416,7 +416,8 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
         | Type::Vec3
         | Type::Vec4
         | Type::Mat(_, _)
-        | Type::Object => {}
+        | Type::Object
+        | Type::Object2D => {}
     }
 }
 

@@ -409,7 +409,7 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 11] = [
     BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
@@ -482,6 +482,13 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
         categories: &[],
     },
     BuiltinTypeDef {
+        ty: Type::Object2D,
+        aliases: &["Object2D"],
+        display_name: "Object2D",
+        support_glsl: None,
+        categories: &[],
+    },
+    BuiltinTypeDef {
         ty: Type::E2,
         aliases: &["E2"],
         display_name: "E2",
@@ -535,6 +542,7 @@ enum Type {
     Mat(usize, usize),
     Array(Box<Type>),
     Object,
+    Object2D,
     Product(Vec<Type>),
     Func(Box<Type>, Box<Type>),
 }
@@ -558,7 +566,7 @@ impl Type {
             Self::Vec4 => "vec4".to_string(),
             Self::Mat(rows, columns) => matrix_glsl_type(*rows, *columns),
             Self::Array(element) => format!("{}[]", element.glsl_name()),
-            Self::Object | Self::Product(_) | Self::Func(_, _) => "".to_string(),
+            Self::Object | Self::Object2D | Self::Product(_) | Self::Func(_, _) => "".to_string(),
         }
     }
 
@@ -1059,15 +1067,27 @@ struct Registry {
 
 fn object_op_type(op: &ObjectOpDef) -> Type {
     let object_domain = if op.object_arg_count == 1 {
-        Type::Object
+        object_op_arg_type(op, 0)
     } else {
-        Type::Product(vec![Type::Object; op.object_arg_count])
+        Type::Product(
+            (0..op.object_arg_count)
+                .map(|index| object_op_arg_type(op, index))
+                .collect(),
+        )
     };
     let output = Type::func(object_domain, Type::Object);
     match op.value_arg_types.as_slice() {
         [] => output,
         [value_arg] => Type::func(value_arg.clone(), output),
         value_args => Type::func(Type::Product(value_args.to_vec()), output),
+    }
+}
+
+fn object_op_arg_type(op: &ObjectOpDef, _index: usize) -> Type {
+    if op.name == "Revolution" {
+        Type::Object2D
+    } else {
+        Type::Object
     }
 }
 
