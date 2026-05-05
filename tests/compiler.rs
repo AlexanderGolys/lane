@@ -317,16 +317,16 @@ fn lists_builtin_lane_objects() {
     assert!(!objects.iter().any(|object| object.name == "cexp"));
     assert!(objects
         .iter()
-        .any(|object| { object.name == "Union" && object.ty == "Hom(Object × Object, Object)" }));
+        .any(|object| { object.name == "union" && object.ty == "Hom(Object × Object, Object)" }));
     assert!(objects.iter().any(|object| {
-        object.name == "SmoothUnion" && object.ty == "Hom(R, Hom(Object × Object, Object))"
+        object.name == "smoothUnion" && object.ty == "Hom(R, Hom(Object × Object, Object))"
     }));
     assert!(objects.iter().any(|object| {
-        object.name == "Revolution" && object.ty == "Hom(R, Hom(Object2D, Object))"
+        object.name == "revolution" && object.ty == "Hom(R, Hom(Object2D, Object))"
     }));
-    assert!(objects.iter().any(|object| {
-        object.name == "Extrusion" && object.ty == "Hom(R, Hom(Object, Object))"
-    }));
+    assert!(objects
+        .iter()
+        .any(|object| { object.name == "extrude" && object.ty == "Hom(R, Hom(Object, Object))" }));
     assert!(objects
         .iter()
         .any(|object| { object.name == "rot" && object.ty == "Hom(R3 × R3 × R, E3)" }));
@@ -350,7 +350,7 @@ fn lists_builtin_lane_objects() {
 
 #[test]
 fn looks_up_builtin_object_detail() {
-    let revolution = known_builtin_object("Revolution").unwrap();
+    let revolution = known_builtin_object("revolution").unwrap();
     let pow2 = known_builtin_object("pow2").unwrap();
     let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("H").unwrap();
@@ -443,7 +443,7 @@ fn composes_unary_functions_in_function_bodies() {
 
 #[test]
 fn emits_glsl_float_literals_with_f_suffixes() {
-    let source = "R radius = .5\ngenerate SmoothUnion(0.25)(Ball3D(r=radius), Ball3D(r=1))\n";
+    let source = "R radius = .5\ngenerate smoothUnion(0.25)(Ball3D(r=radius), Ball3D(r=1))\n";
     let glsl = compile_program_with_float_suffixes(source).unwrap();
 
     assert!(glsl.contains("k *= 1.0f / (1.0f - sqrt(0.5f));"));
@@ -707,7 +707,7 @@ fn generated_helpers_capture_scene_inputs_in_their_signatures() {
 
 #[test]
 fn scene_sdf_reuses_generated_object_helpers() {
-    let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2) + (1, 0, 0)\ngenerate Union(a, b)\n";
+    let source = "const Object a = Ball3D(r=1)\nconst Object b = Ball3D(r=2) + (1, 0, 0)\ngenerate union(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_a(vec3 p) {"));
@@ -1076,7 +1076,7 @@ fn emits_translation_action_from_addition_sugar() {
 #[test]
 fn emits_revolution_operator() {
     let source =
-        "Object2D profile = Segment2D(a=(0, -1), b=(0, 1))\ngenerate Revolution(1.5)(profile)\n";
+        "Object2D profile = Segment2D(a=(0, -1), b=(0, 1))\ngenerate revolution(1.5)(profile)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec3 op_revolution_point(vec3 p, float offset)"));
@@ -1085,15 +1085,15 @@ fn emits_revolution_operator() {
 
 #[test]
 fn rejects_revolution_of_3d_object() {
-    let source = "generate Revolution(1.5)(Ball3D(r=1))\n";
+    let source = "generate revolution(1.5)(Ball3D(r=1))\n";
     let err = compile_program(source).unwrap_err().to_string();
 
-    assert!(err.contains("operator 'Revolution' expects an Object2D argument"));
+    assert!(err.contains("operator 'revolution' expects an Object2D argument"));
 }
 
 #[test]
 fn emits_extrusion_operator() {
-    let source = "generate Extrusion(.25)(Box2D(a=1, b=.5))\n";
+    let source = "generate extrude(.25)(Box2D(a=1, b=.5))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_extrusion(float base_distance, float z, float height)"));
@@ -1226,7 +1226,7 @@ fn treats_square_matrices_as_rings_by_shape() {
 #[test]
 fn emits_difference_operator() {
     let source =
-        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Difference(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate diff(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_difference(float a, float b) {"));
@@ -1237,7 +1237,7 @@ fn emits_difference_operator() {
 #[test]
 fn emits_union_operator() {
     let source =
-        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Union(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate union(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_union(float a, float b) {"));
@@ -1247,7 +1247,7 @@ fn emits_union_operator() {
 
 #[test]
 fn emits_associative_union_operator_with_four_args() {
-    let source = "Object a = Ball3D(r=4)\nObject b = Ball3D(r=3) + (1, 0, 0)\nObject c = Ball3D(r=2) + (2, 0, 0)\nObject d = Ball3D(r=1) + (3, 0, 0)\ngenerate Union(a, b, c, d)\n";
+    let source = "Object a = Ball3D(r=4)\nObject b = Ball3D(r=3) + (1, 0, 0)\nObject c = Ball3D(r=2) + (2, 0, 0)\nObject d = Ball3D(r=1) + (3, 0, 0)\ngenerate union(a, b, c, d)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("return op_union(op_union("));
@@ -1256,7 +1256,7 @@ fn emits_associative_union_operator_with_four_args() {
 
 #[test]
 fn emits_associative_union_operator_with_three_args() {
-    let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2) + (1, 0, 0)\nObject c = Ball3D(r=1) + (2, 0, 0)\ngenerate Union(a, b, c)\n";
+    let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2) + (1, 0, 0)\nObject c = Ball3D(r=1) + (2, 0, 0)\ngenerate union(a, b, c)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("return op_union(sdf0_Ball3D("));
@@ -1266,7 +1266,7 @@ fn emits_associative_union_operator_with_three_args() {
 #[test]
 fn emits_intersection_operator() {
     let source =
-        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Intersection(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate intersect(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_intersection(float a, float b) {"));
@@ -1277,7 +1277,7 @@ fn emits_intersection_operator() {
 #[test]
 fn emits_xor_operator() {
     let source =
-        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate Xor(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate xor(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_xor(float a, float b) {"));
@@ -1288,7 +1288,7 @@ fn emits_xor_operator() {
 #[test]
 fn emits_smooth_union_operator() {
     let source =
-        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothUnion(0.25)(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate smoothUnion(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_union_min(float a, float b, float k) {"));
@@ -1298,7 +1298,7 @@ fn emits_smooth_union_operator() {
 
 #[test]
 fn emits_smooth_intersection_operator() {
-    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothIntersection(0.25)(a, b)\n";
+    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate smoothIntersect(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_intersection(float a, float b, float k) {"));
@@ -1308,7 +1308,7 @@ fn emits_smooth_intersection_operator() {
 
 #[test]
 fn emits_smooth_difference_operator() {
-    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothDifference(0.25)(a, b)\n";
+    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate smoothDiff(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_difference(float a, float b, float k) {"));
@@ -1319,7 +1319,7 @@ fn emits_smooth_difference_operator() {
 #[test]
 fn emits_smooth_xor_operator() {
     let source =
-        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate SmoothXor(0.25)(a, b)\n";
+        "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\ngenerate smoothXor(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
@@ -1331,7 +1331,7 @@ fn emits_smooth_xor_operator() {
 
 #[test]
 fn emits_only_used_object_operator_support() {
-    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1)\ngenerate Difference(a, b)\n";
+    let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1)\ngenerate diff(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("op_difference"));
@@ -1421,11 +1421,11 @@ fn rejects_concat_element_mismatch() {
 
 #[test]
 fn rejects_extra_arguments_for_non_associative_operator() {
-    let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2)\nObject c = Ball3D(r=1)\ngenerate Difference(a, b, c)\n";
+    let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2)\nObject c = Ball3D(r=1)\ngenerate diff(a, b, c)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(
         err.to_string(),
-        "line 4: operator 'Difference' expects 2 argument(s), got 3"
+        "line 4: operator 'diff' expects 2 argument(s), got 3"
     );
 }

@@ -17,4 +17,4 @@ R3 p = r2 * p1
 
 const Object B = Ball3D(r=1) + p
 
-generate Union(T2, B)  
+generate union(T2, B)  

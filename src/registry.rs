@@ -308,9 +308,9 @@ impl Default for Registry {
 
         let object_ops = HashMap::from([
             (
-                "SmoothUnion",
+                "smoothUnion",
                 ObjectOpDef {
-                    name: "SmoothUnion",
+                    name: "smoothUnion",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
@@ -319,9 +319,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "Union",
+                "union",
                 ObjectOpDef {
-                    name: "Union",
+                    name: "union",
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: true,
@@ -330,9 +330,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "Intersection",
+                "intersect",
                 ObjectOpDef {
-                    name: "Intersection",
+                    name: "intersect",
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: true,
@@ -341,9 +341,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "Difference",
+                "diff",
                 ObjectOpDef {
-                    name: "Difference",
+                    name: "diff",
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: false,
@@ -352,9 +352,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "Xor",
+                "xor",
                 ObjectOpDef {
-                    name: "Xor",
+                    name: "xor",
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: true,
@@ -363,9 +363,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "SmoothIntersection",
+                "smoothIntersect",
                 ObjectOpDef {
-                    name: "SmoothIntersection",
+                    name: "smoothIntersect",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
@@ -374,9 +374,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "SmoothDifference",
+                "smoothDiff",
                 ObjectOpDef {
-                    name: "SmoothDifference",
+                    name: "smoothDiff",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
@@ -385,9 +385,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "SmoothXor",
+                "smoothXor",
                 ObjectOpDef {
-                    name: "SmoothXor",
+                    name: "smoothXor",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
@@ -396,9 +396,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "Revolution",
+                "revolution",
                 ObjectOpDef {
-                    name: "Revolution",
+                    name: "revolution",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 1,
                     associative_binary: false,
@@ -407,9 +407,9 @@ impl Default for Registry {
                 },
             ),
             (
-                "Extrusion",
+                "extrude",
                 ObjectOpDef {
-                    name: "Extrusion",
+                    name: "extrude",
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 1,
                     associative_binary: false,

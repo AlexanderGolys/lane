@@ -253,7 +253,7 @@ actions produce `Object` values.
 ```lane
 Object a = Ball3D(r=2)
 Object b = Box3D(1, .5, .25) + (2, 0, 0)
-Object c = SmoothUnion(.2)(a, b)
+Object c = smoothUnion(.2)(a, b)
 generate c
 ```
 
@@ -272,7 +272,7 @@ Object actions:
 - `Mat3 * Object` applies an orthogonal linear action to an object.
 
 2D primitives live in the XY plane but still produce `Object` values in the
-current compiler slice. Operators such as `Union`, `Intersection`, and `Xor`
+current compiler slice. Operators such as `union`, `intersect`, and `xor`
 accept two or more object arguments and are lowered to balanced binary GLSL
 calls. Other binary operators require exactly two object arguments.
 
@@ -318,7 +318,7 @@ Run it:
 printf 'generate Ball3D(r=1)\n' | cargo run --
 ```
 
-### Animated Union
+### Animated union
 
 ```lane
 provided R time
@@ -327,7 +327,7 @@ provided Func(R, R3) center
 Func(R, R) pulse = pow2 @ sin + .25
 Object a = Ball3D(r=1 + pulse(time))
 Object b = Box3D(.75, .5, .5) + center(time)
-Object scene = SmoothUnion(.2)(a, b)
+Object scene = smoothUnion(.2)(a, b)
 
 generate scene
 ```
@@ -347,9 +347,9 @@ This exports `sdf_shell(...)` and `grad_sdf_shell(...)` in addition to the final
 
 ```lane
 Object2D profile = Triangle2D(p0=(0, -.5), p1=(.5, 0), p2=(0, .5))
-Object lathe = Revolution(1.25)(profile)
-Object slab = Extrusion(.2)(Box2D(1, .5)) + (0, 0, 1)
-generate Union(lathe, slab)
+Object lathe = revolution(1.25)(profile)
+Object slab = extrude(.2)(Box2D(1, .5)) + (0, 0, 1)
+generate union(lathe, slab)
 ```
 
 The repository includes `test.lane` as a compact sample, `example1.lane` as an
@@ -389,16 +389,16 @@ scene using most registered primitives and operators.
 
 | Object | Type | Notes |
 | --- | --- | --- |
-| `Union` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
-| `Intersection` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
-| `Difference` | `Hom(Object × Object, Object)` | Binary set difference. |
-| `Xor` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
-| `SmoothUnion` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
-| `SmoothIntersection` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
-| `SmoothDifference` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
-| `SmoothXor` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
-| `Revolution` | `Hom(R, Hom(Object2D, Object))` | Lifts a 2D profile with `vec2(length(p.xz) - offset, p.y)`. |
-| `Extrusion` | `Hom(R, Hom(Object, Object))` | Lifts a 2D profile along the `z` axis. |
+| `union` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
+| `intersect` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
+| `diff` | `Hom(Object × Object, Object)` | Binary set difference. |
+| `xor` | `Hom(Object × Object, Object)` | Associative, accepts two or more objects. |
+| `smoothUnion` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `smoothIntersect` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `smoothDiff` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `smoothXor` | `Hom(R, Hom(Object × Object, Object))` | Curried by smoothing radius `k`. |
+| `revolution` | `Hom(R, Hom(Object2D, Object))` | Lifts a 2D profile with `vec2(length(p.xz) - offset, p.y)`. |
+| `extrude` | `Hom(R, Hom(Object, Object))` | Lifts a 2D profile along the `z` axis. |
 
 ### Categories, Value Functions, And Type Aliases
 
@@ -446,7 +446,7 @@ Use the CLI for the authoritative generated GLSL definitions:
 
 ```sh
 lane --list Ball3D
-lane --list-objects Revolution
+lane --list-objects revolution
 ```
 
 ### Const zoo

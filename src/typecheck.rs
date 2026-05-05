@@ -708,7 +708,7 @@ fn ensure_object_op_arg_dimensions(
     object_args: &[ObjectExpr],
     env: &Env<'_>,
 ) -> Result<(), Error> {
-    if op.name != "Revolution" {
+    if op.name != "revolution" {
         return Ok(());
     }
     let Some(object) = object_args.first() else {
@@ -718,7 +718,7 @@ fn ensure_object_op_arg_dimensions(
         return Ok(());
     }
     Err(Error::new(
-        "operator 'Revolution' expects an Object2D argument",
+        "operator 'revolution' expects an Object2D argument",
     ))
 }
 

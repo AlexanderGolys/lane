@@ -18,12 +18,12 @@ Object v12 = Segment3D(p, p2)
 Object v23 = Segment3D(p2, p3)
 Object v34 = Segment3D(p3, p4)
 
-const Object v = Union(b1, b2, b3, b4)
-construct Object e = Union(v12, v23, v34)
+const Object v = union(b1, b2, b3, b4)
+construct Object e = union(v12, v23, v34)
 Object2D profile = Segment2D(a=(0, -1), b=(0, 1))
-Object lathe = Revolution(.25)(profile)
+Object lathe = revolution(.25)(profile)
 
-gen SmoothUnion(.5)(v, e)
+gen smoothUnion(.5)(v, e)
 
 ---
 

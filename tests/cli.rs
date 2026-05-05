@@ -180,10 +180,10 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("E2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(!stdout.contains("cexp: Hom(C, C)"));
-    assert!(stdout.contains("Union: Hom(Object × Object, Object)"));
-    assert!(stdout.contains("SmoothUnion: Hom(R, Hom(Object × Object, Object))"));
-    assert!(stdout.contains("Revolution: Hom(R, Hom(Object2D, Object))"));
-    assert!(stdout.contains("Extrusion: Hom(R, Hom(Object, Object))"));
+    assert!(stdout.contains("union: Hom(Object × Object, Object)"));
+    assert!(stdout.contains("smoothUnion: Hom(R, Hom(Object × Object, Object))"));
+    assert!(stdout.contains("revolution: Hom(R, Hom(Object2D, Object))"));
+    assert!(stdout.contains("extrude: Hom(R, Hom(Object, Object))"));
     assert!(stdout.contains("rot: Hom(R3 × R3 × R, E3)"));
     assert!(stdout.contains("rot2D: Hom(R2 × R, E2)"));
     assert!(stdout.contains("derivative: Hom(R, Hom(Hom(R, R), Hom(R, R)))"));
@@ -212,14 +212,14 @@ fn lists_known_builtin_objects_from_short_flag() {
 #[test]
 fn shows_known_builtin_object_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .args(["--list-objects", "Revolution"])
+        .args(["--list-objects", "revolution"])
         .output()
         .unwrap();
 
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Revolution: Hom(R, Hom(Object2D, Object))"));
+    assert!(stdout.contains("revolution: Hom(R, Hom(Object2D, Object))"));
     assert!(stdout.contains("vec3 op_revolution_point(vec3 p, float offset)"));
 }
 
@@ -277,8 +277,8 @@ fn prints_bash_completion_from_cli() {
     assert!(stdout.contains("complete -F _lane lane"));
     assert!(stdout.contains("Ab Mon Grp Ring Field VectR RAlg"));
     assert!(stdout.contains("C E2 E3"));
-    assert!(stdout.contains("Difference"));
-    assert!(!stdout.contains("Complex Difference E2"));
+    assert!(stdout.contains("diff"));
+    assert!(!stdout.contains("Complex diff E2"));
     assert!(stdout.contains("--print-completion"));
     assert!(stdout.contains("-pc"));
     assert!(stdout.contains("--list"));

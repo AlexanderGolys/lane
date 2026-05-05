@@ -496,12 +496,12 @@ mod tests {
     #[test]
     fn highlights_builtin_object_names_and_lane_types() {
         let highlighted = highlight_builtin_object_line(
-            "Union",
+            "union",
             "Hom(Object × Object, Object)",
             lane::KnownBuiltinObjectKind::Function,
         );
 
-        assert!(highlighted.contains("\x1b[34mUnion\x1b[0m"));
+        assert!(highlighted.contains("\x1b[34munion\x1b[0m"));
         assert!(highlighted.contains("\x1b[97m:\x1b[0m"));
         assert!(highlighted.contains("\x1b[35mHom\x1b[0m"));
         assert!(highlighted.contains("\x1b[33mObject\x1b[0m"));

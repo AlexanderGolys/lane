@@ -2,7 +2,7 @@
 Expressions
 ==================
 
-generate SmoothUnion(0.25)(a, b, c)
+generate smoothUnion(0.25)(a, b, c)
 
 ---
 

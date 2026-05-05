@@ -6,6 +6,6 @@ Func(R, R) hardness = pow2 @ sin + .5
 Func(R, R3) centerB = (1, sin, cos) + centerA / 2
 Object A = Ball3D(r=3) + centerA(time)
 Object B = Ball3D(r=rB(time)) + centerB(time)
-Object C = SmoothUnion(hardness(time))(A, B)
+Object C = smoothUnion(hardness(time))(A, B)
 
 generate C

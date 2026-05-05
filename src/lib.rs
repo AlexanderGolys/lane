@@ -1084,7 +1084,7 @@ fn object_op_type(op: &ObjectOpDef) -> Type {
 }
 
 fn object_op_arg_type(op: &ObjectOpDef, _index: usize) -> Type {
-    if op.name == "Revolution" {
+    if op.name == "revolution" {
         Type::Object2D
     } else {
         Type::Object

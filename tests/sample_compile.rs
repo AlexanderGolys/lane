@@ -39,7 +39,7 @@ provided func(Float -> Vec3) centerA
 
     Object A = Ball3D(r=3) + centerA(time)
     Object B = Ball3D(r=rB(time)) + centerB(time)
-    Object C = SmoothUnion(hardness(time))(A, B)
+    Object C = smoothUnion(hardness(time))(A, B)
 
 generate C
 "#;
@@ -54,6 +54,10 @@ float sdf0_Ball3D(vec3 p, ParamBall3D params) {
     return length(p) - params.r;
 }
 
+float pow2(float x) {
+    return x * x;
+}
+
 float op_smooth_union_min(float a, float b, float k) {
     k *= 1.0 / (1.0 - sqrt(0.5));
     float h = max(k - abs(a - b), 0.0) / k;
@@ -62,10 +66,6 @@ float op_smooth_union_min(float a, float b, float k) {
 
 float op_smooth_union(float a, float b, float k) {
     return op_smooth_union_min(a, b, k);
-}
-
-float pow2(float x) {
-    return x * x;
 }
 
 float dsl_hardness(float t) {
