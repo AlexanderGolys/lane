@@ -85,14 +85,17 @@ function main() {
     document.body.style.margin = "0";
     document.body.style.background = "#0d0f14";
     canvas.style.display = "block";
-    canvas.style.width = canvas.dataset.width ? `${canvas.dataset.width}px` : "100vw";
-    canvas.style.height = canvas.dataset.height ? `${canvas.dataset.height}px` : "100vh";
     document.body.appendChild(canvas);
-    const cssWidth = Number(canvas.dataset.width || window.innerWidth || 960);
-    const cssHeight = Number(canvas.dataset.height || window.innerHeight || 540);
-    const pixelRatio = Number(canvas.dataset.pixelRatio || window.devicePixelRatio || 1);
-    canvas.width = Math.max(1, Math.floor(cssWidth * pixelRatio));
-    canvas.height = Math.max(1, Math.floor(cssHeight * pixelRatio));
+    const hasExplicitResolution =
+        canvas.hasAttribute("width") || canvas.hasAttribute("height");
+    if (!hasExplicitResolution) {
+        canvas.style.width = "100vw";
+        canvas.style.height = "100vh";
+        const rect = canvas.getBoundingClientRect();
+        const pixelRatio = Number(canvas.dataset.pixelRatio || window.devicePixelRatio || 1);
+        canvas.width = Math.max(1, Math.floor(rect.width * pixelRatio));
+        canvas.height = Math.max(1, Math.floor(rect.height * pixelRatio));
+    }
 
     const gl = canvas.getContext("webgl2");
     if (!gl) {
@@ -106,18 +109,20 @@ function main() {
         const program = linkProgram(gl, vertexShader, fragmentShader);
 
         gl.useProgram(program);
-        setUniforms(gl, program, canvas.width, canvas.height);
+        const width = gl.drawingBufferWidth;
+        const height = gl.drawingBufferHeight;
+        setUniforms(gl, program, width, height);
         const count = installFallbackPositionBuffer(gl, program);
 
-        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.viewport(0, 0, width, height);
         gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, count);
 
         const pixel = new Uint8Array(4);
         gl.readPixels(
-            Math.floor(canvas.width / 2),
-            Math.floor(canvas.height / 2),
+            Math.floor(width / 2),
+            Math.floor(height / 2),
             1,
             1,
             gl.RGBA,
