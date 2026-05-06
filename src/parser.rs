@@ -5,6 +5,7 @@ use std::collections::HashMap;
 enum Token {
     Ident(String),
     Number(String),
+    StringLiteral(String),
     LParen,
     RParen,
     LBracket,
@@ -40,6 +41,7 @@ impl<'a> Parser<'a> {
         let mut custom_types: HashMap<String, AlgebraicCategory> = HashMap::new();
         let mut product_types = Vec::new();
         let mut inputs = Vec::new();
+        let mut imports = Vec::new();
         let mut funcs = Vec::new();
         let mut value_bindings = Vec::new();
         let mut bindings = Vec::new();
@@ -47,12 +49,14 @@ impl<'a> Parser<'a> {
         let mut output = None;
         let mut ambient_dimension = ShapeDimension::D3;
         let mut derivative_epsilon = 0.01;
-        let mut gradient_epsilon = 0.0005;
+        let mut gradient_epsilon = 0.01;
+        let mut is_module = false;
         let mut directives_open = true;
 
-        for (line_index, raw_line) in self.source.lines().enumerate() {
+        let mut logical_lines = logical_source_lines(self.source)?;
+        for (line_index, raw_line) in logical_lines.drain(..) {
             let line_number = line_index + 1;
-            let line = strip_line_comment(raw_line).trim();
+            let line = strip_line_comment(&raw_line).trim();
             if line.is_empty() {
                 continue;
             }
@@ -66,6 +70,9 @@ impl<'a> Parser<'a> {
                     &mut ambient_dimension,
                     &mut derivative_epsilon,
                     &mut gradient_epsilon,
+                    &mut imports,
+                    &mut is_module,
+                    line_number,
                 )
                 .map_err(|err| err.with_line(line_number))?;
                 continue;
@@ -73,10 +80,18 @@ impl<'a> Parser<'a> {
             directives_open = false;
 
             match self
-                .parse_decl_with_custom_types(line, line_number, &custom_types, ambient_dimension)
+                .parse_decl_with_custom_types(
+                    line,
+                    line_number,
+                    &custom_types,
+                    ambient_dimension,
+                    !is_module,
+                    is_module,
+                )
                 .map_err(|err| err.with_line(line_number))?
             {
                 Decl::ProvidedType(provided_type) => {
+                    ensure_public_decl_name(&provided_type.name, "provided type", line_number)?;
                     if is_known_type_name(&provided_type.name)
                         || is_known_category_name(&provided_type.name)
                     {
@@ -98,6 +113,7 @@ impl<'a> Parser<'a> {
                     }
                 }
                 Decl::ProductType(product_type) => {
+                    ensure_public_decl_name(&product_type.name, "product type", line_number)?;
                     if is_known_type_name(&product_type.name)
                         || is_known_category_name(&product_type.name)
                     {
@@ -107,10 +123,9 @@ impl<'a> Parser<'a> {
                         ))
                         .with_line(line_number));
                     }
-                    if custom_types
-                        .insert(product_type.name.clone(), product_type.category)
-                        .is_some()
-                    {
+                    let existing =
+                        custom_types.insert(product_type.name.clone(), product_type.category);
+                    if existing.is_some_and(|category| category != AlgebraicCategory::Set) {
                         return Err(Error::new(format!(
                             "duplicate provided type '{}'",
                             product_type.name
@@ -119,10 +134,20 @@ impl<'a> Parser<'a> {
                     }
                     product_types.push(product_type);
                 }
-                Decl::Input(input) => inputs.push(input),
-                Decl::Func(func) => funcs.push(func),
-                Decl::ValueBinding(binding) => value_bindings.push(binding),
+                Decl::Input(input) => {
+                    ensure_public_decl_name(&input.name, "provided value", line_number)?;
+                    inputs.push(input)
+                }
+                Decl::Func(func) => {
+                    ensure_public_decl_name(&func.name, "function", line_number)?;
+                    funcs.push(func)
+                }
+                Decl::ValueBinding(binding) => {
+                    ensure_public_decl_name(&binding.name, "value", line_number)?;
+                    value_bindings.push(binding)
+                }
                 Decl::Binding(binding) => {
+                    ensure_public_decl_name(&binding.name, "object", line_number)?;
                     if binding.final_output {
                         if output.is_some() {
                             return Err(Error::new(
@@ -138,6 +163,7 @@ impl<'a> Parser<'a> {
                     bindings.push(binding);
                 }
                 Decl::InferredBinding(binding) => {
+                    ensure_public_decl_name(&binding.name, "binding", line_number)?;
                     if binding.final_output {
                         if output.is_some() {
                             return Err(Error::new(
@@ -159,6 +185,8 @@ impl<'a> Parser<'a> {
             ambient_dimension,
             derivative_epsilon,
             gradient_epsilon,
+            is_module,
+            imports,
             product_types,
             inputs,
             funcs,
@@ -175,6 +203,8 @@ impl<'a> Parser<'a> {
         line_number: usize,
         custom_types: &HashMap<String, AlgebraicCategory>,
         ambient_dimension: ShapeDimension,
+        allow_final_output: bool,
+        allow_raw_glsl: bool,
     ) -> Result<Decl, Error> {
         if let Some(product_type) =
             parse_product_type_decl(line, line_number, custom_types, ambient_dimension)?
@@ -224,7 +254,7 @@ impl<'a> Parser<'a> {
                 expr,
                 generated,
                 construct: is_construct,
-                final_output: is_const && left == "output",
+                final_output: allow_final_output && is_const && left == "output",
                 line: line_number,
             }));
         }
@@ -241,10 +271,30 @@ impl<'a> Parser<'a> {
                     "'construct' currently only supports Object bindings",
                 ));
             }
+            let body = match expr {
+                Expr::RawString(body) if allow_raw_glsl && generated => FuncBody::RawGlsl(body),
+                Expr::Closure { params, body } if allow_raw_glsl && generated => {
+                    match collect_raw_glsl_closure(params, *body) {
+                        Ok((params, body)) => FuncBody::RawGlslClosure { params, body },
+                        Err(expr) => FuncBody::Expr(expr),
+                    }
+                }
+                Expr::RawString(_) if allow_raw_glsl => {
+                    return Err(Error::new(
+                        "raw GLSL function bodies in modules must be const",
+                    ))
+                }
+                Expr::RawString(_) => {
+                    return Err(Error::new(
+                        "raw GLSL function bodies are only valid in modules",
+                    ))
+                }
+                expr => FuncBody::Expr(expr),
+            };
             return Ok(Decl::Func(FuncDecl {
                 name: name.to_string(),
                 ty,
-                expr,
+                body,
                 generated,
                 line: line_number,
             }));
@@ -268,14 +318,83 @@ impl<'a> Parser<'a> {
             ty,
             expr,
             generated,
-            final_output: is_const && name == "output",
+            final_output: allow_final_output && is_const && name == "output",
             line: line_number,
         }))
     }
 }
 
+fn collect_raw_glsl_closure(
+    mut params: Vec<String>,
+    body: Expr,
+) -> Result<(Vec<String>, String), Expr> {
+    match body {
+        Expr::RawString(body) => Ok((params, body)),
+        Expr::Closure {
+            params: next_params,
+            body,
+        } => {
+            params.extend(next_params);
+            collect_raw_glsl_closure(params, *body)
+        }
+        other => Err(Expr::Closure {
+            params,
+            body: Box::new(other),
+        }),
+    }
+}
+
+fn ensure_public_decl_name(name: &str, kind: &str, line: usize) -> Result<(), Error> {
+    if name.starts_with('_') {
+        Err(Error::new(format!("{kind} names cannot start with '_'")).with_line(line))
+    } else {
+        Ok(())
+    }
+}
+
+fn logical_source_lines(source: &str) -> Result<Vec<(usize, String)>, Error> {
+    let mut lines = Vec::new();
+    let mut pending = String::new();
+    let mut pending_start = 0;
+    let mut in_string = false;
+
+    for (index, line) in source.lines().enumerate() {
+        if pending.is_empty() {
+            pending_start = index;
+        } else {
+            pending.push('\n');
+        }
+        pending.push_str(line);
+        in_string ^= quote_count(line) % 2 == 1;
+        if !in_string {
+            lines.push((pending_start, std::mem::take(&mut pending)));
+        }
+    }
+    if in_string {
+        return Err(Error::new("unterminated string literal"));
+    }
+    if !pending.is_empty() {
+        lines.push((pending_start, pending));
+    }
+    Ok(lines)
+}
+
+fn quote_count(line: &str) -> usize {
+    line.chars().filter(|ch| *ch == '"').count()
+}
+
 fn strip_line_comment(line: &str) -> &str {
-    line.split_once("//").map_or(line, |(before, _)| before)
+    let mut in_string = false;
+    let mut chars = line.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if ch == '"' {
+            in_string = !in_string;
+        }
+        if !in_string && ch == '/' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+            return &line[..index];
+        }
+    }
+    line
 }
 
 fn parse_directive(
@@ -283,7 +402,25 @@ fn parse_directive(
     ambient_dimension: &mut ShapeDimension,
     derivative_epsilon: &mut f64,
     gradient_epsilon: &mut f64,
+    imports: &mut Vec<ImportDecl>,
+    is_module: &mut bool,
+    line_number: usize,
 ) -> Result<(), Error> {
+    if line == "#module" {
+        *is_module = true;
+        return Ok(());
+    }
+    if let Some(rest) = line.strip_prefix("#import") {
+        let path = rest.trim();
+        if path.is_empty() {
+            return Err(Error::new("#import expects a module path"));
+        }
+        imports.push(ImportDecl {
+            path: path.trim_matches('"').to_string(),
+            line: line_number,
+        });
+        return Ok(());
+    }
     if line == "#2D" {
         *ambient_dimension = ShapeDimension::D2;
         return Ok(());
@@ -312,10 +449,12 @@ fn parse_product_type_decl(
     custom_types: &HashMap<String, AlgebraicCategory>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Option<ProductTypeDecl>, Error> {
-    let (eager_ops, line) = if let Some(rest) = line.strip_prefix("const ") {
-        (true, rest.trim())
+    let (provided, eager_ops, line) = if let Some(rest) = line.strip_prefix("provided ") {
+        (true, false, rest.trim())
+    } else if let Some(rest) = line.strip_prefix("const ") {
+        (false, true, rest.trim())
     } else {
-        (false, line)
+        (false, false, line)
     };
     let Some((left, right)) = line.split_once('=') else {
         return Ok(None);
@@ -359,6 +498,7 @@ fn parse_product_type_decl(
         components,
         field_names,
         eager_ops,
+        provided,
         line: line_number,
     }))
 }
@@ -382,9 +522,21 @@ fn split_product_type_fields(source: &str) -> Result<(&str, Option<Vec<String>>)
 fn validate_product_field_names(type_name: &str, field_names: &[String]) -> Result<(), Error> {
     let mut seen = std::collections::HashSet::new();
     for field in field_names {
+        if field.starts_with('_') {
+            return Err(Error::new(format!(
+                "product type '{}' has field name '{}' starting with reserved '_'",
+                type_name, field
+            )));
+        }
         if !is_identifier(field) {
             return Err(Error::new(format!(
                 "product type '{}' has invalid field name '{}'",
+                type_name, field
+            )));
+        }
+        if is_reserved_glsl_field_name(field) {
+            return Err(Error::new(format!(
+                "product type '{}' field name '{}' is reserved in GLSL",
                 type_name, field
             )));
         }
@@ -405,6 +557,47 @@ fn is_identifier(source: &str) -> bool {
     };
     (first.is_ascii_alphabetic() || first == '_')
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn is_reserved_glsl_field_name(name: &str) -> bool {
+    matches!(
+        name,
+        "attribute"
+            | "break"
+            | "buffer"
+            | "case"
+            | "centroid"
+            | "coherent"
+            | "const"
+            | "continue"
+            | "default"
+            | "discard"
+            | "distance"
+            | "do"
+            | "else"
+            | "false"
+            | "flat"
+            | "for"
+            | "highp"
+            | "if"
+            | "in"
+            | "inout"
+            | "invariant"
+            | "layout"
+            | "lowp"
+            | "mediump"
+            | "out"
+            | "precision"
+            | "return"
+            | "smooth"
+            | "struct"
+            | "switch"
+            | "true"
+            | "uniform"
+            | "varying"
+            | "void"
+            | "while"
+    )
 }
 
 fn default_product_field_names(count: usize) -> Vec<String> {
@@ -437,7 +630,7 @@ impl ExprParser {
     }
 
     fn parse(mut self) -> Result<Expr, Error> {
-        let expr = self.parse_compare()?;
+        let expr = self.parse_closure()?;
         if self.peek().is_some() {
             return Err(Error::new(format!(
                 "unexpected trailing token {} in expression",
@@ -445,6 +638,65 @@ impl ExprParser {
             )));
         }
         Ok(expr)
+    }
+
+    fn parse_closure(&mut self) -> Result<Expr, Error> {
+        if let Some(params) = self.parse_closure_params()? {
+            for param in &params {
+                if param.starts_with('_') {
+                    return Err(Error::new(format!(
+                        "closure parameter names cannot start with '_'"
+                    )));
+                }
+            }
+            let body = self.parse_closure()?;
+            return Ok(Expr::Closure {
+                params,
+                body: Box::new(body),
+            });
+        }
+        self.parse_compare()
+    }
+
+    fn parse_closure_params(&mut self) -> Result<Option<Vec<String>>, Error> {
+        if let (Some(Token::Ident(param)), Some(Token::Arrow)) =
+            (self.tokens.get(self.index), self.tokens.get(self.index + 1))
+        {
+            let param = param.clone();
+            self.index += 2;
+            return Ok(Some(vec![param]));
+        }
+        if !matches!(self.tokens.get(self.index), Some(Token::LParen)) {
+            return Ok(None);
+        }
+
+        let checkpoint = self.index;
+        self.index += 1;
+        let mut params = Vec::new();
+        loop {
+            let Some(Token::Ident(param)) = self.next() else {
+                self.index = checkpoint;
+                return Ok(None);
+            };
+            params.push(param);
+            match self.peek() {
+                Some(Token::Comma) => self.index += 1,
+                Some(Token::RParen) => {
+                    self.index += 1;
+                    break;
+                }
+                _ => {
+                    self.index = checkpoint;
+                    return Ok(None);
+                }
+            }
+        }
+        if !matches!(self.peek(), Some(Token::Arrow)) {
+            self.index = checkpoint;
+            return Ok(None);
+        }
+        self.index += 1;
+        Ok(Some(params))
     }
 
     fn parse_compare(&mut self) -> Result<Expr, Error> {
@@ -594,6 +846,7 @@ impl ExprParser {
     fn parse_primary(&mut self) -> Result<Expr, Error> {
         match self.next() {
             Some(Token::Number(value)) => Ok(Expr::Number(value.parse::<f64>().unwrap())),
+            Some(Token::StringLiteral(value)) => Ok(Expr::RawString(value)),
             Some(Token::Ident(name)) => {
                 if name == "true" {
                     return Ok(Expr::Bool(true));
@@ -760,6 +1013,7 @@ impl ExprParser {
         match token {
             Token::Ident(name) => format!("identifier '{}'", name),
             Token::Number(value) => format!("number '{}'", value),
+            Token::StringLiteral(_) => "string literal".to_string(),
             Token::LParen => "'('".to_string(),
             Token::RParen => "')'".to_string(),
             Token::LBracket => "'['".to_string(),
@@ -809,6 +1063,18 @@ fn tokenize(source: &str) -> Vec<Token> {
         let ch = chars[index];
         if ch.is_whitespace() {
             index += 1;
+            continue;
+        }
+        if ch == '"' {
+            index += 1;
+            let start = index;
+            while index < chars.len() && chars[index] != '"' {
+                index += 1;
+            }
+            tokens.push(Token::StringLiteral(chars[start..index].iter().collect()));
+            if index < chars.len() {
+                index += 1;
+            }
             continue;
         }
         if ch == '-' && chars.get(index + 1) == Some(&'>') {
@@ -902,6 +1168,16 @@ fn parse_type_with_custom_types(
     custom_types: &HashMap<String, AlgebraicCategory>,
 ) -> Result<Type, Error> {
     let source = source.trim();
+    if source == "*" {
+        return Ok(Type::Unit);
+    }
+    if let Some(parts) = split_top_level_product(source) {
+        let mut parsed = Vec::new();
+        for part in parts {
+            parsed.push(parse_type_with_custom_types(part, custom_types)?);
+        }
+        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
+    }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
         return Ok(Type::func(
@@ -926,13 +1202,6 @@ fn parse_type_with_custom_types(
             custom_types,
         )?)));
     }
-    if let Some(parts) = split_top_level_product(source) {
-        let mut parsed = Vec::new();
-        for part in parts {
-            parsed.push(parse_type_with_custom_types(part, custom_types)?);
-        }
-        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
-    }
     if category_by_name(source).is_some() {
         return Err(Error::new(format!(
             "category '{}' cannot be used as a type",
@@ -944,6 +1213,20 @@ fn parse_type_with_custom_types(
     }
     match parse_builtin_type_name(source) {
         Some(ty) => Ok(ty),
+        None if source
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase()) =>
+        {
+            if source
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                Ok(custom_type(source, AlgebraicCategory::Set))
+            } else {
+                Err(Error::new(format!("unsupported type '{}'", source)))
+            }
+        }
         None => Err(Error::new(format!("unsupported type '{}'", source))),
     }
 }
@@ -956,6 +1239,17 @@ fn parse_type_with_custom_types_for_ambient(
     let source = source.trim();
     if source == "Object" && ambient_dimension == ShapeDimension::D2 {
         return Ok(Type::Object2D);
+    }
+    if let Some(parts) = split_top_level_product(source) {
+        let mut parsed = Vec::new();
+        for part in parts {
+            parsed.push(parse_type_with_custom_types_for_ambient(
+                part,
+                custom_types,
+                ambient_dimension,
+            )?);
+        }
+        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
     }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
@@ -979,17 +1273,6 @@ fn parse_type_with_custom_types_for_ambient(
         return Ok(Type::Array(Box::new(
             parse_type_with_custom_types_for_ambient(inner, custom_types, ambient_dimension)?,
         )));
-    }
-    if let Some(parts) = split_top_level_product(source) {
-        let mut parsed = Vec::new();
-        for part in parts {
-            parsed.push(parse_type_with_custom_types_for_ambient(
-                part,
-                custom_types,
-                ambient_dimension,
-            )?);
-        }
-        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
     }
     parse_type_with_custom_types(source, custom_types)
 }

@@ -58,39 +58,35 @@ float pow2(float x) {
     return x * x;
 }
 
-float op_smooth_union_min(float a, float b, float k) {
-    k *= 1.0 / (1.0 - sqrt(0.5));
-    float h = max(k - abs(a - b), 0.0) / k;
-    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));
+float _op_smooth_union(float _a, float _b, float _k) {
+    _k *= 1.0 / (1.0 - sqrt(0.5));
+    float _h = max(_k - abs(_a - _b), 0.0) / _k;
+    return min(_a, _b) - (_k * 0.5 * (1.0 + _h - sqrt(1.0 - (_h * (_h - 2.0)))));
 }
 
-float op_smooth_union(float a, float b, float k) {
-    return op_smooth_union_min(a, b, k);
+float hardness(float _t) {
+    return (pow2(sin(_t)) + 0.5);
 }
 
-float hardness(float t) {
-    return (pow2(sin(t)) + 0.5);
-}
-
-vec3 centerB(float t) {
-    return (vec3(1.0, sin(t), cos(t)) + (centerA(t) / 2.0));
+vec3 centerB(float _t) {
+    return (vec3(1.0, sin(_t), cos(_t)) + (centerA(_t) / 2.0));
 }
 
 float sdf_output(vec3 p) {
-    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - centerB(time)), ParamBall3D(rB(time))), hardness(time));
+    return _op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - centerB(time)), ParamBall3D(rB(time))), hardness(time));
 }
 
 vec3 grad_sdf_output(vec3 p) {
-    float eps = 0.0005;
+    float eps = 0.01;
     return normalize(vec3(((sdf_output(p + vec3(eps, 0.0, 0.0)) - sdf_output(p - vec3(eps, 0.0, 0.0))) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, eps, 0.0)) - sdf_output(p - vec3(0.0, eps, 0.0))) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, 0.0, eps)) - sdf_output(p - vec3(0.0, 0.0, eps))) / (2.0 * eps))));
 }
 
 float scene_sdf(vec3 p) {
-    return op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - centerB(time)), ParamBall3D(rB(time))), hardness(time));
+    return _op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - centerB(time)), ParamBall3D(rB(time))), hardness(time));
 }
 
 vec3 scene_grad(vec3 p) {
-    float eps = 0.0005;
+    float eps = 0.01;
     return normalize(vec3(((scene_sdf(p + vec3(eps, 0.0, 0.0)) - scene_sdf(p - vec3(eps, 0.0, 0.0))) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, eps, 0.0)) - scene_sdf(p - vec3(0.0, eps, 0.0))) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, 0.0, eps)) - scene_sdf(p - vec3(0.0, 0.0, eps))) / (2.0 * eps))));
 }"#;
 
@@ -102,9 +98,9 @@ fn compiles_showcase_program_to_glsl() {
     let source = fs::read_to_string("showcase.lane").unwrap();
     let glsl = compile_program(&source).unwrap();
 
-    assert!(glsl.contains("float op_union(float a, float b) {"));
-    assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
-    assert!(glsl.contains("mat3 spin(float t) {"));
+    assert!(glsl.contains("float _op_union(float _a, float _b) {"));
+    assert!(glsl.contains("float _op_smooth_xor(float _a, float _b, float _k) {"));
+    assert!(glsl.contains("mat3 spin(float _t) {"));
     assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("vec3 scene_grad(vec3 p) {"));
 }

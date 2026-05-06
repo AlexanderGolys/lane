@@ -36,6 +36,36 @@ impl TypedProgram {
         }
 
         let signature = self.scene_signature(&locals.point);
+        if self.output.is_some()
+            && self
+                .funcs
+                .iter()
+                .any(|func| matches!(func.body, TypedFuncBody::RawGlsl(_)))
+        {
+            lines.push(format!("float scene_sdf({});", signature.join(", ")));
+            lines.push(format!(
+                "{} scene_grad({});",
+                ambient_vector_glsl_type(self.ambient_dimension),
+                signature.join(", ")
+            ));
+            lines.push(String::new());
+        }
+        for prototype in self.object_getter_prototypes(&object_getter_bindings, &locals) {
+            lines.push(prototype);
+        }
+        if !object_getter_bindings.is_empty() {
+            lines.push(String::new());
+        }
+        for prototype in self.raw_glsl_function_ref_prototypes(&emitted_func_names, &locals) {
+            lines.push(prototype);
+        }
+        if self
+            .funcs
+            .iter()
+            .any(|func| !func.raw_glsl_refs.funcs.is_empty())
+        {
+            lines.push(String::new());
+        }
         for item in self.ordered_emitted_items(&emitted_func_names, &object_getter_bindings) {
             match item {
                 EmitItem::Func(name) => {
@@ -187,7 +217,10 @@ impl TypedProgram {
         let mut names = self
             .funcs
             .iter()
-            .filter_map(|func| func.generated.then_some(func.name.clone()))
+            .filter_map(|func| {
+                (func.generated && !matches!(func.body, TypedFuncBody::RawGlslTemplate))
+                    .then_some(func.name.clone())
+            })
             .collect::<BTreeSet<_>>();
 
         for binding in &self.value_bindings {
@@ -228,7 +261,14 @@ impl TypedProgram {
             for func in &self.funcs {
                 if names.contains(&func.name) {
                     let before = names.len();
-                    collect_value_function_refs(&func.expr, &mut names);
+                    match &func.body {
+                        TypedFuncBody::Expr(expr) => collect_value_function_refs(expr, &mut names),
+                        TypedFuncBody::RawGlsl(body) => {
+                            names.extend(func.raw_glsl_refs.funcs.iter().cloned());
+                            collect_raw_glsl_placeholders(body, &mut names);
+                        }
+                        TypedFuncBody::RawGlslTemplate => {}
+                    }
                     changed |= names.len() != before;
                 }
             }
@@ -285,18 +325,41 @@ impl TypedProgram {
         locals: &EmitLocals,
     ) -> Vec<String> {
         let func_var_names = HashMap::from([("t".to_string(), locals.func_param.clone())]);
+        if let TypedFuncBody::RawGlsl(body) = &func.body {
+            let rendered = render_raw_glsl_function(body, func);
+            return vec![rendered.trim().to_string(), String::new()];
+        }
+        let body = match &func.body {
+            TypedFuncBody::Expr(expr) => {
+                let mut lines = func
+                    .param_bindings
+                    .iter()
+                    .map(|binding| {
+                        format!(
+                            "    {} {} = {};",
+                            binding.ty.glsl_name(),
+                            binding.name,
+                            binding.expr
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                lines.push(format!(
+                    "    return {};",
+                    emit_value_expr(expr, helper_names, &func_var_names)
+                ));
+                lines.join("\n")
+            }
+            TypedFuncBody::RawGlsl(_) => unreachable!(),
+            TypedFuncBody::RawGlslTemplate => unreachable!(),
+        };
         vec![
             format!(
-                "{} {}({} {}) {{",
+                "{} {}({}) {{",
                 func.output.glsl_name(),
                 helper_name(&func.name),
-                func.input.glsl_name(),
-                locals.func_param
+                emit_func_signature_params(&func.input, locals)
             ),
-            format!(
-                "    return {};",
-                emit_value_expr(&func.expr, helper_names, &func_var_names)
-            ),
+            body,
             "}".to_string(),
             String::new(),
         ]
@@ -393,7 +456,8 @@ impl TypedProgram {
         let mut forbidden = BTreeSet::new();
         for input in &self.inputs {
             match input.ty {
-                Type::Bool
+                Type::Unit
+                | Type::Bool
                 | Type::Float
                 | Type::Int
                 | Type::Complex
@@ -417,7 +481,7 @@ impl TypedProgram {
 
         let point = unique_local_name("p", &forbidden);
         forbidden.insert(point.clone());
-        let func_param = unique_local_name("t", &forbidden);
+        let func_param = unique_local_name("_t", &forbidden);
         forbidden.insert(func_param.clone());
         let eps = unique_local_name("eps", &forbidden);
 
@@ -439,8 +503,11 @@ impl TypedProgram {
             collect_type_support(&input.ty, &mut names);
         }
         for func in &self.funcs {
+            collect_type_support(&func.input, &mut names);
             collect_type_support(&func.output, &mut names);
-            collect_value_support(&func.expr, &mut names);
+            if let TypedFuncBody::Expr(expr) = &func.body {
+                collect_value_support(expr, &mut names);
+            }
         }
         for binding in &self.value_bindings {
             collect_type_support(&binding.ty, &mut names);
@@ -454,9 +521,11 @@ impl TypedProgram {
         }
         for product_type in &self.product_types {
             if product_type.eager_ops {
-                names.insert(product_type_type_support_name(&product_type.name));
-                for &op in product_category_ops(product_type.category) {
-                    names.insert(product_type_op_support_name(&product_type.name, op));
+                if !product_type.provided {
+                    names.insert(product_type_type_support_name(&product_type.name));
+                    for &op in product_category_ops(product_type.category) {
+                        names.insert(product_type_op_support_name(&product_type.name, op));
+                    }
                 }
             }
         }
@@ -531,7 +600,10 @@ impl TypedProgram {
     fn object_getter_bindings(&self) -> BTreeSet<String> {
         let mut names = BTreeSet::new();
         for func in &self.funcs {
-            collect_object_getter_value_refs(&func.expr, &mut names);
+            if let TypedFuncBody::Expr(expr) = &func.body {
+                collect_object_getter_value_refs(expr, &mut names);
+            }
+            names.extend(func.raw_glsl_refs.object_getters.iter().cloned());
         }
         for binding in &self.value_bindings {
             collect_object_getter_value_refs(&binding.expr, &mut names);
@@ -545,10 +617,68 @@ impl TypedProgram {
         names
     }
 
+    fn object_getter_prototypes(
+        &self,
+        object_getter_bindings: &BTreeSet<String>,
+        locals: &EmitLocals,
+    ) -> Vec<String> {
+        let mut lines = Vec::new();
+        for name in object_getter_bindings {
+            let Some(binding) = self.bindings.iter().find(|binding| binding.name == *name) else {
+                continue;
+            };
+            let dimension = binding.dimension.unwrap_or(self.ambient_dimension);
+            let signature = self
+                .object_helper_signature(&locals.point, dimension)
+                .join(", ");
+            lines.push(format!("float sdf_{name}({signature});"));
+            if dimension == ShapeDimension::D3 {
+                lines.push(format!(
+                    "{} grad_sdf_{name}({signature});",
+                    ambient_vector_glsl_type(dimension)
+                ));
+            }
+        }
+        lines
+    }
+
+    fn raw_glsl_function_ref_prototypes(
+        &self,
+        emitted_func_names: &BTreeSet<String>,
+        locals: &EmitLocals,
+    ) -> Vec<String> {
+        let mut names = BTreeSet::new();
+        for func in &self.funcs {
+            names.extend(func.raw_glsl_refs.funcs.iter().cloned());
+        }
+        names
+            .into_iter()
+            .filter(|name| emitted_func_names.contains(name))
+            .filter_map(|name| {
+                let func = self.funcs.iter().find(|func| func.name == name)?;
+                if matches!(
+                    func.body,
+                    TypedFuncBody::RawGlsl(_) | TypedFuncBody::RawGlslTemplate
+                ) {
+                    return None;
+                }
+                Some(format!(
+                    "{} {}({} {});",
+                    func.output.glsl_name(),
+                    helper_name(&func.name),
+                    func.input.glsl_name(),
+                    locals.func_param
+                ))
+            })
+            .collect()
+    }
+
     fn concat_helpers(&self) -> Vec<ConcatHelper> {
         let mut helpers = BTreeMap::new();
         for func in &self.funcs {
-            collect_concat_helpers(&func.expr, &mut helpers);
+            if let TypedFuncBody::Expr(expr) = &func.body {
+                collect_concat_helpers(expr, &mut helpers);
+            }
         }
         for binding in &self.value_bindings {
             collect_concat_helpers(&binding.expr, &mut helpers);
@@ -700,6 +830,7 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
                 collect_object_getter_value_refs(capture, names);
             }
         }
+        ValueExpr::FieldAccess { value, .. } => collect_object_getter_value_refs(value, names),
         ValueExpr::Array { elements, .. } => {
             for element in elements {
                 collect_object_getter_value_refs(element, names);
@@ -737,8 +868,12 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
                 collect_object_getter_value_refs(row, names);
             }
         }
-        ValueExpr::Derivative { epsilon, func, at }
-        | ValueExpr::Gradient { epsilon, func, at }
+        ValueExpr::Derivative {
+            epsilon, func, at, ..
+        }
+        | ValueExpr::Gradient {
+            epsilon, func, at, ..
+        }
         | ValueExpr::Divergence { epsilon, func, at } => {
             collect_object_getter_value_refs(epsilon, names);
             collect_object_getter_function_refs(func, names);
@@ -748,17 +883,6 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
             epsilon, func, at, ..
         } => {
             collect_object_getter_value_refs(epsilon, names);
-            collect_object_getter_function_refs(func, names);
-            collect_object_getter_value_refs(at, names);
-        }
-        ValueExpr::DirectionalDerivative {
-            epsilon,
-            direction,
-            func,
-            at,
-        } => {
-            collect_object_getter_value_refs(epsilon, names);
-            collect_object_getter_value_refs(direction, names);
             collect_object_getter_function_refs(func, names);
             collect_object_getter_value_refs(at, names);
         }
@@ -838,7 +962,8 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
             collect_type_support(input, names);
             collect_type_support(output, names);
         }
-        Type::Bool
+        Type::Unit
+        | Type::Bool
         | Type::Float
         | Type::Int
         | Type::Complex
@@ -1069,6 +1194,9 @@ fn emit_product_type_support(
     emitted_product_types: &mut BTreeSet<String>,
     blocks: &mut Vec<String>,
 ) {
+    if decl.provided {
+        return;
+    }
     if !emitted_product_types.insert(decl.name.clone()) {
         return;
     }
@@ -1552,6 +1680,7 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
                 collect_concat_helpers(capture, helpers);
             }
         }
+        ValueExpr::FieldAccess { value, .. } => collect_concat_helpers(value, helpers),
         ValueExpr::Array { elements, .. } => {
             for element in elements {
                 collect_concat_helpers(element, helpers);
@@ -1597,16 +1726,6 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
         }
         ValueExpr::Partial { epsilon, at, .. } => {
             collect_concat_helpers(epsilon, helpers);
-            collect_concat_helpers(at, helpers);
-        }
-        ValueExpr::DirectionalDerivative {
-            epsilon,
-            direction,
-            at,
-            ..
-        } => {
-            collect_concat_helpers(epsilon, helpers);
-            collect_concat_helpers(direction, helpers);
             collect_concat_helpers(at, helpers);
         }
     }
@@ -1656,9 +1775,9 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         | ValueExpr::Call { .. }
         | ValueExpr::MonoidPow { .. }
         | ValueExpr::ObjectGetterCall { .. }
+        | ValueExpr::FieldAccess { .. }
         | ValueExpr::Derivative { .. }
         | ValueExpr::Partial { .. }
-        | ValueExpr::DirectionalDerivative { .. }
         | ValueExpr::Gradient { .. }
         | ValueExpr::Divergence { .. } => false,
     }
@@ -1756,6 +1875,7 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_refs(capture, names);
             }
         }
+        ValueExpr::FieldAccess { value, .. } => collect_value_refs(value, names),
         ValueExpr::Array { elements, .. } => {
             for element in elements {
                 collect_value_refs(element, names);
@@ -1803,16 +1923,6 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_refs(epsilon, names);
             collect_value_refs(at, names);
         }
-        ValueExpr::DirectionalDerivative {
-            epsilon,
-            direction,
-            at,
-            ..
-        } => {
-            collect_value_refs(epsilon, names);
-            collect_value_refs(direction, names);
-            collect_value_refs(at, names);
-        }
     }
 }
 
@@ -1854,6 +1964,7 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_function_refs(capture, names);
             }
         }
+        ValueExpr::FieldAccess { value, .. } => collect_value_function_refs(value, names),
         ValueExpr::Array { elements, .. } => {
             for element in elements {
                 collect_value_function_refs(element, names);
@@ -1892,16 +2003,6 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         | ValueExpr::Gradient { epsilon, at, .. }
         | ValueExpr::Divergence { epsilon, at, .. } => {
             collect_value_function_refs(epsilon, names);
-            collect_value_function_refs(at, names);
-        }
-        ValueExpr::DirectionalDerivative {
-            epsilon,
-            direction,
-            at,
-            ..
-        } => {
-            collect_value_function_refs(epsilon, names);
-            collect_value_function_refs(direction, names);
             collect_value_function_refs(at, names);
         }
     }
@@ -2071,6 +2172,10 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_support(capture, names);
             }
         }
+        ValueExpr::FieldAccess { value, ty, .. } => {
+            collect_type_support(ty, names);
+            collect_value_support(value, names);
+        }
         ValueExpr::Array { elements, .. } => {
             for element in elements {
                 collect_value_support(element, names);
@@ -2113,8 +2218,12 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_support(row, names);
             }
         }
-        ValueExpr::Derivative { epsilon, func, at }
-        | ValueExpr::Gradient { epsilon, func, at }
+        ValueExpr::Derivative {
+            epsilon, func, at, ..
+        }
+        | ValueExpr::Gradient {
+            epsilon, func, at, ..
+        }
         | ValueExpr::Divergence { epsilon, func, at } => {
             collect_value_support(epsilon, names);
             collect_function_support(func, names);
@@ -2124,17 +2233,6 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             epsilon, func, at, ..
         } => {
             collect_value_support(epsilon, names);
-            collect_function_support(func, names);
-            collect_value_support(at, names);
-        }
-        ValueExpr::DirectionalDerivative {
-            epsilon,
-            direction,
-            func,
-            at,
-        } => {
-            collect_value_support(epsilon, names);
-            collect_value_support(direction, names);
             collect_function_support(func, names);
             collect_value_support(at, names);
         }
@@ -2269,6 +2367,13 @@ fn emit_value_expr(
                 .join(", ");
             format!("{function_name}({rendered_args})")
         }
+        ValueExpr::FieldAccess { value, field, .. } => {
+            format!(
+                "({}).{}",
+                emit_value_expr(value, helper_names, value_names),
+                field
+            )
+        }
         ValueExpr::Array {
             element_ty,
             elements,
@@ -2317,24 +2422,19 @@ fn emit_value_expr(
         ValueExpr::Matrix { columns, rows } => {
             emit_matrix(rows, *columns, helper_names, value_names)
         }
-        ValueExpr::Derivative { epsilon, func, at } => {
-            emit_scalar_derivative(func, epsilon, at, helper_names, value_names)
-        }
+        ValueExpr::Derivative {
+            epsilon, func, at, ..
+        } => emit_scalar_derivative(func, epsilon, at, helper_names, value_names),
         ValueExpr::Partial {
             axis,
             epsilon,
             func,
             at,
+            ..
         } => emit_partial_derivative(*axis, func, epsilon, at, helper_names, value_names),
-        ValueExpr::DirectionalDerivative {
-            epsilon,
-            direction,
-            func,
-            at,
-        } => emit_directional_derivative(func, epsilon, direction, at, helper_names, value_names),
-        ValueExpr::Gradient { epsilon, func, at } => {
-            emit_gradient(func, epsilon, at, helper_names, value_names)
-        }
+        ValueExpr::Gradient {
+            epsilon, func, at, ..
+        } => emit_gradient(func, epsilon, at, helper_names, value_names),
         ValueExpr::Divergence { epsilon, func, at } => {
             emit_divergence(func, epsilon, at, helper_names, value_names)
         }
@@ -2703,30 +2803,7 @@ fn emit_scalar_derivative(
     helper_names: &HashMap<String, String>,
     value_names: &HashMap<String, String>,
 ) -> String {
-    let plus = ValueExpr::Binary {
-        op: BinOp::Add,
-        left: Box::new(at.clone()),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Float,
-    };
-    let minus = ValueExpr::Binary {
-        op: BinOp::Sub,
-        left: Box::new(at.clone()),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Float,
-    };
-    let twice = ValueExpr::Binary {
-        op: BinOp::Mul,
-        left: Box::new(ValueExpr::Float(2.0)),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Float,
-    };
-    format!(
-        "(({} - {}) / {})",
-        emit_function_application(func, plus, helper_names, value_names),
-        emit_function_application(func, minus, helper_names, value_names),
-        emit_value_expr(&twice, helper_names, value_names)
-    )
+    emit_derivative(func, epsilon, at, helper_names, value_names)
 }
 
 fn emit_partial_derivative(
@@ -2737,64 +2814,7 @@ fn emit_partial_derivative(
     helper_names: &HashMap<String, String>,
     value_names: &HashMap<String, String>,
 ) -> String {
-    let plus = emit_vec3_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Add);
-    let minus = emit_vec3_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Sub);
-    let twice = ValueExpr::Binary {
-        op: BinOp::Mul,
-        left: Box::new(ValueExpr::Float(2.0)),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Float,
-    };
-    format!(
-        "(({} - {}) / {})",
-        emit_function_application(func, plus, helper_names, value_names),
-        emit_function_application(func, minus, helper_names, value_names),
-        emit_value_expr(&twice, helper_names, value_names)
-    )
-}
-
-fn emit_directional_derivative(
-    func: &FunctionExpr,
-    epsilon: &ValueExpr,
-    direction: &ValueExpr,
-    at: &ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    let direction_step = ValueExpr::Binary {
-        op: BinOp::Mul,
-        left: Box::new(ValueExpr::Call {
-            func: "normalize".to_string(),
-            args: vec![direction.clone()],
-            ty: Type::Vec3,
-        }),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Vec3,
-    };
-    let plus = ValueExpr::Binary {
-        op: BinOp::Add,
-        left: Box::new(at.clone()),
-        right: Box::new(direction_step.clone()),
-        ty: Type::Vec3,
-    };
-    let minus = ValueExpr::Binary {
-        op: BinOp::Sub,
-        left: Box::new(at.clone()),
-        right: Box::new(direction_step),
-        ty: Type::Vec3,
-    };
-    let twice = ValueExpr::Binary {
-        op: BinOp::Mul,
-        left: Box::new(ValueExpr::Float(2.0)),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Float,
-    };
-    format!(
-        "(({} - {}) / {})",
-        emit_function_application(func, plus, helper_names, value_names),
-        emit_function_application(func, minus, helper_names, value_names),
-        emit_value_expr(&twice, helper_names, value_names)
-    )
+    emit_axis_derivative(axis, func, epsilon, at, helper_names, value_names)
 }
 
 fn emit_gradient(
@@ -2804,12 +2824,148 @@ fn emit_gradient(
     helper_names: &HashMap<String, String>,
     value_names: &HashMap<String, String>,
 ) -> String {
+    emit_derivative(func, epsilon, at, helper_names, value_names)
+}
+
+fn emit_derivative(
+    func: &FunctionExpr,
+    epsilon: &ValueExpr,
+    at: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
+    let input_dim = derivative_emit_dimension(&func.input).unwrap();
+    let output_dim = derivative_emit_dimension(&func.output).unwrap();
+    if input_dim == 1 {
+        return emit_axis_derivative(0, func, epsilon, at, helper_names, value_names);
+    }
+    if output_dim == 1 {
+        let components = (0..input_dim)
+            .map(|axis| emit_axis_derivative(axis, func, epsilon, at, helper_names, value_names))
+            .collect::<Vec<_>>();
+        return format!(
+            "{}({})",
+            vector_constructor(input_dim),
+            components.join(", ")
+        );
+    }
+    let rows = (0..input_dim)
+        .map(|axis| emit_axis_derivative(axis, func, epsilon, at, helper_names, value_names))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
-        "vec3({}, {}, {})",
-        emit_partial_derivative(0, func, epsilon, at, helper_names, value_names),
-        emit_partial_derivative(1, func, epsilon, at, helper_names, value_names),
-        emit_partial_derivative(2, func, epsilon, at, helper_names, value_names)
+        "transpose({}({}))",
+        matrix_constructor_type(input_dim, output_dim),
+        rows
     )
+}
+
+fn emit_axis_derivative(
+    axis: usize,
+    func: &FunctionExpr,
+    epsilon: &ValueExpr,
+    at: &ValueExpr,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
+    let plus = emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Add);
+    let minus = emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Sub);
+    let twice = ValueExpr::Binary {
+        op: BinOp::Mul,
+        left: Box::new(ValueExpr::Float(2.0)),
+        right: Box::new(epsilon.clone()),
+        ty: Type::Float,
+    };
+    format!(
+        "(({} - {}) / {})",
+        emit_function_application(func, plus, helper_names, value_names),
+        emit_function_application(func, minus, helper_names, value_names),
+        emit_value_expr(&twice, helper_names, value_names)
+    )
+}
+
+fn derivative_emit_dimension(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Float => Some(1),
+        Type::Vec2 => Some(2),
+        Type::Vec3 => Some(3),
+        Type::Vec4 => Some(4),
+        _ => None,
+    }
+}
+
+fn vector_constructor(dimension: usize) -> &'static str {
+    match dimension {
+        2 => "vec2",
+        3 => "vec3",
+        4 => "vec4",
+        _ => unreachable!(),
+    }
+}
+
+fn emit_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: BinOp) -> ValueExpr {
+    let ty = base.ty();
+    let offset = match ty {
+        Type::Float => epsilon,
+        Type::Vec2 => ValueExpr::Vec2(
+            Box::new(if axis == 0 {
+                epsilon.clone()
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+            Box::new(if axis == 1 {
+                epsilon
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+        ),
+        Type::Vec3 => ValueExpr::Vec3(
+            Box::new(if axis == 0 {
+                epsilon.clone()
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+            Box::new(if axis == 1 {
+                epsilon.clone()
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+            Box::new(if axis == 2 {
+                epsilon
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+        ),
+        Type::Vec4 => ValueExpr::Vec4(
+            Box::new(if axis == 0 {
+                epsilon.clone()
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+            Box::new(if axis == 1 {
+                epsilon.clone()
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+            Box::new(if axis == 2 {
+                epsilon.clone()
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+            Box::new(if axis == 3 {
+                epsilon
+            } else {
+                ValueExpr::Float(0.0)
+            }),
+        ),
+        _ => unreachable!(),
+    };
+    ValueExpr::Binary {
+        op,
+        left: Box::new(base),
+        right: Box::new(offset),
+        ty,
+    }
 }
 
 fn emit_divergence(
@@ -2819,6 +2975,7 @@ fn emit_divergence(
     helper_names: &HashMap<String, String>,
     value_names: &HashMap<String, String>,
 ) -> String {
+    let dimension = derivative_emit_dimension(&func.input).unwrap();
     let twice = ValueExpr::Binary {
         op: BinOp::Mul,
         left: Box::new(ValueExpr::Float(2.0)),
@@ -2826,71 +2983,26 @@ fn emit_divergence(
         ty: Type::Float,
     };
     let denom = emit_value_expr(&twice, helper_names, value_names);
-    let dx_plus = emit_function_application(
-        func,
-        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 0, BinOp::Add),
-        helper_names,
-        value_names,
-    );
-    let dx_minus = emit_function_application(
-        func,
-        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 0, BinOp::Sub),
-        helper_names,
-        value_names,
-    );
-    let dy_plus = emit_function_application(
-        func,
-        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 1, BinOp::Add),
-        helper_names,
-        value_names,
-    );
-    let dy_minus = emit_function_application(
-        func,
-        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 1, BinOp::Sub),
-        helper_names,
-        value_names,
-    );
-    let dz_plus = emit_function_application(
-        func,
-        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 2, BinOp::Add),
-        helper_names,
-        value_names,
-    );
-    let dz_minus = emit_function_application(
-        func,
-        emit_vec3_axis_offset(at.clone(), epsilon.clone(), 2, BinOp::Sub),
-        helper_names,
-        value_names,
-    );
-    format!(
-        "((({dx_plus}).x - ({dx_minus}).x) / {denom} + (({dy_plus}).y - ({dy_minus}).y) / {denom} + (({dz_plus}).z - ({dz_minus}).z) / {denom})"
-    )
-}
-
-fn emit_vec3_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: BinOp) -> ValueExpr {
-    let offset = match axis {
-        0 => ValueExpr::Vec3(
-            Box::new(epsilon),
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(ValueExpr::Float(0.0)),
-        ),
-        1 => ValueExpr::Vec3(
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(epsilon),
-            Box::new(ValueExpr::Float(0.0)),
-        ),
-        _ => ValueExpr::Vec3(
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(ValueExpr::Float(0.0)),
-            Box::new(epsilon),
-        ),
-    };
-    ValueExpr::Binary {
-        op,
-        left: Box::new(base),
-        right: Box::new(offset),
-        ty: Type::Vec3,
-    }
+    let components = ["x", "y", "z", "w"];
+    let terms = (0..dimension)
+        .map(|axis| {
+            let plus = emit_function_application(
+                func,
+                emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Add),
+                helper_names,
+                value_names,
+            );
+            let minus = emit_function_application(
+                func,
+                emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Sub),
+                helper_names,
+                value_names,
+            );
+            let component = components[axis];
+            format!("(({plus}).{component} - ({minus}).{component}) / {denom}")
+        })
+        .collect::<Vec<_>>();
+    format!("({})", terms.join(" + "))
 }
 
 fn emit_object_expr(
@@ -3010,9 +3122,9 @@ fn emit_object_expr(
             value_args,
             object_args,
         } => {
-            if glsl_name == "op_revolution" {
+            if glsl_name == "_op_revolution" {
                 let offset = emit_plain_value_expr(&value_args[0], helper_names);
-                let revolved_point = format!("op_revolution_point({}, {})", point_expr, offset);
+                let revolved_point = format!("_op_revolution_point({}, {})", point_expr, offset);
                 return emit_object_expr(
                     &object_args[0],
                     &revolved_point,
@@ -3022,7 +3134,7 @@ fn emit_object_expr(
                     scene_input_names,
                 );
             }
-            if glsl_name == "op_extrusion" {
+            if glsl_name == "_op_extrusion" {
                 let height = emit_plain_value_expr(&value_args[0], helper_names);
                 let base_point = format!("vec3(({}).xy, 0.0)", point_expr);
                 let base_distance = emit_object_expr(
@@ -3034,16 +3146,16 @@ fn emit_object_expr(
                     scene_input_names,
                 );
                 return format!(
-                    "op_extrusion({}, ({}).z, {})",
+                    "_op_extrusion({}, ({}).z, {})",
                     base_distance, point_expr, height
                 );
             }
-            if glsl_name == "op_rot" {
+            if glsl_name == "_op_rot" {
                 let binormal = emit_plain_value_expr(&value_args[0], helper_names);
                 let anchor = emit_plain_value_expr(&value_args[1], helper_names);
                 let angle = emit_plain_value_expr(&value_args[2], helper_names);
                 let rotated_point = format!(
-                    "op_rot_inverse_point({}, {}, {}, {})",
+                    "_op_rot_inverse_point({}, {}, {}, {})",
                     point_expr, binormal, anchor, angle
                 );
                 return emit_object_expr(
@@ -3055,17 +3167,17 @@ fn emit_object_expr(
                     scene_input_names,
                 );
             }
-            if glsl_name == "op_rot2D" {
+            if glsl_name == "_op_rot2D" {
                 let anchor = emit_plain_value_expr(&value_args[0], helper_names);
                 let angle = emit_plain_value_expr(&value_args[1], helper_names);
                 let rotated_point = if ambient_dimension == ShapeDimension::D2 {
                     format!(
-                        "({} + (transpose(op_rot2D_matrix({})) * ({} - {})))",
+                        "({} + (transpose(_op_rot2D_matrix({})) * ({} - {})))",
                         anchor, angle, point_expr, anchor
                     )
                 } else {
                     format!(
-                        "op_rot2D_inverse_point({}, {}, {})",
+                        "_op_rot2D_inverse_point({}, {}, {})",
                         point_expr, anchor, angle
                     )
                 };
@@ -3260,6 +3372,119 @@ fn emitted_function_name(name: &str, helper_names: &HashMap<String, String>) -> 
         .get(name)
         .cloned()
         .unwrap_or_else(|| name.to_string())
+}
+
+fn collect_raw_glsl_placeholders(body: &str, names: &mut BTreeSet<String>) {
+    let mut index = 0;
+    while let Some(relative_start) = body[index..].find("${") {
+        let name_start = index + relative_start + 2;
+        let Some(relative_end) = body[name_start..].find('}') else {
+            return;
+        };
+        let end = name_start + relative_end;
+        let name = &body[name_start..end];
+        if is_placeholder_ident(name) {
+            names.insert(name.to_string());
+        }
+        index = end + 1;
+    }
+}
+
+fn render_raw_glsl_function(body: &str, func: &TypedFunc) -> String {
+    let rendered_body = render_raw_glsl_placeholders(body, &func.name);
+    let signature = raw_glsl_function_signature(func);
+    format!(
+        "{signature} {{\n{}\n}}",
+        indent_raw_glsl_body(&rendered_body)
+    )
+}
+
+fn raw_glsl_function_signature(func: &TypedFunc) -> String {
+    let output = if func.output == Type::Unit {
+        "void".to_string()
+    } else {
+        func.output.glsl_name()
+    };
+    format!(
+        "{output} {}({})",
+        helper_name(&func.name),
+        emit_raw_glsl_signature_params(&func.input)
+    )
+}
+
+fn emit_func_signature_params(input: &Type, locals: &EmitLocals) -> String {
+    match input {
+        Type::Unit => String::new(),
+        Type::Product(parts) => parts
+            .iter()
+            .enumerate()
+            .map(|(index, ty)| format!("{} _t{index}", ty.glsl_name()))
+            .collect::<Vec<_>>()
+            .join(", "),
+        ty => format!("{} {}", ty.glsl_name(), locals.func_param),
+    }
+}
+
+fn emit_raw_glsl_signature_params(input: &Type) -> String {
+    match input {
+        Type::Unit => String::new(),
+        Type::Product(parts) => parts
+            .iter()
+            .enumerate()
+            .map(|(index, ty)| format!("{} _t{index}", ty.glsl_name()))
+            .collect::<Vec<_>>()
+            .join(", "),
+        ty => format!("{} _t", ty.glsl_name()),
+    }
+}
+
+fn indent_raw_glsl_body(body: &str) -> String {
+    body.trim()
+        .lines()
+        .map(|line| {
+            if line.trim().is_empty() {
+                String::new()
+            } else {
+                format!("    {}", line)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn render_raw_glsl_placeholders(body: &str, _function_name: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut index = 0;
+    while let Some(relative_start) = body[index..].find("${") {
+        let start = index + relative_start;
+        out.push_str(&body[index..start]);
+        let name_start = start + 2;
+        let Some(relative_end) = body[name_start..].find('}') else {
+            out.push_str(&body[start..]);
+            return out;
+        };
+        let end = name_start + relative_end;
+        let name = &body[name_start..end];
+        if let Some(getter) = raw_glsl_object_getter_placeholder(name) {
+            out.push_str(getter);
+        } else if is_placeholder_ident(name) {
+            out.push_str(name);
+        } else {
+            out.push_str(&body[start..=end]);
+        }
+        index = end + 1;
+    }
+    out.push_str(&body[index..]);
+    out
+}
+
+fn raw_glsl_object_getter_placeholder(name: &str) -> Option<&'static str> {
+    let (_, getter) = name.split_once('.')?;
+    match getter {
+        "sdf" => Some("scene_sdf"),
+        "grad" => Some("scene_grad"),
+        _ => None,
+    }
 }
 
 fn helper_name(name: &str) -> String {

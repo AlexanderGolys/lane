@@ -137,9 +137,9 @@ directives as errors.
 
 ### `#prec VALUE`
 
-`#prec` sets the default finite-difference epsilon used by generated SDF
-gradients and by differential builtins that omit an explicit epsilon. The value
-must be a positive float literal.
+`#prec` sets the finite-difference epsilon used by generated SDF gradients and
+all differential builtins. The default is `0.01`. The value must be a positive
+float literal.
 
 ```lane
 #prec 0.002
@@ -150,12 +150,8 @@ Func(R, R) slope = grad(sin)
 const Object output = Ball3D(r=slope(0) + density(normal))
 ```
 
-Explicit epsilon arguments still override the directive:
-
-```lane
-#prec 0.002
-Func(R, R) slope = derivative(0.0001)(sin)
-```
+Differential operators do not take per-call epsilon arguments; use `#prec` when
+a program needs a different precision.
 
 ## Declarations
 
@@ -791,27 +787,40 @@ const Object output = rot2D()(Box2D(a=1, b=.5))    // angle=0
 Differential builtins lower directly during emission.
 
 ```lane
-Func(R, R) slope = derivative(0.01)(sin)
+Func(R, R) slope = derivative(sin)
 Func(R, R) slope_default = grad(sin)
 ```
 
-For scalar fields:
+For scalar fields, `derivative`, `gradient`, and `grad` all produce the
+finite-difference gradient in the domain dimension.
 
 ```lane
 provided Hom(R3, R) density
 provided R3 p
 R3 n = gradient(density)(p)
-R3 n_fine = gradient(0.001)(density)(p)
 ```
 
-Directional derivatives and divergence:
+Partial derivatives are named by axis and are available where the input
+dimension includes that axis:
 
 ```lane
 provided Hom(R3, R) density
-provided Hom(R3, R3) flow
 provided R3 p
-R along_x = directionalDerivative(0.01)((1, 0, 0))(density)(p)
-R outflow = divergence(0.01)(flow)(p)
+R along_x = dfdx(density)(p)
+R along_y = dfdy(density)(p)
+R along_z = dfdz(density)(p)
+```
+
+For vector-valued functions, `derivative` returns the corresponding Jacobian
+matrix. Divergence is available for same-dimensional vector fields:
+
+```lane
+provided Hom(R2, R3) field
+provided Hom(R3, R3) flow
+provided R2 uv
+provided R3 p
+Mat2x3 jacobian = derivative(field)(uv)
+R outflow = divergence(flow)(p)
 ```
 
 ## Object Expressions

@@ -5,7 +5,7 @@
 
 (gen_modifier) @keyword
 
-["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x"] @operator
+["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "->"] @operator
 
 ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
 ["," "."] @punctuation.delimiter
@@ -13,6 +13,11 @@
 (comment) @comment
 (directive) @keyword.directive
 (number) @number
+(string_content) @string
+(placeholder ["${" "}"] @punctuation.special)
+(placeholder name: (identifier) @variable)
+(placeholder field: (identifier) @property)
+(unit_type) @type.builtin
 
 ((type_identifier) @constant.builtin
   (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "DivRing" "VectR" "RAlg" "Set")
@@ -57,6 +62,12 @@
 
 (inferred_binding_declaration
   name: (identifier) @variable)
+
+(closure_expression
+  parameters: (identifier) @variable.parameter)
+
+(closure_parameter_list
+  parameter: (identifier) @variable.parameter)
 
 (call_expression
   function: (identifier) @constructor

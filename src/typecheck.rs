@@ -1,5 +1,716 @@
 use super::*;
 
+fn raw_glsl_runtime_output_ty<'a>(body: &FuncBody, output_ty: &'a Type) -> &'a Type {
+    if matches!(
+        body,
+        FuncBody::RawGlsl(_)
+            | FuncBody::RawGlslClosure { .. }
+            | FuncBody::Expr(Expr::Closure { .. })
+    ) {
+        innermost_output_ty(output_ty)
+    } else {
+        output_ty
+    }
+}
+
+fn innermost_output_ty(ty: &Type) -> &Type {
+    let (_, output) = flatten_func_type(ty);
+    output
+}
+
+#[derive(Clone)]
+struct RawGlslCapture {
+    ty: Type,
+    glsl_ref: String,
+}
+
+#[derive(Clone)]
+struct RawGlslTemplateInfo {
+    params: Vec<String>,
+    body: String,
+    template_name: String,
+}
+
+#[derive(Clone)]
+struct LaneClosureTemplateInfo {
+    params: Vec<String>,
+    body: Expr,
+}
+
+fn lane_closure_template_info(body: &FuncBody) -> Option<LaneClosureTemplateInfo> {
+    let FuncBody::Expr(Expr::Closure { params, body }) = body else {
+        return None;
+    };
+    let (params, body) = collect_lane_closure_params(params.clone(), body.as_ref().clone());
+    Some(LaneClosureTemplateInfo { params, body })
+}
+
+fn collect_lane_closure_params(mut params: Vec<String>, body: Expr) -> (Vec<String>, Expr) {
+    match body {
+        Expr::Closure {
+            params: next_params,
+            body,
+        } => {
+            params.extend(next_params);
+            collect_lane_closure_params(params, *body)
+        }
+        body => (params, body),
+    }
+}
+
+fn typed_raw_glsl_body(
+    input_ty: &Type,
+    output_ty: &Type,
+    body: &str,
+    closure_params: Option<&[String]>,
+    env: &Env<'_>,
+) -> Result<(Type, Type, String, RawGlslRefs), Error> {
+    let mut captures = Vec::new();
+    let mut runtime_input = input_ty.clone();
+    let mut runtime_output = output_ty.clone();
+    while let Type::Func(next_input, next_output) = runtime_output {
+        captures.push(runtime_input);
+        runtime_input = (*next_input).clone();
+        runtime_output = (*next_output).clone();
+    }
+
+    let capture_bindings = raw_glsl_capture_bindings(&captures, closure_params)?;
+    let (body, refs) = render_checked_raw_glsl_placeholders(body, env, &capture_bindings)?;
+    Ok((runtime_input, runtime_output, body, refs))
+}
+
+fn raw_glsl_capture_bindings(
+    captures: &[Type],
+    closure_params: Option<&[String]>,
+) -> Result<HashMap<String, RawGlslCapture>, Error> {
+    let mut bindings = HashMap::new();
+    let Some(params) = closure_params else {
+        for (index, capture_ty) in captures.iter().enumerate() {
+            let param = if index == 0 {
+                "obj".to_string()
+            } else {
+                format!("arg{index}")
+            };
+            bindings.insert(
+                param.clone(),
+                RawGlslCapture {
+                    ty: capture_ty.clone(),
+                    glsl_ref: param,
+                },
+            );
+        }
+        return Ok(bindings);
+    };
+    let expanded = captures
+        .iter()
+        .flat_map(|ty| match ty {
+            Type::Product(parts) => parts.clone(),
+            other => vec![other.clone()],
+        })
+        .collect::<Vec<_>>();
+    if params.len() != expanded.len() {
+        return Err(Error::new(format!(
+            "raw GLSL closure expects {} capture parameter(s), got {}",
+            expanded.len(),
+            params.len()
+        )));
+    }
+    for (param, ty) in params.iter().zip(expanded) {
+        bindings.insert(
+            param.clone(),
+            RawGlslCapture {
+                ty,
+                glsl_ref: param.clone(),
+            },
+        );
+    }
+    Ok(bindings)
+}
+
+fn render_checked_raw_glsl_placeholders(
+    body: &str,
+    env: &Env<'_>,
+    capture_bindings: &HashMap<String, RawGlslCapture>,
+) -> Result<(String, RawGlslRefs), Error> {
+    let mut out = String::with_capacity(body.len());
+    let mut refs = RawGlslRefs::default();
+    let mut index = 0;
+    while let Some(relative_start) = body[index..].find("${") {
+        let start = index + relative_start;
+        out.push_str(&body[index..start]);
+        let name_start = start + 2;
+        let Some(relative_end) = body[name_start..].find('}') else {
+            out.push_str(&body[start..]);
+            return Ok((out, refs));
+        };
+        let end = name_start + relative_end;
+        let placeholder = &body[name_start..end];
+        if is_placeholder_ident(placeholder) {
+            out.push_str(&raw_glsl_placeholder_ref(
+                placeholder,
+                env,
+                capture_bindings,
+                &mut refs,
+            )?);
+        } else {
+            out.push_str(&body[start..=end]);
+        }
+        index = end + 1;
+    }
+    out.push_str(&body[index..]);
+    Ok((out, refs))
+}
+
+fn raw_glsl_placeholder_ref(
+    name: &str,
+    env: &Env<'_>,
+    capture_bindings: &HashMap<String, RawGlslCapture>,
+    refs: &mut RawGlslRefs,
+) -> Result<String, Error> {
+    if let Some((base, field)) = name.split_once('.') {
+        let capture = capture_bindings.get(base);
+        let value_ty = env.get_value(base).map(|value| &value.ty);
+        let ty = capture
+            .map(|capture| &capture.ty)
+            .or(value_ty)
+            .ok_or_else(|| Error::new(format!("unknown raw GLSL placeholder '{}'", name)))?;
+        let glsl_ref = capture
+            .map(|capture| capture.glsl_ref.as_str())
+            .unwrap_or(base);
+        if matches!(ty, Type::Object | Type::Object2D) {
+            refs.object_getters.insert(glsl_ref.to_string());
+        }
+        return raw_glsl_object_getter_ref(glsl_ref, field, ty);
+    }
+
+    if let Some(capture) = capture_bindings.get(name) {
+        if matches!(capture.ty, Type::Object | Type::Object2D) {
+            return Err(Error::new(format!(
+                "raw GLSL placeholder '{}' is an object; use '{}.sdf' or '{}.grad'",
+                name, name, name
+            )));
+        }
+        if matches!(capture.ty, Type::Func(_, _)) {
+            refs.funcs.insert(capture.glsl_ref.clone());
+        }
+        return Ok(capture.glsl_ref.clone());
+    }
+
+    if let Some(value) = env.get_value(name).map(|value| &value.ty) {
+        if matches!(value, Type::Object | Type::Object2D) {
+            return Err(Error::new(format!(
+                "raw GLSL placeholder '{}' is an object; use '{}.sdf' or '{}.grad'",
+                name, name, name
+            )));
+        }
+        if matches!(value, Type::Func(_, _)) {
+            refs.funcs.insert(name.to_string());
+        }
+        return Ok(name.to_string());
+    }
+
+    let overloads = env
+        .function_overloads(name)
+        .ok_or_else(|| Error::new(format!("unknown raw GLSL placeholder '{}'", name)))?;
+    let mut rendered = overloads
+        .iter()
+        .filter_map(|func| func.glsl_ref.as_deref())
+        .collect::<Vec<_>>();
+    rendered.sort_unstable();
+    rendered.dedup();
+    match rendered.as_slice() {
+        [rendered] => {
+            refs.funcs.insert(name.to_string());
+            Ok((*rendered).to_string())
+        }
+        [] => Err(Error::new(format!(
+            "raw GLSL placeholder '{}' cannot be rendered as a GLSL reference",
+            name
+        ))),
+        _ => Err(Error::new(format!(
+            "raw GLSL placeholder '{}' is ambiguous between GLSL references",
+            name
+        ))),
+    }
+}
+
+fn raw_glsl_object_getter_ref(base: &str, field: &str, ty: &Type) -> Result<String, Error> {
+    match (ty, field) {
+        (Type::Object, "sdf") | (Type::Object2D, "sdf") => Ok(format!("sdf_{base}")),
+        (Type::Object, "grad") => Ok(format!("grad_sdf_{base}")),
+        (Type::Object2D, "grad") => Err(Error::new(format!(
+            "raw GLSL placeholder '{}.grad' requires a 3D object",
+            base
+        ))),
+        (Type::Object | Type::Object2D, _) => Err(Error::new(format!(
+            "unknown object placeholder '{}.{}'",
+            base, field
+        ))),
+        _ => Err(Error::new(format!(
+            "raw GLSL placeholder '{}.{}' requires an object",
+            base, field
+        ))),
+    }
+}
+
+fn raw_glsl_template_info(name: &str, body: &FuncBody) -> Option<RawGlslTemplateInfo> {
+    let FuncBody::RawGlslClosure { params, body } = body else {
+        return None;
+    };
+    Some(RawGlslTemplateInfo {
+        params: params.clone(),
+        body: body.clone(),
+        template_name: name.to_string(),
+    })
+}
+
+fn instantiate_raw_glsl_template_func(
+    target_name: &str,
+    target_input: &Type,
+    target_output: &Type,
+    expr: &Expr,
+    env: &Env<'_>,
+) -> Result<Option<(Type, Type, TypedFuncBody, RawGlslRefs)>, Error> {
+    let Some((template_name, args)) = flatten_raw_template_call(expr) else {
+        return Ok(None);
+    };
+    let Some(overloads) = env.function_overloads(template_name) else {
+        return Ok(None);
+    };
+    let target_ty = Type::func(target_input.clone(), target_output.clone());
+    let mut candidates = Vec::new();
+    for overload in overloads {
+        let Some(template) = &overload.raw_glsl_template else {
+            continue;
+        };
+        let (all_inputs, final_output) = flatten_raw_template_inputs(&overload.ty);
+        if args.len() >= all_inputs.len() {
+            continue;
+        };
+        let inputs = all_inputs
+            .iter()
+            .take(args.len())
+            .cloned()
+            .collect::<Vec<_>>();
+        let output = rebuild_func_type(&all_inputs[args.len()..], &final_output);
+        if !raw_glsl_template_type_match(&output, &target_ty) {
+            continue;
+        }
+        let captures = raw_glsl_template_captures(&template.params, &inputs, &args, env)?;
+        let (body, refs) = render_checked_raw_glsl_placeholders(&template.body, env, &captures)?;
+        let body = rename_raw_glsl_definition(&body, &template.template_name, target_name);
+        candidates.push((
+            target_input.clone(),
+            target_output.clone(),
+            TypedFuncBody::RawGlsl(body),
+            refs,
+        ));
+    }
+    match candidates.len() {
+        0 => Ok(None),
+        1 => Ok(candidates.pop()),
+        _ => Err(Error::new(format!(
+            "ambiguous raw GLSL template instantiation for '{}'",
+            template_name
+        ))),
+    }
+}
+
+fn instantiate_lane_closure_template_func(
+    target_input: &Type,
+    target_output: &Type,
+    expr: &Expr,
+    env: &Env<'_>,
+) -> Result<Option<(Type, Type, TypedFuncBody, Vec<TypedFuncParamBinding>)>, Error> {
+    let Some((template_name, args)) = flatten_raw_template_call(expr) else {
+        return Ok(None);
+    };
+    let Some(overloads) = env.function_overloads(template_name) else {
+        return Ok(None);
+    };
+    let target_ty = Type::func(target_input.clone(), target_output.clone());
+    let mut candidates = Vec::new();
+    for overload in overloads {
+        let Some(template) = &overload.lane_closure_template else {
+            continue;
+        };
+        let (all_inputs, final_output) = flatten_raw_template_inputs(&overload.ty);
+        if args.len() >= all_inputs.len() || args.len() >= template.params.len() {
+            continue;
+        }
+        let output = rebuild_func_type(&all_inputs[args.len()..], &final_output);
+        if !raw_glsl_template_type_match(&output, &target_ty) {
+            continue;
+        }
+        let mut substitutions = HashMap::new();
+        for (param, arg) in template.params.iter().zip(args.iter()) {
+            substitutions.insert(param.clone(), (*arg).clone());
+        }
+        let mut body = template.body.clone();
+        substitute_exprs(&mut body, &substitutions);
+        let remaining_params = template.params[args.len()..].to_vec();
+        if !remaining_params.is_empty() {
+            body = Expr::Closure {
+                params: remaining_params,
+                body: Box::new(body),
+            };
+        }
+        let (expr, param_bindings) = if let Expr::Closure { params, body } = &body {
+            infer_explicit_closure_expr(params, body, env, target_input, target_output)?
+        } else {
+            let expr = infer_value_expr_for_type(&body, target_output, env, Some("t"))?;
+            ensure_lift_param_type(&expr, "t", target_input)?;
+            (expr, Vec::new())
+        };
+        ensure_type(&expr.ty(), target_output, "Lane closure template body")?;
+        candidates.push((
+            target_input.clone(),
+            target_output.clone(),
+            TypedFuncBody::Expr(expr),
+            param_bindings,
+        ));
+    }
+    match candidates.len() {
+        0 => Ok(None),
+        1 => Ok(candidates.pop()),
+        _ => Err(Error::new(format!(
+            "ambiguous Lane closure template instantiation for '{}'",
+            template_name
+        ))),
+    }
+}
+
+fn substitute_exprs(expr: &mut Expr, substitutions: &HashMap<String, Expr>) {
+    match expr {
+        Expr::Ident(name) => {
+            if let Some(replacement) = substitutions.get(name) {
+                *expr = replacement.clone();
+            }
+        }
+        Expr::Closure { params, body } => {
+            let scoped = substitutions
+                .iter()
+                .filter(|(name, _)| !params.contains(name))
+                .map(|(name, expr)| (name.clone(), expr.clone()))
+                .collect::<HashMap<_, _>>();
+            substitute_exprs(body, &scoped);
+        }
+        Expr::Tuple(items) | Expr::Array(items) => {
+            for item in items {
+                substitute_exprs(item, substitutions);
+            }
+        }
+        Expr::Call { callee, args } => {
+            substitute_exprs(callee, substitutions);
+            for arg in args {
+                substitute_exprs(arg, substitutions);
+            }
+        }
+        Expr::FieldAccess { object, .. } => substitute_exprs(object, substitutions),
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            substitute_exprs(condition, substitutions);
+            substitute_exprs(then_branch, substitutions);
+            if let Some(else_branch) = else_branch {
+                substitute_exprs(else_branch, substitutions);
+            }
+        }
+        Expr::Index { array, index } => {
+            substitute_exprs(array, substitutions);
+            substitute_exprs(index, substitutions);
+        }
+        Expr::Binary { left, right, .. } => {
+            substitute_exprs(left, substitutions);
+            substitute_exprs(right, substitutions);
+        }
+        Expr::Constructor { name, args } => {
+            if let Some(Expr::Ident(replacement)) = substitutions.get(name) {
+                *name = replacement.clone();
+            }
+            match args {
+                ConstructorArgs::Named(args) => {
+                    for (_, arg) in args {
+                        substitute_exprs(arg, substitutions);
+                    }
+                }
+                ConstructorArgs::Positional(args) => {
+                    for arg in args {
+                        substitute_exprs(arg, substitutions);
+                    }
+                }
+            }
+        }
+        Expr::Bool(_) | Expr::Number(_) | Expr::RawString(_) => {}
+    }
+}
+
+fn flatten_raw_template_call(expr: &Expr) -> Option<(&str, Vec<&Expr>)> {
+    let mut args = Vec::new();
+    let mut current = expr;
+    loop {
+        match current {
+            Expr::Call {
+                callee,
+                args: call_args,
+            } => {
+                for arg in call_args.iter().rev() {
+                    args.push(arg);
+                }
+                current = callee;
+            }
+            Expr::Constructor {
+                name,
+                args: ConstructorArgs::Positional(call_args),
+            } => {
+                for arg in call_args.iter().rev() {
+                    args.push(arg);
+                }
+                args.reverse();
+                return Some((name.as_str(), args));
+            }
+            Expr::Ident(name) => {
+                args.reverse();
+                return Some((name.as_str(), args));
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn flatten_raw_template_inputs(ty: &Type) -> (Vec<Type>, Type) {
+    let (inputs, output) = flatten_func_type(ty);
+    let mut flattened = Vec::new();
+    for input in inputs {
+        match input {
+            Type::Product(parts) => flattened.extend(parts.iter().cloned()),
+            other => flattened.push(other.clone()),
+        }
+    }
+    (flattened, output.clone())
+}
+
+fn rebuild_func_type(inputs: &[Type], output: &Type) -> Type {
+    inputs.iter().rev().fold(output.clone(), |output, input| {
+        Type::func(input.clone(), output)
+    })
+}
+
+fn raw_glsl_template_type_match(actual: &Type, expected: &Type) -> bool {
+    match (actual, expected) {
+        (Type::Func(actual_input, actual_output), Type::Func(expected_input, expected_output)) => {
+            raw_glsl_template_type_match(actual_input, expected_input)
+                && raw_glsl_template_type_match(actual_output, expected_output)
+        }
+        (
+            Type::Custom {
+                name: actual_name, ..
+            },
+            Type::Custom {
+                name: expected_name,
+                ..
+            },
+        ) => actual_name == expected_name,
+        _ => actual == expected,
+    }
+}
+
+fn raw_glsl_template_captures(
+    params: &[String],
+    inputs: &[Type],
+    args: &[&Expr],
+    env: &Env<'_>,
+) -> Result<HashMap<String, RawGlslCapture>, Error> {
+    if params.len() != inputs.len() {
+        return Err(Error::new(format!(
+            "raw GLSL closure expects {} capture parameter(s), got {}",
+            inputs.len(),
+            params.len()
+        )));
+    }
+    let mut captures = HashMap::new();
+    for ((param, input_ty), arg) in params.iter().zip(inputs.iter()).zip(args.iter()) {
+        let capture = raw_glsl_template_capture(input_ty, arg, env)?;
+        captures.insert(param.clone(), capture);
+    }
+    Ok(captures)
+}
+
+fn raw_glsl_template_capture(
+    input_ty: &Type,
+    arg: &Expr,
+    env: &Env<'_>,
+) -> Result<RawGlslCapture, Error> {
+    match input_ty {
+        Type::Object | Type::Object2D => {
+            let Expr::Ident(name) = arg else {
+                return Err(Error::new(
+                    "raw GLSL object template arguments must be named objects",
+                ));
+            };
+            let ty = env
+                .get_value(name)
+                .map(|value| value.ty.clone())
+                .ok_or_else(|| Error::new(format!("unknown object '{}'", name)))?;
+            ensure_type(&ty, input_ty, "raw GLSL object template argument")?;
+            Ok(RawGlslCapture {
+                ty,
+                glsl_ref: name.clone(),
+            })
+        }
+        Type::Func(_, _) => {
+            if let Expr::Ident(name) = arg {
+                if let Some(overloads) = env.function_overloads(name) {
+                    if overloads
+                        .iter()
+                        .any(|func| raw_glsl_template_type_match(&func.ty, input_ty))
+                    {
+                        return Ok(RawGlslCapture {
+                            ty: input_ty.clone(),
+                            glsl_ref: name.clone(),
+                        });
+                    }
+                }
+            }
+            let func = infer_function_expr_for_type(
+                arg,
+                env,
+                function_input(input_ty)?,
+                function_output(input_ty)?,
+            )?;
+            let glsl_ref = raw_glsl_function_expr_ref(&func)?;
+            Ok(RawGlslCapture {
+                ty: input_ty.clone(),
+                glsl_ref,
+            })
+        }
+        _ if is_value_type(input_ty) => {
+            let Expr::Ident(name) = arg else {
+                return Err(Error::new(
+                    "raw GLSL value template arguments must be named values",
+                ));
+            };
+            let ty = env
+                .get_value(name)
+                .map(|value| value.ty.clone())
+                .ok_or_else(|| Error::new(format!("unknown value '{}'", name)))?;
+            ensure_type(&ty, input_ty, "raw GLSL value template argument")?;
+            Ok(RawGlslCapture {
+                ty,
+                glsl_ref: name.clone(),
+            })
+        }
+        _ => Err(Error::new(format!(
+            "raw GLSL template argument type {} is not supported yet",
+            format_type(input_ty)
+        ))),
+    }
+}
+
+fn function_input(ty: &Type) -> Result<&Type, Error> {
+    let Type::Func(input, _) = ty else {
+        return Err(Error::new(format!(
+            "expected function type, got {}",
+            format_type(ty)
+        )));
+    };
+    Ok(input)
+}
+
+fn function_output(ty: &Type) -> Result<&Type, Error> {
+    let Type::Func(_, output) = ty else {
+        return Err(Error::new(format!(
+            "expected function type, got {}",
+            format_type(ty)
+        )));
+    };
+    Ok(output)
+}
+
+fn raw_glsl_function_expr_ref(func: &FunctionExpr) -> Result<String, Error> {
+    match &func.kind {
+        FunctionExprKind::Named(name) => Ok(name.clone()),
+        FunctionExprKind::ObjectGetter { object, getter, .. } => match getter {
+            ObjectGetter::Sdf => Ok(format!("sdf_{object}")),
+            ObjectGetter::Grad => Ok(format!("grad_sdf_{object}")),
+        },
+        _ => Err(Error::new(
+            "raw GLSL template function arguments must have a GLSL reference",
+        )),
+    }
+}
+
+fn rename_raw_glsl_definition(body: &str, template_name: &str, target_name: &str) -> String {
+    let needle = format!(" {template_name}(");
+    let replacement = format!(" {target_name}(");
+    body.replacen(&needle, &replacement, 1)
+}
+
+fn closure_param_types(input_ty: &Type) -> Vec<Type> {
+    match input_ty {
+        Type::Product(parts) => parts.clone(),
+        Type::Vec2 => vec![Type::Float, Type::Float],
+        Type::Vec3 => vec![Type::Float, Type::Float, Type::Float],
+        Type::Vec4 => vec![Type::Float, Type::Float, Type::Float, Type::Float],
+        other => vec![other.clone()],
+    }
+}
+
+fn internal_closure_param_name(name: &str) -> String {
+    format!("_{name}")
+}
+
+fn infer_explicit_closure_expr(
+    params: &[String],
+    body: &Expr,
+    env: &Env<'_>,
+    input_ty: &Type,
+    output_ty: &Type,
+) -> Result<(ValueExpr, Vec<TypedFuncParamBinding>), Error> {
+    let param_types = closure_param_types(input_ty);
+    if params.len() != param_types.len() {
+        return Err(Error::new(format!(
+            "closure expects {} parameter(s), got {}",
+            param_types.len(),
+            params.len()
+        )));
+    }
+    let mut renamed = HashMap::new();
+    let mut local_env = env.clone();
+    let mut param_bindings = Vec::new();
+    for (param, ty) in params.iter().zip(param_types.iter()) {
+        if param.starts_with('_') {
+            return Err(Error::new("closure parameter names cannot start with '_'"));
+        }
+        let internal = internal_closure_param_name(param);
+        renamed.insert(param.clone(), internal.clone());
+        local_env.insert_value(internal.clone(), ty.clone())?;
+        param_bindings.push(TypedFuncParamBinding {
+            ty: ty.clone(),
+            name: internal,
+            expr: closure_param_source_expr(input_ty, param_bindings.len())?,
+        });
+    }
+    let mut body = body.clone();
+    rename_expr(&mut body, &renamed);
+    let expr = infer_value_expr_for_type(&body, output_ty, &local_env, None)?;
+    ensure_type(&expr.ty(), output_ty, "closure body")?;
+    Ok((expr, param_bindings))
+}
+
+fn closure_param_source_expr(input_ty: &Type, index: usize) -> Result<String, Error> {
+    match input_ty {
+        Type::Vec2 => Ok(format!("_t.{}", ["x", "y"][index])),
+        Type::Vec3 => Ok(format!("_t.{}", ["x", "y", "z"][index])),
+        Type::Vec4 => Ok(format!("_t.{}", ["x", "y", "z", "w"][index])),
+        Type::Product(_) => Ok(format!("_t{index}")),
+        _ if index == 0 => Ok("_t".to_string()),
+        _ => Err(Error::new("closure parameter source is unavailable")),
+    }
+}
+
 impl TypedProgram {
     pub(super) fn from_program(program: &Program, registry: &Registry) -> Result<Self, Error> {
         for product_type in &program.product_types {
@@ -24,11 +735,15 @@ impl TypedProgram {
                     .map_err(|err| err.with_line(input.line))?;
             }
         }
-
         for func in &program.funcs {
             validate_user_type(&func.ty).map_err(|err| err.with_line(func.line))?;
-            env.insert_func(func.name.clone(), func.ty.clone())
-                .map_err(|err| err.with_line(func.line))?;
+            env.insert_func_with_templates(
+                func.name.clone(),
+                func.ty.clone(),
+                raw_glsl_template_info(&func.name, &func.body),
+                lane_closure_template_info(&func.body),
+            )
+            .map_err(|err| err.with_line(func.line))?;
         }
 
         for binding in &program.value_bindings {
@@ -80,7 +795,9 @@ impl TypedProgram {
                                     name: binding.name.clone(),
                                     input,
                                     output,
-                                    expr,
+                                    body: TypedFuncBody::Expr(expr),
+                                    param_bindings: Vec::new(),
+                                    raw_glsl_refs: RawGlslRefs::default(),
                                     generated: binding.generated,
                                     line: binding.line,
                                 });
@@ -97,14 +814,16 @@ impl TypedProgram {
                                 name: binding.name.clone(),
                                 input: func.input.clone(),
                                 output: func.output.clone(),
-                                expr: apply_function_expr(
+                                body: TypedFuncBody::Expr(apply_function_expr(
                                     &func,
                                     ValueExpr::Var {
                                         name: "t".to_string(),
                                         ty: func.input.clone(),
                                         array_len: None,
                                     },
-                                ),
+                                )),
+                                param_bindings: Vec::new(),
+                                raw_glsl_refs: RawGlslRefs::default(),
                                 generated: binding.generated,
                                 line: binding.line,
                             });
@@ -140,8 +859,9 @@ impl TypedProgram {
             };
             validate_user_type(&input_ty).map_err(|err| err.with_line(func.line))?;
             if !matches!(
-                output_ty,
-                Type::Bool
+                raw_glsl_runtime_output_ty(&func.body, &output_ty),
+                Type::Unit
+                    | Type::Bool
                     | Type::Float
                     | Type::Int
                     | Type::Complex
@@ -162,27 +882,100 @@ impl TypedProgram {
                 .with_line(func.line));
             }
 
-            let expr = match infer_function_expr_for_type(&func.expr, &env, &input_ty, &output_ty) {
-                Ok(func_expr) => apply_function_expr(
-                    &func_expr,
-                    ValueExpr::Var {
-                        name: "t".to_string(),
-                        ty: input_ty.clone(),
-                        array_len: None,
-                    },
+            let (input_ty, output_ty, body, param_bindings, raw_glsl_refs) = match &func.body {
+                FuncBody::RawGlsl(body) => {
+                    let (input_ty, output_ty, body, refs) =
+                        typed_raw_glsl_body(&input_ty, &output_ty, body, None, &env)?;
+                    (
+                        input_ty,
+                        output_ty,
+                        TypedFuncBody::RawGlsl(body),
+                        Vec::new(),
+                        refs,
+                    )
+                }
+                FuncBody::RawGlslClosure { .. } => (
+                    input_ty,
+                    output_ty,
+                    TypedFuncBody::RawGlslTemplate,
+                    Vec::new(),
+                    RawGlslRefs::default(),
                 ),
-                Err(_) => infer_value_expr_for_type(&func.expr, &output_ty, &env, Some("t"))
-                    .map_err(|err| err.with_line(func.line))?,
+                FuncBody::Expr(expr) => {
+                    if lane_closure_template_info(&func.body).is_some()
+                        && matches!(output_ty, Type::Func(_, _))
+                    {
+                        (
+                            input_ty,
+                            output_ty,
+                            TypedFuncBody::RawGlslTemplate,
+                            Vec::new(),
+                            RawGlslRefs::default(),
+                        )
+                    } else if let Some((input_ty, output_ty, body, refs)) =
+                        instantiate_raw_glsl_template_func(
+                            &func.name, &input_ty, &output_ty, expr, &env,
+                        )
+                        .map_err(|err| err.with_line(func.line))?
+                    {
+                        (input_ty, output_ty, body, Vec::new(), refs)
+                    } else if let Some((input_ty, output_ty, body, param_bindings)) =
+                        instantiate_lane_closure_template_func(&input_ty, &output_ty, expr, &env)
+                            .map_err(|err| err.with_line(func.line))?
+                    {
+                        (
+                            input_ty,
+                            output_ty,
+                            body,
+                            param_bindings,
+                            RawGlslRefs::default(),
+                        )
+                    } else {
+                        let (expr, param_bindings) = if let Expr::Closure { params, body } = expr {
+                            infer_explicit_closure_expr(params, body, &env, &input_ty, &output_ty)
+                                .map_err(|err| err.with_line(func.line))?
+                        } else {
+                            let expr = match infer_function_expr_for_type(
+                                expr, &env, &input_ty, &output_ty,
+                            ) {
+                                Ok(func_expr) => apply_function_expr(
+                                    &func_expr,
+                                    ValueExpr::Var {
+                                        name: "t".to_string(),
+                                        ty: input_ty.clone(),
+                                        array_len: None,
+                                    },
+                                ),
+                                Err(_) => {
+                                    infer_value_expr_for_type(expr, &output_ty, &env, Some("t"))
+                                        .map_err(|err| err.with_line(func.line))?
+                                }
+                            };
+                            (expr, Vec::new())
+                        };
+                        ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
+                            .map_err(|err| err.with_line(func.line))?;
+                        if param_bindings.is_empty() {
+                            ensure_lift_param_type(&expr, "t", &input_ty)
+                                .map_err(|err| err.with_line(func.line))?;
+                        }
+                        (
+                            input_ty,
+                            output_ty,
+                            TypedFuncBody::Expr(expr),
+                            param_bindings,
+                            RawGlslRefs::default(),
+                        )
+                    }
+                }
             };
-            ensure_type(&expr.ty(), &output_ty, &format!("function '{}'", func.name))
-                .map_err(|err| err.with_line(func.line))?;
-            ensure_lift_param_type(&expr, "t", &input_ty)
-                .map_err(|err| err.with_line(func.line))?;
             typed_funcs.push(TypedFunc {
                 name: func.name.clone(),
                 input: input_ty,
                 output: output_ty,
-                expr,
+                body,
+                param_bindings,
+                raw_glsl_refs,
                 generated: func.generated,
                 line: func.line,
             });
@@ -304,6 +1097,9 @@ struct ValueInfo {
 struct FunctionInfo {
     ty: Type,
     builtin: bool,
+    glsl_ref: Option<String>,
+    raw_glsl_template: Option<RawGlslTemplateInfo>,
+    lane_closure_template: Option<LaneClosureTemplateInfo>,
 }
 
 impl<'a> Env<'a> {
@@ -323,13 +1119,22 @@ impl<'a> Env<'a> {
                 .push(FunctionInfo {
                     ty: func.ty.clone(),
                     builtin: true,
+                    glsl_ref: func.support_glsl.map(|_| (*name).to_string()),
+                    raw_glsl_template: None,
+                    lane_closure_template: None,
                 });
         }
         for (name, overloads) in glsl_builtin_value_func_overloads() {
             let funcs = funcs.entry(name.to_string()).or_default();
             for ty in overloads {
                 if !funcs.iter().any(|func| func.ty == ty) {
-                    funcs.push(FunctionInfo { ty, builtin: true });
+                    funcs.push(FunctionInfo {
+                        ty,
+                        builtin: true,
+                        glsl_ref: Some(name.to_string()),
+                        raw_glsl_template: None,
+                        lane_closure_template: None,
+                    });
                 }
             }
         }
@@ -340,6 +1145,9 @@ impl<'a> Env<'a> {
                 .push(FunctionInfo {
                     ty: Type::func(Type::Complex, Type::Complex),
                     builtin: true,
+                    glsl_ref: Some(name.to_string()),
+                    raw_glsl_template: None,
+                    lane_closure_template: None,
                 });
         }
         for op in registry.object_ops.values() {
@@ -349,6 +1157,9 @@ impl<'a> Env<'a> {
                 .push(FunctionInfo {
                     ty: object_op_type(op),
                     builtin: true,
+                    glsl_ref: Some(op.glsl_name.to_string()),
+                    raw_glsl_template: None,
+                    lane_closure_template: None,
                 });
         }
         Self {
@@ -384,6 +1195,16 @@ impl<'a> Env<'a> {
     }
 
     fn insert_func(&mut self, name: String, ty: Type) -> Result<(), Error> {
+        self.insert_func_with_templates(name, ty, None, None)
+    }
+
+    fn insert_func_with_templates(
+        &mut self,
+        name: String,
+        ty: Type,
+        raw_glsl_template: Option<RawGlslTemplateInfo>,
+        lane_closure_template: Option<LaneClosureTemplateInfo>,
+    ) -> Result<(), Error> {
         if self.values.contains_key(&name) {
             return Err(Error::new(format!("duplicate declaration for '{}'", name)));
         }
@@ -406,7 +1227,13 @@ impl<'a> Env<'a> {
                 )));
             }
         }
-        overloads.push(FunctionInfo { ty, builtin: false });
+        overloads.push(FunctionInfo {
+            ty,
+            builtin: false,
+            glsl_ref: Some(name),
+            raw_glsl_template,
+            lane_closure_template,
+        });
         Ok(())
     }
 
@@ -694,6 +1521,8 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         Expr::Call { .. } => infer_object_call(expr, env),
         Expr::Bool(_)
         | Expr::Number(_)
+        | Expr::RawString(_)
+        | Expr::Closure { .. }
         | Expr::Tuple(_)
         | Expr::Array(_)
         | Expr::Index { .. }
@@ -1021,21 +1850,14 @@ fn infer_value_expr(
     match expr {
         Expr::Bool(value) => Ok(ValueExpr::Bool(*value)),
         Expr::Number(value) => Ok(ValueExpr::Float(*value)),
-        Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
-        Expr::FieldAccess { .. } if lift_param.is_some() => {
-            let func = infer_function_expr(expr, env)?;
-            Ok(apply_function_expr(
-                &func,
-                ValueExpr::Var {
-                    name: lift_param.unwrap().to_string(),
-                    ty: func.input.clone(),
-                    array_len: None,
-                },
-            ))
-        }
-        Expr::FieldAccess { .. } => Err(Error::new(
-            "object getters are functions and must be called or passed as closures",
+        Expr::RawString(_) => Err(Error::new(
+            "raw GLSL strings are only valid as module function bodies",
         )),
+        Expr::Closure { .. } => Err(Error::new("closures are only valid as function bodies")),
+        Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
+        Expr::FieldAccess { object, field } => {
+            infer_value_field_access(object, field, env, lift_param)
+        }
         Expr::Conditional {
             condition,
             then_branch,
@@ -1170,6 +1992,62 @@ fn infer_value_expr(
     }
 }
 
+fn infer_value_field_access(
+    object: &Expr,
+    field: &str,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    if let Ok(value) = infer_value_expr(object, env, lift_param) {
+        if let Some(ty) = field_access_type(&value.ty(), field, env) {
+            return Ok(ValueExpr::FieldAccess {
+                value: Box::new(value),
+                field: field.to_string(),
+                ty,
+            });
+        }
+    }
+    if lift_param.is_some() {
+        let expr = Expr::FieldAccess {
+            object: Box::new(object.clone()),
+            field: field.to_string(),
+        };
+        let func = infer_function_expr(&expr, env)?;
+        return Ok(apply_function_expr(
+            &func,
+            ValueExpr::Var {
+                name: lift_param.unwrap().to_string(),
+                ty: func.input.clone(),
+                array_len: None,
+            },
+        ));
+    }
+    Err(Error::new(format!("value has no field '{}'", field)))
+}
+
+fn field_access_type(ty: &Type, field: &str, env: &Env<'_>) -> Option<Type> {
+    match (ty, field) {
+        (Type::Vec2, "x" | "y") => Some(Type::Float),
+        (Type::Vec3, "x" | "y" | "z") => Some(Type::Float),
+        (Type::Vec4 | Type::Complex | Type::Quat, "x" | "y" | "z" | "w") => {
+            if ty == &Type::Complex && matches!(field, "z" | "w") {
+                None
+            } else {
+                Some(Type::Float)
+            }
+        }
+        (Type::Custom { name, .. }, _) => {
+            let product_type = env.product_type(name)?;
+            product_type
+                .field_names
+                .iter()
+                .position(|candidate| candidate == field)
+                .map(|index| product_type.components[index].clone())
+        }
+        _ => None,
+    }
+}
+
 fn infer_value_expr_for_type(
     expr: &Expr,
     expected_ty: &Type,
@@ -1269,6 +2147,15 @@ fn infer_value_expr_for_type(
                     array_len: None,
                 },
             ))
+        }
+        (Type::Vec4, Expr::Tuple(items)) if items.len() == 2 => {
+            let xyz = infer_value_expr_for_type(&items[0], &Type::Vec3, env, lift_param)?;
+            let w = infer_value_expr_for_type(&items[1], &Type::Float, env, lift_param)?;
+            return Ok(ValueExpr::Call {
+                func: "vec4".to_string(),
+                args: vec![xyz, w],
+                ty: Type::Vec4,
+            });
         }
         (Type::Float, _) => {
             let value = infer_value_expr(expr, env, lift_param)?;
@@ -1526,6 +2413,9 @@ fn collect_lifted_param_type(
                 collect_lifted_param_type(capture, name, ty)?;
             }
         }
+        ValueExpr::FieldAccess { value, .. } => {
+            collect_lifted_param_type(value, name, ty)?;
+        }
         ValueExpr::Index { array, index, .. } => {
             collect_lifted_param_type(array, name, ty)?;
             collect_lifted_param_type(index, name, ty)?;
@@ -1559,16 +2449,6 @@ fn collect_lifted_param_type(
         | ValueExpr::Gradient { epsilon, at, .. }
         | ValueExpr::Divergence { epsilon, at, .. } => {
             collect_lifted_param_type(epsilon, name, ty)?;
-            collect_lifted_param_type(at, name, ty)?;
-        }
-        ValueExpr::DirectionalDerivative {
-            epsilon,
-            direction,
-            at,
-            ..
-        } => {
-            collect_lifted_param_type(epsilon, name, ty)?;
-            collect_lifted_param_type(direction, name, ty)?;
             collect_lifted_param_type(at, name, ty)?;
         }
     }
@@ -1791,12 +2671,18 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
                 | (Type::Vec4, Type::Quat)
                 | (Type::Quat, Type::Vec4)
         )
+        || matches!(
+            (actual, expected),
+            (Type::Custom { name: actual, .. }, Type::Custom { name: expected, .. })
+                if actual == expected
+        )
 }
 
 fn is_value_type(ty: &Type) -> bool {
     matches!(
         ty,
-        Type::Bool
+        Type::Unit
+            | Type::Bool
             | Type::Float
             | Type::Int
             | Type::Complex
@@ -2092,12 +2978,12 @@ fn infer_differential_builtin(
 
     let result = match name.as_str() {
         "derivative" => Some(infer_derivative_builtin(&args, env, lift_param)?),
-        "partialX" => Some(infer_partial_builtin(&args, env, 0)?),
-        "partialY" => Some(infer_partial_builtin(&args, env, 1)?),
-        "partialZ" => Some(infer_partial_builtin(&args, env, 2)?),
-        "directionalDerivative" => Some(infer_directional_derivative_builtin(&args, env)?),
+        "dfdx" => Some(infer_partial_builtin(&args, env, lift_param, 0)?),
+        "dfdy" => Some(infer_partial_builtin(&args, env, lift_param, 1)?),
+        "dfdz" => Some(infer_partial_builtin(&args, env, lift_param, 2)?),
+        "dfdw" => Some(infer_partial_builtin(&args, env, lift_param, 3)?),
         "gradient" | "grad" => Some(infer_gradient_builtin(&args, env, lift_param)?),
-        "divergence" => Some(infer_divergence_builtin(&args, env)?),
+        "divergence" => Some(infer_divergence_builtin(&args, env, lift_param)?),
         _ => None,
     };
 
@@ -2109,85 +2995,131 @@ fn infer_derivative_builtin(
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
-    if args.len() != 3 && !(args.len() == 2 && lift_param.is_some()) {
+    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
         return Err(Error::new(
-            "derivative expects epsilon, a unary function, and an evaluation point",
+            "derivative expects a unary function and an evaluation point",
         ));
     }
-    let epsilon = infer_value_expr(args[0], env, None)?;
-    ensure_type(&epsilon.ty(), &Type::Float, "derivative epsilon")?;
-    let func = infer_function_expr_for_type(args[1], env, &Type::Float, &Type::Float)
-        .map_err(|_| Error::new("derivative expects a Func(R, R)"))?;
-    let at = if let Some(expr) = args.get(2) {
-        let at = infer_value_expr(expr, env, None)?;
-        ensure_type(&at.ty(), &Type::Float, "derivative evaluation point")?;
-        at
-    } else {
-        ValueExpr::Var {
-            name: lift_param.unwrap().to_string(),
-            ty: Type::Float,
-            array_len: None,
-        }
-    };
+    let (func, at) =
+        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
+    let ty = derivative_output_type(&func.input, &func.output)
+        .ok_or_else(|| Error::new("derivative expects Hom(Rn, Rm) for n,m in 1..4"))?;
     Ok(ValueExpr::Derivative {
-        epsilon: Box::new(epsilon),
+        epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
         func,
         at: Box::new(at),
+        ty,
     })
 }
 
-fn infer_partial_builtin(args: &[&Expr], env: &Env<'_>, axis: usize) -> Result<ValueExpr, Error> {
-    if args.len() != 3 {
+fn infer_partial_builtin(
+    args: &[&Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+    axis: usize,
+) -> Result<ValueExpr, Error> {
+    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
         return Err(Error::new(
-            "partial derivative expects epsilon, a scalar field, and an evaluation point",
+            "partial derivative expects a field and an evaluation point",
         ));
     }
-    let epsilon = infer_value_expr(args[0], env, None)?;
-    ensure_type(&epsilon.ty(), &Type::Float, "partial derivative epsilon")?;
-    let func = infer_function_expr_for_type(args[1], env, &Type::Vec3, &Type::Float)
-        .map_err(|_| Error::new("partial derivatives currently expect a Hom(R3, R)"))?;
-    let at = infer_value_expr(args[2], env, None)?;
-    ensure_type(&at.ty(), &Type::Vec3, "partial derivative evaluation point")?;
+    let (func, at) =
+        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
+    let input_dim = derivative_dimension(&func.input)
+        .ok_or_else(|| Error::new("partial derivative expects Hom(Rn, Rm) for n,m in 1..4"))?;
+    if axis >= input_dim {
+        return Err(Error::new(format!(
+            "partial derivative axis {} is not valid for {}",
+            axis + 1,
+            format_type(&func.input)
+        )));
+    }
     Ok(ValueExpr::Partial {
         axis,
-        epsilon: Box::new(epsilon),
+        epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
+        ty: func.output.clone(),
         func,
         at: Box::new(at),
     })
 }
 
-fn infer_directional_derivative_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, Error> {
-    if args.len() != 4 {
-        return Err(Error::new(
-            "directionalDerivative expects epsilon, a direction, a scalar field, and an evaluation point",
+fn infer_differential_func_and_point(
+    func_arg: &Expr,
+    at_arg: Option<&Expr>,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<(FunctionExpr, ValueExpr), Error> {
+    let candidates = infer_function_expr_candidates(func_arg, env)?
+        .into_iter()
+        .filter(|func| {
+            derivative_dimension(&func.input).is_some()
+                && derivative_dimension(&func.output).is_some()
+        })
+        .collect::<Vec<_>>();
+    let Some(at_arg) = at_arg else {
+        let Some(lift_param) = lift_param else {
+            return Err(Error::new(
+                "differential operator needs an evaluation point",
+            ));
+        };
+        let matches = candidates
+            .into_iter()
+            .filter(|func| func.input == Type::Float)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(Error::new(
+                "differential operator could not infer a scalar lifted function",
+            ));
+        }
+        let func = matches.into_iter().next().unwrap();
+        return Ok((
+            func,
+            ValueExpr::Var {
+                name: lift_param.to_string(),
+                ty: Type::Float,
+                array_len: None,
+            },
         ));
+    };
+    let mut matches = Vec::new();
+    for func in candidates {
+        if let Ok(at) = infer_value_expr_for_type(at_arg, &func.input, env, None) {
+            if ensure_type(&at.ty(), &func.input, "differential evaluation point").is_ok() {
+                matches.push((func, at));
+            }
+        }
     }
-    let epsilon = infer_value_expr(args[0], env, None)?;
-    ensure_type(
-        &epsilon.ty(),
-        &Type::Float,
-        "directional derivative epsilon",
-    )?;
-    let direction = infer_value_expr(args[1], env, None)?;
-    ensure_type(
-        &direction.ty(),
-        &Type::Vec3,
-        "directional derivative direction",
-    )?;
-    let func = infer_function_expr_for_type(args[2], env, &Type::Vec3, &Type::Float)
-        .map_err(|_| Error::new("directionalDerivative currently expects a Hom(R3, R)"))?;
-    let at = infer_value_expr(args[3], env, None)?;
-    ensure_type(
-        &at.ty(),
-        &Type::Vec3,
-        "directional derivative evaluation point",
-    )?;
-    Ok(ValueExpr::DirectionalDerivative {
-        epsilon: Box::new(epsilon),
-        direction: Box::new(direction),
-        func,
-        at: Box::new(at),
-    })
+    match matches.len() {
+        1 => Ok(matches.pop().unwrap()),
+        0 => Err(Error::new(
+            "differential operator has no matching function overload",
+        )),
+        _ => Err(Error::new("ambiguous differential operator overload")),
+    }
+}
+
+fn derivative_dimension(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Float => Some(1),
+        Type::Vec2 => Some(2),
+        Type::Vec3 => Some(3),
+        Type::Vec4 => Some(4),
+        _ => None,
+    }
+}
+
+fn derivative_output_type(input: &Type, output: &Type) -> Option<Type> {
+    let input_dim = derivative_dimension(input)?;
+    let output_dim = derivative_dimension(output)?;
+    if input_dim == 1 && output_dim == 1 {
+        Some(Type::Float)
+    } else if input_dim == 1 {
+        Some(vector_type(output_dim))
+    } else if output_dim == 1 {
+        Some(vector_type(input_dim))
+    } else {
+        Some(Type::Mat(input_dim, output_dim))
+    }
 }
 
 fn infer_gradient_builtin(
@@ -2195,85 +3127,70 @@ fn infer_gradient_builtin(
     env: &Env<'_>,
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
-    if args.len() != 2 && args.len() != 3 && !(args.len() == 1 && lift_param.is_some()) {
+    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
         return Err(Error::new(
-            "gradient expects a scalar field and an evaluation point, optionally preceded by epsilon",
+            "gradient expects a scalar field and an evaluation point",
         ));
     }
-    let (epsilon, func_arg, at_arg) = if args.len() == 3 {
-        (
-            infer_value_expr(args[0], env, None)?,
-            args[1],
-            Some(args[2]),
-        )
-    } else if args.len() == 2 {
-        (
-            ValueExpr::Float(env.derivative_epsilon),
-            args[0],
-            Some(args[1]),
-        )
+    let (func, at) =
+        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
+    if func.output != Type::Float {
+        return Err(Error::new("gradient expects a scalar-valued field"));
+    }
+    let ty = derivative_output_type(&func.input, &func.output)
+        .ok_or_else(|| Error::new("gradient expects Hom(Rn, R) for n in 1..4"))?;
+    if func.input == Type::Float {
+        Ok(ValueExpr::Derivative {
+            epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
+            func,
+            at: Box::new(at),
+            ty,
+        })
     } else {
-        (ValueExpr::Float(env.derivative_epsilon), args[0], None)
-    };
-    ensure_type(&epsilon.ty(), &Type::Float, "gradient epsilon")?;
-    let func = match infer_function_expr_for_type(func_arg, env, &Type::Float, &Type::Float) {
-        Ok(func) => func,
-        Err(_) => infer_function_expr_for_type(func_arg, env, &Type::Vec3, &Type::Float)?,
-    };
-    match (&func.input, &func.output) {
-        (Type::Float, Type::Float) => {
-            let at = if let Some(expr) = at_arg {
-                let at = infer_value_expr(expr, env, None)?;
-                ensure_type(&at.ty(), &Type::Float, "gradient evaluation point")?;
-                at
-            } else {
-                ValueExpr::Var {
-                    name: lift_param.unwrap().to_string(),
-                    ty: Type::Float,
-                    array_len: None,
-                }
-            };
-            Ok(ValueExpr::Derivative {
-                epsilon: Box::new(epsilon),
-                func,
-                at: Box::new(at),
-            })
-        }
-        (Type::Vec3, Type::Float) => {
-            let Some(expr) = at_arg else {
-                return Err(Error::new(
-                    "gradient of a scalar field needs an explicit evaluation point",
-                ));
-            };
-            let at = infer_value_expr(expr, env, None)?;
-            ensure_type(&at.ty(), &Type::Vec3, "gradient evaluation point")?;
-            Ok(ValueExpr::Gradient {
-                epsilon: Box::new(epsilon),
-                func,
-                at: Box::new(at),
-            })
-        }
-        _ => Err(Error::new("gradient expects a Func(R, R) or Hom(R3, R)")),
+        Ok(ValueExpr::Gradient {
+            epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
+            func,
+            at: Box::new(at),
+            ty,
+        })
     }
 }
 
-fn infer_divergence_builtin(args: &[&Expr], env: &Env<'_>) -> Result<ValueExpr, Error> {
-    if args.len() != 3 {
+fn infer_divergence_builtin(
+    args: &[&Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
         return Err(Error::new(
-            "divergence expects epsilon, a vector field, and an evaluation point",
+            "divergence expects a vector field and an evaluation point",
         ));
     }
-    let epsilon = infer_value_expr(args[0], env, None)?;
-    ensure_type(&epsilon.ty(), &Type::Float, "divergence epsilon")?;
-    let func = infer_function_expr_for_type(args[1], env, &Type::Vec3, &Type::Vec3)
-        .map_err(|_| Error::new("divergence currently expects a Hom(R3, R3)"))?;
-    let at = infer_value_expr(args[2], env, None)?;
-    ensure_type(&at.ty(), &Type::Vec3, "divergence evaluation point")?;
+    let (func, at) =
+        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
+    let input_dim = divergence_dimension(&func.input)
+        .ok_or_else(|| Error::new("divergence expects Hom(Rn, Rn) for n in 2..4"))?;
+    let output_dim = divergence_dimension(&func.output)
+        .ok_or_else(|| Error::new("divergence expects Hom(Rn, Rn) for n in 2..4"))?;
+    if input_dim != output_dim {
+        return Err(Error::new(
+            "divergence expects a same-dimensional vector field",
+        ));
+    }
     Ok(ValueExpr::Divergence {
-        epsilon: Box::new(epsilon),
+        epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
         func,
         at: Box::new(at),
     })
+}
+
+fn divergence_dimension(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Vec2 => Some(2),
+        Type::Vec3 => Some(3),
+        Type::Vec4 => Some(4),
+        _ => None,
+    }
 }
 
 fn infer_vec2_list_expr(
@@ -2506,7 +3423,8 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                     output: (*output).clone(),
                     kind: FunctionExprKind::Named(name.clone()),
                 }]),
-                Type::Bool
+                Type::Unit
+                | Type::Bool
                 | Type::Float
                 | Type::Int
                 | Type::Complex
@@ -3069,7 +3987,8 @@ fn infer_identifier_value(
         });
     };
     match info.ty {
-        Type::Bool
+        Type::Unit
+        | Type::Bool
         | Type::Float
         | Type::Int
         | Type::Complex

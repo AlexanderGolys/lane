@@ -54,7 +54,7 @@ ExtMotion externalProduct = externalA * externalB
 R measured = density(probe) + motionMeasure(motion) + bundleMeasure(bundle) + extMeasure(externalProduct)
 
 Func(R, R) wave = pow2 @ sin + .5
-Func(R, R) slope = derivative(0.01)(sin)
+Func(R, R) slope = derivative(sin)
 Func(R, R) defaultSlope = grad(sin)
 Func(R, Array(R)) wavePair = [sin, cos]
 Func(R, Mat3) spinMatrix = ((cos, 0 - sin, 0), (sin, cos, 0), (0, 0, 1))
@@ -65,9 +65,9 @@ Z count = size(weights)
 R picked = moreWeights[1] + wavePair(time)[0]
 
 R3 gradDensity = gradient(density)(probe)
-R3 gradDensityFine = gradient(0.001)(density)(probe)
-R alongAxis = directionalDerivative(0.01)(axis)(density)(probe)
-R outflow = divergence(0.01)(flow)(probe)
+R3 gradDensityAgain = gradient(density)(probe)
+R alongX = dfdx(density)(probe)
+R outflow = divergence(flow)(probe)
 
 Object2D profile = Segment2D(a=(0, -1), b=(0, 1))
 Object2D polygon = Polygon2D(points=((0, 0), (1, 0), (1, 1), (0, 1)))
@@ -89,7 +89,7 @@ Object bools = union(namedPrimitive, positionalPrimitive, segmentByLength)
 Object cuts = diff(bools, Ball3D(r=.5))
 Object overlap = intersect(cuts, matrixAction)
 Object toggled = xor(overlap, isometryAction)
-Object smooths = smoothXor(.1)(smoothDiff(.1)(smoothIntersect(.1)(smoothUnion(.1)(revolved, extruded), rotatedObject), rotated2DObject), Ball3D(r=small + measured + picked + alongAxis + outflow + looped + slope(time) + defaultSlope(time)))
+Object smooths = smoothXor(.1)(smoothDiff(.1)(smoothIntersect(.1)(smoothUnion(.1)(revolved, extruded), rotatedObject), rotated2DObject), Ball3D(r=small + measured + picked + alongX + outflow + looped + slope(time) + defaultSlope(time)))
 
 scene = union(toggled, smooths)
 

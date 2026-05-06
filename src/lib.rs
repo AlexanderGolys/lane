@@ -1,5 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 mod emit;
 mod parser;
@@ -7,10 +9,608 @@ mod registry;
 mod typecheck;
 
 pub fn compile_program(source: &str) -> Result<String, Error> {
+    compile_program_with_base(
+        source,
+        &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    )
+}
+
+pub fn compile_program_from_path(path: impl AsRef<Path>) -> Result<String, Error> {
+    let path = path.as_ref();
+    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    compile_program_with_base(&source, base_dir)
+}
+
+pub fn compile_preview_fragment_from_path(
+    path: impl AsRef<Path>,
+    version: &str,
+) -> Result<String, Error> {
+    let path = path.as_ref();
+    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    compile_preview_fragment(&source, base_dir, version)
+}
+
+pub fn compile_preview_vertex(version: &str) -> String {
+    format!(
+        "{}\nprecision highp float;\n\nconst vec2 vertices[3] = vec2[3](\n    vec2(-1.0, -1.0),\n    vec2(3.0, -1.0),\n    vec2(-1.0, 3.0)\n);\n\nvoid main() {{\n    gl_Position = vec4(vertices[gl_VertexID], 0.0, 1.0);\n}}\n",
+        glsl_version_directive(version)
+    )
+}
+
+fn compile_program_with_base(source: &str, base_dir: &Path) -> Result<String, Error> {
     let registry = Registry::default();
-    let program = parser::Parser::new(source).parse_program()?;
+    let program = ModuleLoader::new(base_dir).load_main(source)?;
     let typed = TypedProgram::from_program(&program, &registry)?;
     Ok(typed.emit_glsl(&registry))
+}
+
+fn compile_preview_fragment(source: &str, base_dir: &Path, version: &str) -> Result<String, Error> {
+    let source = prepare_preview_source(source);
+    let registry = Registry::default();
+    let program = ModuleLoader::new(base_dir).load_main(&source)?;
+    reject_preview_provided_functions(&program)?;
+    let uniforms = preview_uniforms(&program);
+    let typed = TypedProgram::from_program(&program, &registry)?;
+    let body = typed.emit_glsl(&registry);
+    Ok(format!(
+        "{}\nprecision highp float;\n\nout vec4 outColor;\n\n{}\n{}",
+        glsl_version_directive(version),
+        uniforms,
+        body
+    ))
+}
+
+fn prepare_preview_source(source: &str) -> String {
+    let mut out = String::new();
+    if !source
+        .lines()
+        .any(|line| line.trim() == "#import raytracing")
+    {
+        out.push_str("#import raytracing\n");
+    }
+    out.push_str(source);
+    if !has_const_object(source, "scene") {
+        if let Some(name) = last_const_object_name(source) {
+            out.push('\n');
+            out.push_str(&format!("const Object scene = {name}\n"));
+        }
+    }
+    if !has_const_main(source) {
+        append_preview_provided_values(source, &mut out);
+        out.push_str(
+            "\nconst Hom(R2, Ray) preview_camera_ray = camera_ray(cameraPosition, cameraForward, cameraGlobalUp, resolution)\n\
+const Hom(Ray, Hit) preview_hit = raytrace(scene)\n\
+const Hom(Ray, R3) preview_color = raycolor(ambientColor, preview_hit, scene_material)\n\
+const Hom(R2, R4) preview_shade = shade(preview_camera_ray, preview_color)\n\
+const Hom(*, *) main = preview_raytrace(preview_shade)\n",
+        );
+    }
+    out
+}
+
+fn append_preview_provided_values(source: &str, out: &mut String) {
+    let provided = [
+        ("R3", "cameraPosition"),
+        ("R3", "cameraForward"),
+        ("R3", "cameraGlobalUp"),
+        ("R2", "resolution"),
+        ("R3", "ambientColor"),
+    ];
+    for (ty, name) in provided {
+        if !has_provided_value(source, name) {
+            out.push_str(&format!("\nprovided {ty} {name}"));
+        }
+    }
+}
+
+fn has_const_object(source: &str, object_name: &str) -> bool {
+    source.lines().any(|line| {
+        line.trim_start()
+            .starts_with(&format!("const Object {object_name}"))
+    })
+}
+
+fn last_const_object_name(source: &str) -> Option<String> {
+    source
+        .lines()
+        .rev()
+        .filter_map(|line| {
+            let line = line
+                .split_once("//")
+                .map_or(line, |(before, _)| before)
+                .trim();
+            let rest = line.strip_prefix("const Object ")?;
+            let (name, _) = rest.split_once('=')?;
+            Some(name.trim().to_string())
+        })
+        .next()
+}
+
+fn has_const_main(source: &str) -> bool {
+    source
+        .lines()
+        .map(|line| {
+            line.split_once("//")
+                .map_or(line, |(before, _)| before)
+                .trim()
+        })
+        .any(|line| {
+            line.starts_with("const Hom(*, *) main")
+                || line.starts_with("const Hom(*,*) main")
+                || line.starts_with("const Func(*, *) main")
+                || line.starts_with("const Func(*,*) main")
+        })
+}
+
+fn has_provided_value(source: &str, value_name: &str) -> bool {
+    source
+        .lines()
+        .map(|line| {
+            line.split_once("//")
+                .map_or(line, |(before, _)| before)
+                .trim()
+        })
+        .any(|line| {
+            let Some(rest) = line.strip_prefix("provided ") else {
+                return false;
+            };
+            rest.split_whitespace().nth(1) == Some(value_name)
+        })
+}
+
+fn reject_preview_provided_functions(program: &Program) -> Result<(), Error> {
+    for input in &program.inputs {
+        if matches!(input.ty, Type::Func(_, _)) {
+            return Err(Error::new(format!(
+                "preview shaders do not support provided function '{}'",
+                input.name
+            ))
+            .with_line(input.line));
+        }
+    }
+    Ok(())
+}
+
+fn preview_uniforms(program: &Program) -> String {
+    program
+        .inputs
+        .iter()
+        .filter(|input| !matches!(input.ty, Type::Object | Type::Object2D))
+        .map(|input| format!("uniform {} {};", input.ty.glsl_name(), input.name))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn glsl_version_directive(version: &str) -> String {
+    let trimmed = version.trim();
+    if let Some(number) = trimmed.strip_suffix("es") {
+        format!("#version {} es", number.trim())
+    } else {
+        format!("#version {trimmed}")
+    }
+}
+
+struct ModuleLoader {
+    base_dir: PathBuf,
+}
+
+impl ModuleLoader {
+    fn new(base_dir: &Path) -> Self {
+        Self {
+            base_dir: base_dir.to_path_buf(),
+        }
+    }
+
+    fn load_main(&self, source: &str) -> Result<Program, Error> {
+        let mut stack = Vec::new();
+        let parsed = parser::Parser::new(source).parse_program()?;
+        if parsed.is_module {
+            return Err(Error::new("#module is only valid in imported module files"));
+        }
+        let mut merged = self.expand_program(parsed, false, "main", &mut stack)?;
+        reject_duplicate_product_types(&merged)?;
+        merged.imports.clear();
+        Ok(merged)
+    }
+
+    fn expand_program(
+        &self,
+        mut program: Program,
+        require_module: bool,
+        module_key: &str,
+        stack: &mut Vec<PathBuf>,
+    ) -> Result<Program, Error> {
+        if require_module && !program.is_module {
+            return Err(Error::new(format!(
+                "imported module '{module_key}' must start with #module"
+            )));
+        }
+
+        let imports = std::mem::take(&mut program.imports);
+        let mut merged = empty_program_like(&program);
+        let mut line_offset = 0usize;
+        for import in imports {
+            let imported = self
+                .load_import(&import.path, stack)
+                .map_err(|err| err.with_line(import.line))?;
+            append_program(&mut merged, imported, line_offset);
+            line_offset += 10_000;
+        }
+
+        if program.is_module {
+            mangle_private_module_names(&mut program, module_key);
+        }
+        append_program(&mut merged, program, line_offset);
+        Ok(merged)
+    }
+
+    fn load_import(&self, import_path: &str, stack: &mut Vec<PathBuf>) -> Result<Program, Error> {
+        let path = self.resolve_import(import_path)?;
+        let canonical = path.canonicalize().unwrap_or(path.clone());
+        if let Some(index) = stack.iter().position(|entry| entry == &canonical) {
+            let mut cycle = stack[index..]
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>();
+            cycle.push(canonical.display().to_string());
+            return Err(Error::new(format!(
+                "module import cycle: {}",
+                cycle.join(" -> ")
+            )));
+        }
+
+        stack.push(canonical);
+        let source = fs::read_to_string(&path).map_err(|err| Error::new(err.to_string()))?;
+        let parsed = parser::Parser::new(&source).parse_program()?;
+        let module_key = import_path.replace(['/', '\\', '.', '-'], "_");
+        let expanded = self.expand_program(parsed, true, &module_key, stack);
+        stack.pop();
+        expanded
+    }
+
+    fn resolve_import(&self, import_path: &str) -> Result<PathBuf, Error> {
+        let relative = import_candidate(import_path);
+        let mut roots = Vec::new();
+        if let Ok(paths) = std::env::var("LANE_MODULE_PATH") {
+            roots.extend(std::env::split_paths(&paths));
+        }
+        roots.push(self.base_dir.clone());
+        roots.push(self.base_dir.join("modules"));
+        roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("modules"));
+
+        for root in roots {
+            let candidate = root.join(&relative);
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+        Err(Error::new(format!("module '{import_path}' not found")))
+    }
+}
+
+fn import_candidate(import_path: &str) -> PathBuf {
+    let path = PathBuf::from(import_path);
+    if path.extension().is_some() {
+        path
+    } else {
+        path.with_extension("lane")
+    }
+}
+
+fn empty_program_like(program: &Program) -> Program {
+    Program {
+        ambient_dimension: program.ambient_dimension,
+        derivative_epsilon: program.derivative_epsilon,
+        gradient_epsilon: program.gradient_epsilon,
+        is_module: false,
+        imports: Vec::new(),
+        product_types: Vec::new(),
+        inputs: Vec::new(),
+        funcs: Vec::new(),
+        value_bindings: Vec::new(),
+        bindings: Vec::new(),
+        inferred_bindings: Vec::new(),
+        output: None,
+    }
+}
+
+fn append_program(target: &mut Program, mut source: Program, line_offset: usize) {
+    bump_program_lines(&mut source, line_offset);
+    target.product_types.extend(source.product_types);
+    target.inputs.extend(source.inputs);
+    target.funcs.extend(source.funcs);
+    target.value_bindings.extend(source.value_bindings);
+    target.bindings.extend(source.bindings);
+    target.inferred_bindings.extend(source.inferred_bindings);
+    if let Some(output) = source.output {
+        target.output = Some(output);
+    }
+}
+
+fn bump_program_lines(program: &mut Program, offset: usize) {
+    for item in &mut program.product_types {
+        item.line += offset;
+    }
+    for item in &mut program.inputs {
+        item.line += offset;
+    }
+    for item in &mut program.funcs {
+        item.line += offset;
+    }
+    for item in &mut program.value_bindings {
+        item.line += offset;
+    }
+    for item in &mut program.bindings {
+        item.line += offset;
+    }
+    for item in &mut program.inferred_bindings {
+        item.line += offset;
+    }
+    if let Some(output) = &mut program.output {
+        output.line += offset;
+    }
+}
+
+fn reject_duplicate_product_types(program: &Program) -> Result<(), Error> {
+    let mut names = HashSet::new();
+    for decl in &program.product_types {
+        if !names.insert(decl.name.clone()) {
+            return Err(
+                Error::new(format!("duplicate product type '{}'", decl.name)).with_line(decl.line),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn mangle_private_module_names(program: &mut Program, module_key: &str) {
+    let mut renames = HashMap::new();
+    for decl in &program.product_types {
+        if !decl.eager_ops && !decl.provided {
+            renames.insert(
+                decl.name.clone(),
+                private_module_name(module_key, &decl.name),
+            );
+        }
+    }
+    for decl in &program.funcs {
+        if !decl.generated {
+            renames.insert(
+                decl.name.clone(),
+                private_module_name(module_key, &decl.name),
+            );
+        }
+    }
+    for decl in &program.value_bindings {
+        if !decl.generated {
+            renames.insert(
+                decl.name.clone(),
+                private_module_name(module_key, &decl.name),
+            );
+        }
+    }
+    for decl in &program.bindings {
+        if !decl.generated {
+            renames.insert(
+                decl.name.clone(),
+                private_module_name(module_key, &decl.name),
+            );
+        }
+    }
+    for decl in &program.inferred_bindings {
+        if !decl.generated {
+            renames.insert(
+                decl.name.clone(),
+                private_module_name(module_key, &decl.name),
+            );
+        }
+    }
+
+    for decl in &mut program.product_types {
+        rename_type_refs(&mut decl.components, &renames);
+        if let Some(name) = renames.get(&decl.name) {
+            decl.name = name.clone();
+        }
+    }
+    for decl in &mut program.inputs {
+        rename_type(&mut decl.ty, &renames);
+    }
+    for decl in &mut program.funcs {
+        rename_type(&mut decl.ty, &renames);
+        rename_func_body(&mut decl.body, &renames);
+        if let Some(name) = renames.get(&decl.name) {
+            decl.name = name.clone();
+        }
+    }
+    for decl in &mut program.value_bindings {
+        rename_type(&mut decl.ty, &renames);
+        rename_expr(&mut decl.expr, &renames);
+        if let Some(name) = renames.get(&decl.name) {
+            decl.name = name.clone();
+        }
+    }
+    for decl in &mut program.bindings {
+        rename_type(&mut decl.ty, &renames);
+        rename_expr(&mut decl.expr, &renames);
+        if let Some(name) = renames.get(&decl.name) {
+            decl.name = name.clone();
+        }
+    }
+    for decl in &mut program.inferred_bindings {
+        rename_expr(&mut decl.expr, &renames);
+        if let Some(name) = renames.get(&decl.name) {
+            decl.name = name.clone();
+        }
+    }
+}
+
+fn private_module_name(module_key: &str, name: &str) -> String {
+    format!("__lane_mod_{}_{}", sanitize_module_ident(module_key), name)
+}
+
+fn sanitize_module_ident(source: &str) -> String {
+    source
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn rename_type_refs(types: &mut [Type], renames: &HashMap<String, String>) {
+    for ty in types {
+        rename_type(ty, renames);
+    }
+}
+
+fn rename_type(ty: &mut Type, renames: &HashMap<String, String>) {
+    match ty {
+        Type::Custom { name, .. } => {
+            if let Some(replacement) = renames.get(name) {
+                *name = replacement.clone();
+            }
+        }
+        Type::Array(element) => rename_type(element, renames),
+        Type::Product(parts) => rename_type_refs(parts, renames),
+        Type::Func(input, output) => {
+            rename_type(input, renames);
+            rename_type(output, renames);
+        }
+        _ => {}
+    }
+}
+
+fn rename_func_body(body: &mut FuncBody, renames: &HashMap<String, String>) {
+    match body {
+        FuncBody::Expr(expr) => rename_expr(expr, renames),
+        FuncBody::RawGlsl(body) => *body = rename_raw_glsl_placeholders(body, renames),
+        FuncBody::RawGlslClosure { body, .. } => {
+            *body = rename_raw_glsl_placeholders(body, renames)
+        }
+    }
+}
+
+fn rename_raw_glsl_placeholders(body: &str, renames: &HashMap<String, String>) -> String {
+    rewrite_raw_glsl_placeholders(body, |name| {
+        if let Some((base, field)) = name.split_once('.') {
+            let base = renames.get(base).map(String::as_str).unwrap_or(base);
+            format!("{base}.{field}")
+        } else {
+            renames
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| name.to_string())
+        }
+    })
+}
+
+fn rewrite_raw_glsl_placeholders(body: &str, mut rewrite: impl FnMut(&str) -> String) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut index = 0;
+    while let Some(relative_start) = body[index..].find("${") {
+        let start = index + relative_start;
+        out.push_str(&body[index..start]);
+        let name_start = start + 2;
+        let Some(relative_end) = body[name_start..].find('}') else {
+            out.push_str(&body[start..]);
+            return out;
+        };
+        let end = name_start + relative_end;
+        let name = &body[name_start..end];
+        if is_placeholder_ident(name) {
+            out.push_str("${");
+            out.push_str(&rewrite(name));
+            out.push('}');
+        } else {
+            out.push_str(&body[start..=end]);
+        }
+        index = end + 1;
+    }
+    out.push_str(&body[index..]);
+    out
+}
+
+fn is_placeholder_ident(name: &str) -> bool {
+    if let Some((base, field)) = name.split_once('.') {
+        return is_placeholder_ident(base) && is_placeholder_ident(field);
+    }
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn rename_expr(expr: &mut Expr, renames: &HashMap<String, String>) {
+    match expr {
+        Expr::Bool(_) | Expr::Number(_) => {}
+        Expr::RawString(_) => {}
+        Expr::Closure { params, body } => {
+            for param in params {
+                rename_ident(param, renames);
+            }
+            rename_expr(body, renames);
+        }
+        Expr::Ident(name) => rename_ident(name, renames),
+        Expr::Tuple(items) | Expr::Array(items) => {
+            for item in items {
+                rename_expr(item, renames);
+            }
+        }
+        Expr::Call { callee, args } => {
+            rename_expr(callee, renames);
+            for arg in args {
+                rename_expr(arg, renames);
+            }
+        }
+        Expr::FieldAccess { object, .. } => rename_expr(object, renames),
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            rename_expr(condition, renames);
+            rename_expr(then_branch, renames);
+            if let Some(else_branch) = else_branch {
+                rename_expr(else_branch, renames);
+            }
+        }
+        Expr::Index { array, index } => {
+            rename_expr(array, renames);
+            rename_expr(index, renames);
+        }
+        Expr::Binary { left, right, .. } => {
+            rename_expr(left, renames);
+            rename_expr(right, renames);
+        }
+        Expr::Constructor { name, args } => {
+            rename_ident(name, renames);
+            match args {
+                ConstructorArgs::Named(args) => {
+                    for (_, expr) in args {
+                        rename_expr(expr, renames);
+                    }
+                }
+                ConstructorArgs::Positional(args) => {
+                    for expr in args {
+                        rename_expr(expr, renames);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn rename_ident(name: &mut String, renames: &HashMap<String, String>) {
+    if let Some(replacement) = renames.get(name) {
+        *name = replacement.clone();
+    }
 }
 
 pub(crate) fn suffix_glsl_float_literals(source: &str) -> String {
@@ -540,6 +1140,7 @@ pub struct PreregisteredObject {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
+    Unit,
     Bool,
     Float,
     Int,
@@ -569,6 +1170,7 @@ impl Type {
 
     fn glsl_name(&self) -> String {
         match self {
+            Self::Unit => "void".to_string(),
             Self::Bool => "bool".to_string(),
             Self::Float => "float".to_string(),
             Self::Int => "int".to_string(),
@@ -595,6 +1197,7 @@ impl Type {
             .find(|def| &def.ty == self)
             .map(|def| def.display_name.to_string())
             .unwrap_or_else(|| match self {
+                Self::Unit => "*".to_string(),
                 Self::Custom { name, .. } => name.clone(),
                 Self::Product(_) => "Product".to_string(),
                 Self::Func(_, _) => "Func".to_string(),
@@ -738,6 +1341,7 @@ struct ProductTypeDecl {
     components: Vec<Type>,
     field_names: Vec<String>,
     eager_ops: bool,
+    provided: bool,
     line: usize,
 }
 
@@ -745,9 +1349,16 @@ struct ProductTypeDecl {
 struct FuncDecl {
     name: String,
     ty: Type,
-    expr: Expr,
+    body: FuncBody,
     generated: bool,
     line: usize,
+}
+
+#[derive(Clone, Debug)]
+enum FuncBody {
+    Expr(Expr),
+    RawGlsl(String),
+    RawGlslClosure { params: Vec<String>, body: String },
 }
 
 #[derive(Clone, Debug)]
@@ -790,6 +1401,8 @@ struct Program {
     ambient_dimension: ShapeDimension,
     derivative_epsilon: f64,
     gradient_epsilon: f64,
+    is_module: bool,
+    imports: Vec<ImportDecl>,
     product_types: Vec<ProductTypeDecl>,
     inputs: Vec<InputDecl>,
     funcs: Vec<FuncDecl>,
@@ -797,6 +1410,12 @@ struct Program {
     bindings: Vec<BindingDecl>,
     inferred_bindings: Vec<InferredBindingDecl>,
     output: Option<OutputDecl>,
+}
+
+#[derive(Clone, Debug)]
+struct ImportDecl {
+    path: String,
+    line: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -814,6 +1433,11 @@ enum Decl {
 enum Expr {
     Bool(bool),
     Number(f64),
+    RawString(String),
+    Closure {
+        params: Vec<String>,
+        body: Box<Expr>,
+    },
     Ident(String),
     Tuple(Vec<Expr>),
     Array(Vec<Expr>),
@@ -908,6 +1532,11 @@ enum ValueExpr {
         captures: Vec<ValueExpr>,
         ty: Type,
     },
+    FieldAccess {
+        value: Box<ValueExpr>,
+        field: String,
+        ty: Type,
+    },
     Array {
         element_ty: Type,
         elements: Vec<ValueExpr>,
@@ -944,23 +1573,20 @@ enum ValueExpr {
         epsilon: Box<ValueExpr>,
         func: FunctionExpr,
         at: Box<ValueExpr>,
+        ty: Type,
     },
     Partial {
         axis: usize,
         epsilon: Box<ValueExpr>,
         func: FunctionExpr,
         at: Box<ValueExpr>,
-    },
-    DirectionalDerivative {
-        epsilon: Box<ValueExpr>,
-        direction: Box<ValueExpr>,
-        func: FunctionExpr,
-        at: Box<ValueExpr>,
+        ty: Type,
     },
     Gradient {
         epsilon: Box<ValueExpr>,
         func: FunctionExpr,
         at: Box<ValueExpr>,
+        ty: Type,
     },
     Divergence {
         epsilon: Box<ValueExpr>,
@@ -982,6 +1608,7 @@ impl ValueExpr {
             Self::BoolToNumberCast { ty, .. } => ty.clone(),
             Self::Conditional { ty, .. } => ty.clone(),
             Self::ObjectGetterCall { ty, .. } => ty.clone(),
+            Self::FieldAccess { ty, .. } => ty.clone(),
             Self::Array { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
             Self::Index { ty, .. } => ty.clone(),
             Self::Concat { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
@@ -990,10 +1617,9 @@ impl ValueExpr {
             Self::Vec3(_, _, _) => Type::Vec3,
             Self::Vec4(_, _, _, _) => Type::Vec4,
             Self::Matrix { columns, rows } => Type::Mat(rows.len(), *columns),
-            Self::Derivative { .. } => Type::Float,
-            Self::Partial { .. } => Type::Float,
-            Self::DirectionalDerivative { .. } => Type::Float,
-            Self::Gradient { at, .. } => at.ty(),
+            Self::Derivative { ty, .. } => ty.clone(),
+            Self::Partial { ty, .. } => ty.clone(),
+            Self::Gradient { ty, .. } => ty.clone(),
             Self::Divergence { .. } => Type::Float,
         }
     }
@@ -1212,9 +1838,31 @@ struct TypedFunc {
     name: String,
     input: Type,
     output: Type,
-    expr: ValueExpr,
+    body: TypedFuncBody,
+    param_bindings: Vec<TypedFuncParamBinding>,
+    raw_glsl_refs: RawGlslRefs,
     generated: bool,
     line: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+struct RawGlslRefs {
+    funcs: BTreeSet<String>,
+    object_getters: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug)]
+struct TypedFuncParamBinding {
+    ty: Type,
+    name: String,
+    expr: String,
+}
+
+#[derive(Clone, Debug)]
+enum TypedFuncBody {
+    Expr(ValueExpr),
+    RawGlsl(String),
+    RawGlslTemplate,
 }
 
 #[derive(Clone, Debug)]
@@ -1341,6 +1989,13 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
             | (Type::Complex, Type::Vec2)
             | (Type::Vec4, Type::Quat)
             | (Type::Quat, Type::Vec4)
+    ) {
+        return Ok(());
+    }
+    if matches!(
+        (actual, expected),
+        (Type::Custom { name: actual, .. }, Type::Custom { name: expected, .. })
+            if actual == expected
     ) {
         return Ok(());
     }

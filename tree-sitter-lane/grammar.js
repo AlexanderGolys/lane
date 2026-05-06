@@ -5,6 +5,7 @@ const PREC = {
     compose: 3,
     call: 4,
     unary: 5,
+    closure: 6,
     product: 1,
 };
 
@@ -17,6 +18,11 @@ module.exports = grammar({
     ],
 
     word: ($) => $.identifier,
+
+    conflicts: ($) => [
+        [$.provided_category_declaration, $.category_type],
+        [$._expression, $.closure_parameter_list],
+    ],
 
     rules: {
         source_file: ($) => repeat($._declaration),
@@ -50,7 +56,7 @@ module.exports = grammar({
         ),
 
         product_type_declaration: ($) => seq(
-            optional(field('modifier', $.gen_modifier)),
+            optional(field('modifier', choice($.gen_modifier, 'provided'))),
             field('category', $.category_type),
             field('name', $.identifier),
             '=',
@@ -109,9 +115,12 @@ module.exports = grammar({
             $.hom_type,
             $.end_type,
             $.array_type,
+            $.unit_type,
             $.parenthesized_type,
             alias($.identifier, $.type_identifier),
         ),
+
+        unit_type: () => '*',
 
         product_type: ($) => prec.left(PREC.product, seq(
             field('left', $._non_product_type),
@@ -154,6 +163,7 @@ module.exports = grammar({
         ),
 
         _expression: ($) => choice(
+            $.closure_expression,
             $.conditional_expression,
             $.binary_expression,
             $.call_expression,
@@ -163,8 +173,21 @@ module.exports = grammar({
             $.parenthesized_expression,
             $.tuple_expression,
             $.array_expression,
+            $.string,
             $.identifier,
             $.number,
+        ),
+
+        closure_expression: ($) => prec.right(PREC.closure, choice(
+            seq(field('parameters', $.identifier), '->', field('body', $._expression)),
+            seq(field('parameters', $.closure_parameter_list), '->', field('body', $._expression)),
+        )),
+
+        closure_parameter_list: ($) => seq(
+            '(',
+            commaSep1(field('parameter', $.identifier)),
+            optional(','),
+            ')',
         ),
 
         call_expression: ($) => prec.left(PREC.call, seq(
@@ -176,6 +199,7 @@ module.exports = grammar({
                 $.parenthesized_expression,
                 $.tuple_expression,
                 $.array_expression,
+                $.string,
                 $.identifier,
                 $.number,
             )),
@@ -191,6 +215,7 @@ module.exports = grammar({
                 $.parenthesized_expression,
                 $.tuple_expression,
                 $.array_expression,
+                $.string,
                 $.identifier,
                 $.number,
             )),
@@ -207,6 +232,7 @@ module.exports = grammar({
                 $.parenthesized_expression,
                 $.tuple_expression,
                 $.array_expression,
+                $.string,
                 $.identifier,
                 $.number,
             )),
@@ -289,6 +315,21 @@ module.exports = grammar({
             /\.\d+/,
             /\d+/,
         )),
+
+        string: ($) => seq(
+            '"',
+            repeat(choice($.string_content, $.placeholder, /\\./)),
+            '"',
+        ),
+
+        string_content: () => token.immediate(prec(1, /[^"$\\]+/)),
+
+        placeholder: ($) => seq(
+            '${',
+            field('name', $.identifier),
+            optional(seq('.', field('field', $.identifier))),
+            '}',
+        ),
     },
 });
 

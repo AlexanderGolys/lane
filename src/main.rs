@@ -9,7 +9,7 @@ const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 const COLOR_ERROR: &str = "31";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -107,6 +107,11 @@ fn error_type(err: &(dyn std::error::Error + 'static)) -> &'static str {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.iter().any(|arg| {
+        arg.starts_with("--frag=") || arg.starts_with("--vert=") || arg.starts_with("--version=")
+    }) {
+        return write_preview_shaders(&args);
+    }
     match args.as_slice() {
         [] => compile_from_stdin(),
         [command] if is_help(command) => {
@@ -156,9 +161,47 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+fn write_preview_shaders(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut source_path = None;
+    let mut frag_path = None;
+    let mut vert_path = None;
+    let mut version = "300es".to_string();
+
+    for arg in args {
+        if let Some(path) = arg.strip_prefix("--frag=") {
+            frag_path = Some(path.to_string());
+        } else if let Some(path) = arg.strip_prefix("--vert=") {
+            vert_path = Some(path.to_string());
+        } else if let Some(value) = arg.strip_prefix("--version=") {
+            version = value.to_string();
+        } else if arg.starts_with('-') {
+            return Err(format!("unsupported preview flag '{arg}'").into());
+        } else if source_path.replace(arg.to_string()).is_some() {
+            return Err("preview shader generation expects one SOURCE".into());
+        }
+    }
+
+    let Some(source_path) = source_path else {
+        return Err("preview shader generation requires SOURCE".into());
+    };
+    if frag_path.is_none() && vert_path.is_none() {
+        return Err("preview shader generation requires --frag=PATH or --vert=PATH".into());
+    }
+
+    if let Some(path) = frag_path {
+        let output = lane::compile_preview_fragment_from_path(&source_path, &version)?;
+        fs::write(path, output)?;
+    }
+    if let Some(path) = vert_path {
+        fs::write(path, lane::compile_preview_vertex(&version))?;
+    }
+    Ok(())
+}
+
 fn print_compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let source = fs::read_to_string(path)?;
-    print_compiled_program(&source)
+    let output = lane::compile_program_from_path(path)?;
+    print_glsl(&output);
+    Ok(())
 }
 
 fn write_compile_path(
@@ -166,8 +209,7 @@ fn write_compile_path(
     target_path: &str,
     show: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let source = fs::read_to_string(source_path)?;
-    let output = compile_program_output(&source)?;
+    let output = lane::compile_program_from_path(source_path)?;
     fs::write(target_path, &output)?;
     if show {
         print_glsl(&output);

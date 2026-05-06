@@ -195,9 +195,13 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("extrude: Hom(R, Hom(Object, Object))"));
     assert!(stdout.contains("rot: Hom(R3 × R3 × R, E3)"));
     assert!(stdout.contains("rot2D: Hom(R2 × R, E2)"));
-    assert!(stdout.contains("derivative: Hom(R, Hom(Hom(R, R), Hom(R, R)))"));
+    assert!(stdout.contains("derivative: Hom(Hom(R, R), Hom(R, R))"));
     assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
-    assert!(stdout.contains("divergence: Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"));
+    assert!(stdout.contains("dfdx: Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(stdout.contains("dfdy: Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(stdout.contains("dfdz: Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(stdout.contains("dfdw: Hom(Hom(R4, R), Hom(R4, R))"));
+    assert!(stdout.contains("divergence: Hom(Hom(R3, R3), Hom(R3, R))"));
     assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
     assert!(stdout.contains("inv: Hom(C, C)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
@@ -219,6 +223,7 @@ fn lists_known_builtin_objects_from_short_flag() {
     assert!(stdout.contains("E3: Grp"));
     assert!(stdout.contains("RAlg: Cat"));
     assert!(!stdout.contains("partialX: Hom(R, Hom(Hom(R3, R), Hom(R3, R)))"));
+    assert!(!stdout.contains("directionalDerivative"));
     assert!(!stdout.contains("ctanh: Hom(C, C)"));
 }
 
@@ -287,7 +292,7 @@ fn shows_known_builtin_object_detail_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("revolution: Hom(R, Hom(Object2D, Object))"));
-    assert!(stdout.contains("vec3 op_revolution_point(vec3 p, float offset)"));
+    assert!(stdout.contains("vec3 _op_revolution_point(vec3 _p, float _offset)"));
 }
 
 #[test]
@@ -480,6 +485,79 @@ fn writes_compiled_output_to_target_path() {
     let glsl = std::fs::read_to_string(&target_path).unwrap();
     assert!(glsl.contains("float scene_sdf(vec3 p)"));
     assert!(glsl.contains("sdf0_Ball3D(p, ParamBall3D(1.0f))"));
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
+fn writes_preview_fragment_and_vertex_shaders() {
+    let temp_dir = unique_temp_dir("lane-cli-preview");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let frag_path = temp_dir.join("preview.frag");
+    let vert_path = temp_dir.join("preview.vert");
+    std::fs::write(
+        &source_path,
+        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg(&source_path)
+        .arg(format!("--frag={}", frag_path.display()))
+        .arg(format!("--vert={}", vert_path.display()))
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let frag = std::fs::read_to_string(&frag_path).unwrap();
+    assert!(frag.starts_with("#version 300 es\n"));
+    assert!(frag.contains("out vec4 outColor;"));
+    assert!(frag.contains("uniform vec3 cameraPosition;"));
+    assert!(!frag.contains("raytracingMaterial"));
+    assert!(frag.contains("float sdf_scene(vec3 p)"));
+    assert!(frag.contains("void main()"));
+    assert!(frag.contains("Material scene_material(vec3 _t)"));
+    assert!(frag.contains("outColor = preview_shade(gl_FragCoord.xy);"));
+
+    let vert = std::fs::read_to_string(&vert_path).unwrap();
+    assert!(vert.starts_with("#version 300 es\n"));
+    assert!(vert.contains("gl_Position"));
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
+fn preview_shader_version_flag_splits_es_suffix() {
+    let temp_dir = unique_temp_dir("lane-cli-preview-version");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let frag_path = temp_dir.join("preview.frag");
+    std::fs::write(
+        &source_path,
+        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg(&source_path)
+        .arg(format!("--frag={}", frag_path.display()))
+        .arg("--version=310es")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let frag = std::fs::read_to_string(&frag_path).unwrap();
+    assert!(frag.starts_with("#version 310 es\n"));
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }

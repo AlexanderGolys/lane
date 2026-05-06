@@ -1,0 +1,56 @@
+#module
+
+const VectR Ray = R3 x R3 {origin, dir}
+const Set Hit = R3 x R3 x R x Bool {position, normal, travel, hit}
+const VectR Material = R3 x R3 x R {color, emission, reflectiveness}
+
+const Hom(R3×R3×R3×R2, Hom(R2, Ray)) camera_ray = (cameraPosition, cameraForward, cameraGlobalUp, resolution) -> (x, y) -> Ray(cameraPosition, normalize(normalize(cameraForward) + ((((((x, y) * 2) - resolution) / min(resolution.x, resolution.y)).x) * normalize(cross(normalize(cameraForward), cameraGlobalUp))) + ((((((x, y) * 2) - resolution) / min(resolution.x, resolution.y)).y) * normalize(cross(normalize(cross(normalize(cameraForward), cameraGlobalUp)), normalize(cameraForward))))))
+
+const Hom(Object, Hom(Ray, Hit)) raytrace = scene -> "
+vec3 _origin = _t.origin;
+vec3 _dir = normalize(_t.dir);
+float _travel = 0.0f;
+for (int i = 0; i < 128; i++) {
+    vec3 _p = _origin + _dir * _travel;
+    float _d = ${scene.sdf}(_p);
+    if (_d < 0.0005f) {
+        vec3 _n = ${scene.grad}(_p);
+        return Hit(_p, _n, _travel, true);
+    }
+    _travel += _d;
+    if (_travel > 100.0f) {
+        break;
+    }
+}
+vec3 _miss = _origin + _dir * _travel;
+return Hit(_miss, vec3(0.0f, 1.0f, 0.0f), _travel, false);
+"
+
+const Hom(R3×Hom(Ray, Hit)×Hom(R3, Material), Hom(Ray, R3)) raycolor = (ambientColor, hit_at, material_at) -> "
+Ray _ray = Ray(_t.origin, normalize(_t.dir));
+vec3 _radiance = vec3(0.0f);
+vec3 _throughput = vec3(1.0f);
+for (int bounce = 0; bounce < 6; bounce++) {
+    Hit _hit = ${hit_at}(_ray);
+    if (!_hit.hit) {
+        _radiance += _throughput * ${ambientColor};
+        break;
+    }
+    Material _material = ${material_at}(_hit.position);
+    float _reflectiveness = clamp(_material.reflectiveness, 0.0f, 1.0f);
+    _radiance += _throughput * (_material.emission + ((1.0f - _reflectiveness) * ${ambientColor} * _material.color));
+    _throughput *= _material.color * _reflectiveness;
+    if (max(max(_throughput.r, _throughput.g), _throughput.b) < 0.001f) {
+        break;
+    }
+    vec3 _dir = reflect(_ray.dir, _hit.normal);
+    _ray = Ray(_hit.position + _hit.normal * 0.001f, _dir);
+}
+return _radiance;
+"
+
+const Hom(Hom(R2, Ray)×Hom(Ray, R3), Hom(R2, R4)) shade = (make_ray, color_ray) -> (x, y) -> (color_ray(make_ray((x, y))), 1)
+
+const Hom(Hom(R2, R4), Hom(*, *)) preview_raytrace = shade_at -> "
+outColor = ${shade_at}(gl_FragCoord.xy);
+"

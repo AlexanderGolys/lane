@@ -1,12 +1,22 @@
 use lane::{
-    compile_program as compile_program_with_float_suffixes, known_builtin_object,
-    known_builtin_objects, known_preregistered_objects, known_primitive, known_primitives,
-    known_primitives_by_dimension, preregistered_object, Error, PreregisteredObjectKind,
-    ShapeDimension,
+    compile_program as compile_program_with_float_suffixes, compile_program_from_path,
+    known_builtin_object, known_builtin_objects, known_preregistered_objects, known_primitive,
+    known_primitives, known_primitives_by_dimension, preregistered_object, Error,
+    PreregisteredObjectKind, ShapeDimension,
 };
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn compile_program(source: &str) -> Result<String, Error> {
     compile_program_with_float_suffixes(source).map(|glsl| strip_glsl_float_suffixes(&glsl))
+}
+
+fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("lane_{name}_{nanos}"))
 }
 
 fn strip_glsl_float_suffixes(source: &str) -> String {
@@ -252,28 +262,28 @@ fn lists_preregistered_functions_and_types() {
         object.kind == PreregisteredObjectKind::Function && object.name == "sdf0_Ball3D"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_smooth_union"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_smooth_union"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_union"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_union"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_intersection"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_intersection"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_difference"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_difference"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_xor"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_xor"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_smooth_intersection"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_smooth_intersection"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_smooth_difference"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_smooth_difference"
     }));
     assert!(objects.iter().any(|object| {
-        object.kind == PreregisteredObjectKind::Function && object.name == "op_smooth_xor"
+        object.kind == PreregisteredObjectKind::Function && object.name == "_op_smooth_xor"
     }));
     assert!(objects.iter().any(|object| {
         object.kind == PreregisteredObjectKind::Function && object.name == "pow2"
@@ -356,17 +366,32 @@ fn lists_builtin_lane_objects() {
     assert!(objects
         .iter()
         .any(|object| { object.name == "rot2D" && object.ty == "Hom(R2 × R, E2)" }));
-    assert!(objects.iter().any(|object| {
-        object.name == "derivative" && object.ty == "Hom(R, Hom(Hom(R, R), Hom(R, R)))"
-    }));
+    assert!(objects
+        .iter()
+        .any(|object| { object.name == "derivative" && object.ty == "Hom(Hom(R, R), Hom(R, R))" }));
     assert!(objects.iter().any(|object| {
         object.name == "gradient" && object.ty == "Hom(Hom(R3, R), Hom(R3, R3))"
     }));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "dfdx" && object.ty == "Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "dfdy" && object.ty == "Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "dfdz" && object.ty == "Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "dfdw" && object.ty == "Hom(Hom(R4, R), Hom(R4, R))"));
     assert!(!objects.iter().any(|object| object.name == "partialX"));
     assert!(!objects.iter().any(|object| object.name == "partialY"));
     assert!(!objects.iter().any(|object| object.name == "partialZ"));
+    assert!(!objects
+        .iter()
+        .any(|object| object.name == "directionalDerivative"));
     assert!(objects.iter().any(|object| {
-        object.name == "divergence" && object.ty == "Hom(R, Hom(Hom(R3, R3), Hom(R3, R)))"
+        object.name == "divergence" && object.ty == "Hom(Hom(R3, R3), Hom(R3, R))"
     }));
     assert!(objects
         .iter()
@@ -396,7 +421,7 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(revolution.ty, "Hom(R, Hom(Object2D, Object))");
     assert!(revolution
         .body
-        .contains("vec3 op_revolution_point(vec3 p, float offset)"));
+        .contains("vec3 _op_revolution_point(vec3 _p, float _offset)"));
     let rot = known_builtin_object("rot").unwrap();
     assert_eq!(rot.ty, "Hom(R3 × R3 × R, E3)");
     assert_eq!(rot.body, "");
@@ -493,8 +518,39 @@ fn composes_unary_functions_in_function_bodies() {
         "Func(Float, Float) wobble = sin @ sin\nconst Object output = Ball3D(r=wobble(0))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float wobble(float t) {"));
-    assert!(glsl.contains("return sin(sin(t));"));
+    assert!(glsl.contains("float wobble(float _t) {"));
+    assert!(glsl.contains("return sin(sin(_t));"));
+}
+
+#[test]
+fn supports_explicit_product_closure_parameters() {
+    let source =
+        "const Hom(R x R, R) g = (x, y) -> sin(x + y)\nconst Object output = Ball3D(r=g((1, 2)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float g(vec2 _t) {"));
+    assert!(glsl.contains("float _x = _t.x;"));
+    assert!(glsl.contains("float _y = _t.y;"));
+    assert!(glsl.contains("return sin((_x + _y));"));
+}
+
+#[test]
+fn rejects_reserved_underscore_names() {
+    let error = compile_program("R _x = 1\nconst Object output = Ball3D(r=1)\n")
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("names cannot start with '_'"));
+}
+
+#[test]
+fn rejects_reserved_underscore_closure_parameters() {
+    let error =
+        compile_program("const Hom(R, R) f = _t -> _t\nconst Object output = Ball3D(r=1)\n")
+            .unwrap_err()
+            .to_string();
+
+    assert!(error.contains("closure parameter names cannot start with '_'"));
 }
 
 #[test]
@@ -512,11 +568,42 @@ fn emits_glsl_float_literals_with_f_suffixes() {
 
 #[test]
 fn supports_derivative_operator_in_function_bodies() {
-    let source = "Func(Float, Float) slope = derivative(0.01)(sin)\nconst Object output = Ball3D(r=slope(0))\n";
+    let source =
+        "Func(Float, Float) slope = derivative(sin)\nconst Object output = Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float slope(float t) {"));
-    assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
+    assert!(glsl.contains("float slope(float _t) {"));
+    assert!(glsl.contains("(sin((_t + 0.01)) - sin((_t - 0.01))) / (2.0 * 0.01)"));
+}
+
+#[test]
+fn supports_partial_derivative_aliases() {
+    let source = "provided Hom(R3, R) density\nprovided R3 p\nR dx = dfdx(density)(p)\nR dy = dfdy(density)(p)\nR dz = dfdz(density)(p)\nconst Object output = Ball3D(r=dx + dy + dz)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float dx = ((density((p + vec3(0.01, 0.0, 0.0)))"));
+    assert!(glsl.contains("float dy = ((density((p + vec3(0.0, 0.01, 0.0)))"));
+    assert!(glsl.contains("float dz = ((density((p + vec3(0.0, 0.0, 0.01)))"));
+}
+
+#[test]
+fn derivative_of_vector_field_returns_matrix() {
+    let source = "provided Hom(R2, R3) field\nprovided Hom(Mat2x3, R) measure\nprovided R2 p\nMat2x3 jacobian = derivative(field)(p)\nconst Object output = Ball3D(r=measure(jacobian))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat3x2 jacobian = transpose(mat2x3("));
+    assert!(glsl.contains("field((p + vec2(0.01, 0.0)))"));
+    assert!(glsl.contains("field((p - vec2(0.0, 0.01)))"));
+}
+
+#[test]
+fn divergence_accepts_same_dimensional_vector_fields() {
+    let source = "provided Hom(R2, R2) flow\nprovided R2 p\nR outflow = divergence(flow)(p)\nconst Object output = Ball3D(r=outflow)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float outflow = (((flow((p + vec2(0.01, 0.0)))).x"));
+    assert!(glsl.contains("+ ((flow((p + vec2(0.0, 0.01)))).y"));
+    assert!(!glsl.contains(".z -"));
 }
 
 #[test]
@@ -524,8 +611,8 @@ fn supports_default_gradient_operator_for_scalar_functions() {
     let source = "Func(Float, Float) slope = grad(sin)\nconst Object output = Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float slope(float t) {"));
-    assert!(glsl.contains("(sin((t + 0.01)) - sin((t - 0.01))) / (2.0 * 0.01)"));
+    assert!(glsl.contains("float slope(float _t) {"));
+    assert!(glsl.contains("(sin((_t + 0.01)) - sin((_t - 0.01))) / (2.0 * 0.01)"));
 }
 
 #[test]
@@ -554,8 +641,8 @@ fn supports_same_domain_function_products() {
     let source = "provided Hom(R2, R) f\nprovided Hom(R x R, R) g\nHom(R2, R2) h = (f, g)\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 h(vec2 t)"));
-    assert!(glsl.contains("return vec2(f(t), g(t));"));
+    assert!(glsl.contains("vec2 h(vec2 _t)"));
+    assert!(glsl.contains("return vec2(f(_t), g(_t));"));
     assert!(glsl.contains("length(h(uv))"));
 }
 
@@ -564,8 +651,8 @@ fn supports_tensor_function_products() {
     let source = "Hom(R2, R2) h = sin x cos\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 h(vec2 t)"));
-    assert!(glsl.contains("return vec2(sin(t[0]), cos(t[1]));"));
+    assert!(glsl.contains("vec2 h(vec2 _t)"));
+    assert!(glsl.contains("return vec2(sin(_t[0]), cos(_t[1]));"));
 }
 
 #[test]
@@ -573,8 +660,8 @@ fn supports_pointwise_function_arithmetic() {
     let source = "provided Hom(R2, R) f\nprovided Hom(R x R, R) g\nHom(R2, R) h = f + g\nprovided R2 uv\nconst Object output = Ball3D(r=h(uv))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float h(vec2 t)"));
-    assert!(glsl.contains("return (f(t) + g(t));"));
+    assert!(glsl.contains("float h(vec2 _t)"));
+    assert!(glsl.contains("return (f(_t) + g(_t));"));
 }
 
 #[test]
@@ -582,8 +669,8 @@ fn supports_pointwise_function_arithmetic_with_value_constants() {
     let source = "provided Hom(R2, R) f\nconst Hom(R2, R) h = f + 1\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float h(vec2 t)"));
-    assert!(glsl.contains("return (f(t) + 1.0);"));
+    assert!(glsl.contains("float h(vec2 _t)"));
+    assert!(glsl.contains("return (f(_t) + 1.0);"));
 }
 
 #[test]
@@ -592,8 +679,8 @@ fn lifts_value_calls_over_function_arguments() {
         "#2D\nconst Object2D rect = Box2D(a=1, b=2)\nconst Hom(R2, R) m = max(rect.sdf, 0.01)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float m(vec2 t)"));
-    assert!(glsl.contains("return max(sdf_rect(t), 0.01);"));
+    assert!(glsl.contains("float m(vec2 _t)"));
+    assert!(glsl.contains("return max(sdf_rect(_t), 0.01);"));
 }
 
 #[test]
@@ -601,10 +688,10 @@ fn supports_pointwise_bool_masks_for_vector_functions() {
     let source = "#2D\nprovided R time\nconst Object2D rect = Box2D(a=1, b=2)\nconst Object2D ball = Ball2D(r=1.2)\nconst Object2D scene = union(rect, ball)\nHom(R2, R4) blend = (max(rect.sdf, 0.01) * (0.9, 0.5, 0.5, 1) + max(ball.sdf, 0.01) * (0.5, 0.5, 0.9, 1)) / (max(rect.sdf, 0.01) + max(ball.sdf, 0.01))\nconst Hom(R2, R4) color = blend * (scene.sdf > 0)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec4 blend(vec2 t)"));
-    assert!(glsl.contains("max(sdf_rect(t), 0.01)"));
-    assert!(glsl.contains("vec4 color(vec2 t)"));
-    assert!(glsl.contains("return (blend(t) * ((sdf_scene(t) > 0.0) ? 1.0 : 0.0));"));
+    assert!(glsl.contains("vec4 blend(vec2 _t)"));
+    assert!(glsl.contains("max(sdf_rect(_t), 0.01)"));
+    assert!(glsl.contains("vec4 color(vec2 _t)"));
+    assert!(glsl.contains("return (blend(_t) * ((sdf_scene(_t) > 0.0) ? 1.0 : 0.0));"));
 }
 
 #[test]
@@ -614,10 +701,10 @@ fn emits_functions_and_object_helpers_in_source_order() {
 
     let rect_def = glsl.find("float sdf_rect(vec2 p) {").unwrap();
     let sdf_def = glsl.find("float sdf_scene(vec2 p) {").unwrap();
-    let color_def = glsl.find("vec4 color(vec2 t) {").unwrap();
+    let color_def = glsl.find("vec4 color(vec2 _t) {").unwrap();
     assert!(rect_def < sdf_def);
     assert!(sdf_def < color_def);
-    assert!(glsl.contains("return ((sdf_scene(t) > 0.0) ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0));"));
+    assert!(glsl.contains("return ((sdf_scene(_t) > 0.0) ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0));"));
 }
 
 #[test]
@@ -625,9 +712,217 @@ fn typed_declarations_can_reference_inferred_bindings() {
     let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin * 2, cos * 2)\nconst ball = Ball2D(r=1.2) + center(time)\nblend = (max(rect.sdf, 0.01) * color2 + max(ball.sdf, 0.01) * color1) / (max(rect.sdf, 0.01) + max(ball.sdf, 0.01))\nconst scene = union(rect, ball)\nconst Hom(R2, R4) color = blend * (scene.sdf > 0)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec4 blend(vec2 t)"));
-    assert!(glsl.contains("vec4 color(vec2 t)"));
-    assert!(glsl.contains("return (blend(t) * ((sdf_scene(t) > 0.0) ? 1.0 : 0.0));"));
+    assert!(glsl.contains("vec4 blend(vec2 _t)"));
+    assert!(glsl.contains("vec4 color(vec2 _t)"));
+    assert!(glsl.contains("return (blend(_t) * ((sdf_scene(_t) > 0.0) ? 1.0 : 0.0));"));
+}
+
+#[test]
+fn imports_local_modules_and_mangles_private_names() {
+    let dir = unique_temp_dir("module_private");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("helpers.lane"),
+        "#module\nR secret = 2\nconst R exported = secret + 1\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import helpers\nR secret = 5\nconst Object output = Ball3D(r=exported + secret)\n",
+    )
+    .unwrap();
+
+    let glsl = strip_glsl_float_suffixes(&compile_program_from_path(&source_path).unwrap());
+
+    assert!(glsl.contains("__lane_mod_helpers_secret"));
+    assert!(glsl.contains("float secret = 5.0;"));
+    assert!(glsl.contains("float exported = (__lane_mod_helpers_secret + 1.0);"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn imports_module_raw_glsl_functions() {
+    let dir = unique_temp_dir("module_raw");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("raw.lane"),
+        "#module\nconst Hom(R, R) twice = \"float twice(float x) { return x * 2.0; }\"\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import raw\nconst Object output = Ball3D(r=twice(2))\n",
+    )
+    .unwrap();
+
+    let glsl = strip_glsl_float_suffixes(&compile_program_from_path(&source_path).unwrap());
+
+    assert!(glsl.contains("float twice(float x) { return x * 2.0; }"));
+    assert!(glsl.contains("ParamBall3D(twice(2.0))"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn raw_glsl_placeholders_resolve_private_helpers_and_locals() {
+    let dir = unique_temp_dir("module_raw_placeholders");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("raw.lane"),
+        "#module\nHom(R, R) helper = sin\nconst Hom(R, R) wrapped = \"float wrapped(float x) { float _value = ${helper}(x); return _value; }\"\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import raw\nconst Object output = Ball3D(r=wrapped(1))\n",
+    )
+    .unwrap();
+
+    let glsl = strip_glsl_float_suffixes(&compile_program_from_path(&source_path).unwrap());
+
+    assert!(glsl.contains("float __lane_mod_raw_helper(float _t)"));
+    assert!(glsl.contains("__lane_mod_raw_helper(x)"));
+    assert!(glsl.contains("float _value = __lane_mod_raw_helper(x);"));
+    assert!(!glsl.contains("${"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn rejects_raw_glsl_functions_outside_modules() {
+    let source = "const Hom(R, R) twice = \"return _t * 2.0;\"\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("raw GLSL function bodies are only valid in modules"));
+}
+
+#[test]
+fn rejects_module_import_cycles() {
+    let dir = unique_temp_dir("module_cycle");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(dir.join("modules").join("a.lane"), "#module\n#import b\n").unwrap();
+    fs::write(dir.join("modules").join("b.lane"), "#module\n#import a\n").unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import a\nconst Object output = Ball3D(r=1)\n",
+    )
+    .unwrap();
+
+    let error = compile_program_from_path(&source_path)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("module import cycle"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn imports_raytracing_module() {
+    let source = "#import raytracing\nprovided R3 cameraPosition\nprovided R3 cameraForward\nprovided R3 cameraGlobalUp\nprovided R2 resolution\nprovided R3 ambientColor\nconst Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\nconst Hom(R2, Ray) scene_camera_ray = camera_ray(cameraPosition, cameraForward, cameraGlobalUp, resolution)\nconst Hom(Ray, Hit) scene_raytrace = raytrace(scene)\nconst Hom(Ray, R3) scene_raycolor = raycolor(ambientColor, scene_raytrace, scene_material)\nconst Hom(R2, R4) scene_shade = shade(scene_camera_ray, scene_raycolor)\nconst Hom(*, *) main = preview_raytrace(scene_shade)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct Ray"));
+    assert!(glsl.contains("struct Hit"));
+    assert!(glsl.contains("struct Material"));
+    assert!(!glsl.contains("Ray camera_ray(vec2 fragCoord)"));
+    assert!(glsl.contains("Ray scene_camera_ray(vec2 _t)"));
+    assert!(glsl.contains("return Ray(cameraPosition, normalize("));
+    assert!(!glsl.contains("Hit raytrace(Ray ray)"));
+    assert!(glsl.contains("Hit scene_raytrace(Ray _t)"));
+    assert!(glsl.contains("float _d = sdf_scene(_p);"));
+    assert!(glsl.contains("vec3 _n = grad_sdf_scene(_p);"));
+    assert!(!glsl.contains("vec3 raycolor(Ray initialRay)"));
+    assert!(glsl.contains("vec3 scene_raycolor(Ray _t)"));
+    assert!(glsl.contains("Material _material = scene_material(_hit.position);"));
+    assert!(!glsl.contains("vec4 shade(vec2 fragCoord)"));
+    assert!(glsl.contains("return vec4(scene_raycolor(scene_camera_ray(vec2(_x, _y))), 1.0);"));
+    assert!(glsl.contains("vec4 scene_shade(vec2 _t)"));
+    assert!(glsl.contains("void main()"));
+    assert!(glsl.contains("outColor = scene_shade(gl_FragCoord.xy);"));
+    assert!(glsl.contains("_radiance += _throughput * (_material.emission + ((1.0 - _reflectiveness) * ambientColor * _material.color));"));
+    assert!(glsl.contains("_throughput *= _material.color * _reflectiveness;"));
+    assert!(glsl.contains("vec3 _dir = reflect(_ray.dir, _hit.normal);"));
+}
+
+#[test]
+fn raw_glsl_placeholders_accept_glsl_nameable_builtins() {
+    let dir = unique_temp_dir("module_raw_builtin_placeholder");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("raw.lane"),
+        "#module\nconst Hom(R, R) wave = \"float wave(float x) { return ${sin}(x); }\"\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import raw\nconst Object output = Ball3D(r=wave(1))\n",
+    )
+    .unwrap();
+
+    let glsl = strip_glsl_float_suffixes(&compile_program_from_path(&source_path).unwrap());
+
+    assert!(glsl.contains("return sin(x);"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn raw_glsl_placeholders_reject_non_nameable_function_operators() {
+    let dir = unique_temp_dir("module_raw_bad_placeholder");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("raw.lane"),
+        "#module\nconst Hom(R, R) bad = \"float bad(float x) { return ${gradient}(x); }\"\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import raw\nconst Object output = Ball3D(r=1)\n",
+    )
+    .unwrap();
+
+    let error = compile_program_from_path(&source_path)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("cannot be rendered as a GLSL reference"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn module_can_provide_its_own_product_type() {
+    let dir = unique_temp_dir("module_provided_product");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("materials.lane"),
+        "#module\nprovided VectR Material = R3 x R3 x R {color, emission, reflectiveness}\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import materials\nprovided Material material\nconst Hom(R, Material) copiedMaterial = material\nconst Object output = Ball3D(r=1)\n",
+    )
+    .unwrap();
+    let glsl = compile_program_from_path(&source_path).unwrap();
+
+    assert!(!glsl.contains("struct Material"));
+    assert!(glsl.contains("Material copiedMaterial(float _t)"));
+    assert!(glsl.contains("return material;"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn provided_product_type_is_declared_but_not_emitted() {
+    let source = "provided VectR External = R3 x R {color, weight}\nprovided External external\nconst Hom(R, External) copied = external\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(!glsl.contains("struct External"));
+    assert!(glsl.contains("External copied(float _t)"));
+    assert!(glsl.contains("return external;"));
 }
 
 #[test]
@@ -636,8 +931,8 @@ fn supports_pointwise_function_arithmetic_support_dependencies() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert!(glsl.contains("vec2 h(float t)"));
-    assert!(glsl.contains("return mult_C(f(t), g(t));"));
+    assert!(glsl.contains("vec2 h(float _t)"));
+    assert!(glsl.contains("return mult_C(f(_t), g(_t));"));
 }
 
 #[test]
@@ -807,6 +1102,14 @@ fn rejects_duplicate_product_field_names() {
 }
 
 #[test]
+fn rejects_reserved_glsl_product_field_names() {
+    let source = "Set Hit = R3 x R {position, distance}\nconst Object output = Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("product type 'Hit' field name 'distance' is reserved in GLSL"));
+}
+
+#[test]
 fn rejects_product_field_types() {
     let source = "DivRing G = C x H\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
@@ -901,11 +1204,11 @@ fn supports_pointwise_conditional_functions() {
     let source = "#2D\nconst Object2D shape = Box2D(a=1, b=2)\nconst Hom(R2, R) clipped = if(shape.sdf > 0) shape.sdf\nconst Hom(R2, R4) color = if(shape.sdf > 0) (1, 0, 0, 1) else (0, 0, 1, 1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float clipped(vec2 t)"));
-    assert!(glsl.contains("return ((sdf_shape(t) > 0.0) ? sdf_shape(t) : 0.0);"));
-    assert!(glsl.contains("vec4 color(vec2 t)"));
+    assert!(glsl.contains("float clipped(vec2 _t)"));
+    assert!(glsl.contains("return ((sdf_shape(_t) > 0.0) ? sdf_shape(_t) : 0.0);"));
+    assert!(glsl.contains("vec4 color(vec2 _t)"));
     assert!(glsl.contains(
-        "return ((sdf_shape(t) > 0.0) ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0, 0.0, 1.0, 1.0));"
+        "return ((sdf_shape(_t) > 0.0) ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0, 0.0, 1.0, 1.0));"
     ));
 }
 
@@ -1043,8 +1346,8 @@ fn const_value_and_function_declarations_emit_even_when_unused() {
 
     assert!(glsl.contains("const float radius = 1.0;"));
     assert!(glsl.contains("const vec4 tint = vec4(0.5, 0.5, 0.9, 1.0);"));
-    assert!(glsl.contains("float wave(float t) {"));
-    assert!(glsl.contains("return sin(t);"));
+    assert!(glsl.contains("float wave(float _t) {"));
+    assert!(glsl.contains("return sin(_t);"));
 }
 
 #[test]
@@ -1052,9 +1355,9 @@ fn const_value_expressions_lift_object_getters_over_points() {
     let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\nconst color = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec4 color(vec2 t) {"));
-    assert!(glsl.contains("sdf_rect(t) * color1"));
-    assert!(glsl.contains("sdf_ball(t) * color2"));
+    assert!(glsl.contains("vec4 color(vec2 _t) {"));
+    assert!(glsl.contains("sdf_rect(_t) * color1"));
+    assert!(glsl.contains("sdf_ball(_t) * color2"));
     assert!(glsl.contains("float sdf_scene(vec2 p) {"));
 }
 
@@ -1063,8 +1366,8 @@ fn omits_non_const_functions_not_used_by_const_outputs() {
     let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\ncolor = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 center(float t)"));
-    assert!(!glsl.contains("vec4 color(vec2 t)"));
+    assert!(glsl.contains("vec2 center(float _t)"));
+    assert!(!glsl.contains("vec4 color(vec2 _t)"));
     assert!(glsl.contains("float sdf_scene(vec2 p) {"));
 }
 
@@ -1121,7 +1424,7 @@ fn directive_prec_sets_default_differential_precision() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float eps = 0.002;"));
-    assert!(glsl.contains("(sin((t + 0.002)) - sin((t - 0.002))) / (2.0 * 0.002)"));
+    assert!(glsl.contains("(sin((_t + 0.002)) - sin((_t - 0.002))) / (2.0 * 0.002)"));
     assert!(glsl.contains("density((p + vec3(0.002, 0.0, 0.0)))"));
     assert!(glsl.contains("density((p - vec3(0.0, 0.0, 0.002)))"));
 }
@@ -1240,8 +1543,8 @@ fn scene_sdf_reuses_generated_object_helpers() {
 
     assert!(glsl.contains("float sdf_a(vec3 p) {"));
     assert!(glsl.contains("float sdf_b(vec3 p) {"));
-    assert!(glsl.contains("return op_union(sdf_a(p), sdf_b(p));"));
-    assert!(!glsl.contains("return op_union(sdf0_Ball3D"));
+    assert!(glsl.contains("return _op_union(sdf_a(p), sdf_b(p));"));
+    assert!(!glsl.contains("return _op_union(sdf0_Ball3D"));
 }
 
 #[test]
@@ -1315,7 +1618,7 @@ fn emits_only_used_support_code() {
 
     assert!(glsl.contains("struct ParamBall3D"));
     assert!(glsl.contains("float sdf0_Ball3D"));
-    assert!(!glsl.contains("op_smooth_union"));
+    assert!(!glsl.contains("_op_smooth_union"));
     assert!(glsl.contains("vec3 scene_grad(vec3 p) {"));
 }
 
@@ -1615,8 +1918,8 @@ fn emits_revolution_operator() {
         "Object2D profile = Segment2D(a=(0, -1), b=(0, 1))\nconst Object output = revolution(1.5)(profile)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec3 op_revolution_point(vec3 p, float offset)"));
-    assert!(glsl.contains("sdf0_Segment2D((op_revolution_point(p, 1.5)).xy, ParamSegment2D(vec2(0.0, (-1.0)), vec2(0.0, 1.0)))"));
+    assert!(glsl.contains("vec3 _op_revolution_point(vec3 _p, float _offset)"));
+    assert!(glsl.contains("sdf0_Segment2D((_op_revolution_point(p, 1.5)).xy, ParamSegment2D(vec2(0.0, (-1.0)), vec2(0.0, 1.0)))"));
 }
 
 #[test]
@@ -1632,9 +1935,9 @@ fn emits_extrusion_operator() {
     let source = "const Object output = extrude(.25)(Box2D(a=1, b=.5))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_extrusion(float base_distance, float z, float height)"));
+    assert!(glsl.contains("float _op_extrusion(float _base_distance, float _z, float _height)"));
     assert!(glsl.contains(
-        "op_extrusion(sdf0_Box2D((vec3((p).xy, 0.0)).xy, ParamBox2D(1.0, 0.5)), (p).z, 0.25)"
+        "_op_extrusion(sdf0_Box2D((vec3((p).xy, 0.0)).xy, ParamBox2D(1.0, 0.5)), (p).z, 0.25)"
     ));
 }
 
@@ -1652,11 +1955,11 @@ fn emits_builtin_3d_rotation_operator() {
     let source = "const Object output = rot((0, 1, 0), (1, 0, 0), 0.5)(Ball3D(r=1))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("mat3 op_rot_matrix(vec3 binormal, float angle)"));
-    assert!(
-        glsl.contains("vec3 op_rot_inverse_point(vec3 p, vec3 binormal, vec3 anchor, float angle)")
-    );
-    assert!(glsl.contains("sdf0_Ball3D(op_rot_inverse_point(p, vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), 0.5), ParamBall3D(1.0))"));
+    assert!(glsl.contains("mat3 _op_rot_matrix(vec3 _binormal, float _angle)"));
+    assert!(glsl.contains(
+        "vec3 _op_rot_inverse_point(vec3 _p, vec3 _binormal, vec3 _anchor, float _angle)"
+    ));
+    assert!(glsl.contains("sdf0_Ball3D(_op_rot_inverse_point(p, vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), 0.5), ParamBall3D(1.0))"));
 }
 
 #[test]
@@ -1686,8 +1989,8 @@ fn emits_builtin_rotation_operator_defaults() {
     let angle_glsl = compile_program("const Object output = rot(0.5)(Ball3D(r=1))\n").unwrap();
     let zero_arg_glsl = compile_program("const Object output = rot()(Ball3D(r=2))\n").unwrap();
 
-    assert!(angle_glsl.contains("sdf0_Ball3D(op_rot_inverse_point(p, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), 0.5), ParamBall3D(1.0))"));
-    assert!(zero_arg_glsl.contains("sdf0_Ball3D(op_rot_inverse_point(p, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), 0.0), ParamBall3D(2.0))"));
+    assert!(angle_glsl.contains("sdf0_Ball3D(_op_rot_inverse_point(p, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), 0.5), ParamBall3D(1.0))"));
+    assert!(zero_arg_glsl.contains("sdf0_Ball3D(_op_rot_inverse_point(p, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), 0.0), ParamBall3D(2.0))"));
 }
 
 #[test]
@@ -1695,10 +1998,10 @@ fn emits_builtin_2d_rotation_operator() {
     let source = "const Object output = rot2D((1, 0), 0.5)(Box2D(a=1, b=.5))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("mat2 op_rot2D_matrix(float angle)"));
-    assert!(glsl.contains("vec3 op_rot2D_inverse_point(vec3 p, vec2 anchor, float angle)"));
+    assert!(glsl.contains("mat2 _op_rot2D_matrix(float _angle)"));
+    assert!(glsl.contains("vec3 _op_rot2D_inverse_point(vec3 _p, vec2 _anchor, float _angle)"));
     assert!(glsl.contains(
-        "sdf0_Box2D((op_rot2D_inverse_point(p, vec2(1.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
+        "sdf0_Box2D((_op_rot2D_inverse_point(p, vec2(1.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
     ));
 }
 
@@ -1710,10 +2013,10 @@ fn emits_builtin_2d_rotation_operator_defaults() {
         compile_program("const Object output = rot2D()(Box2D(a=2, b=1))\n").unwrap();
 
     assert!(angle_glsl.contains(
-        "sdf0_Box2D((op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
+        "sdf0_Box2D((_op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
     ));
     assert!(zero_arg_glsl.contains(
-        "sdf0_Box2D((op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.0)).xy, ParamBox2D(2.0, 1.0))"
+        "sdf0_Box2D((_op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.0)).xy, ParamBox2D(2.0, 1.0))"
     ));
 }
 
@@ -1722,7 +2025,7 @@ fn emits_mat3_helpers_and_uses_them_in_object_actions() {
     let source = "provided Float time\nFunc(Float, Mat3) spin = ((1, 0, 0), (0, 1, 0), (0, 0, 1))\nconst Object output = spin(time) * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("mat3 spin(float t) {"));
+    assert!(glsl.contains("mat3 spin(float _t) {"));
     assert!(glsl.contains(
         "return transpose(mat3(vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0)));"
     ));
@@ -1767,9 +2070,9 @@ fn emits_difference_operator() {
         "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = diff(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_difference(float a, float b) {"));
-    assert!(glsl.contains("return max(a, -b);"));
-    assert!(glsl.contains("return op_difference("));
+    assert!(glsl.contains("float _op_difference(float _a, float _b) {"));
+    assert!(glsl.contains("return max(_a, -_b);"));
+    assert!(glsl.contains("return _op_difference("));
 }
 
 #[test]
@@ -1778,9 +2081,9 @@ fn emits_union_operator() {
         "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = union(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_union(float a, float b) {"));
-    assert!(glsl.contains("return min(a, b);"));
-    assert!(glsl.contains("return op_union("));
+    assert!(glsl.contains("float _op_union(float _a, float _b) {"));
+    assert!(glsl.contains("return min(_a, _b);"));
+    assert!(glsl.contains("return _op_union("));
 }
 
 #[test]
@@ -1788,8 +2091,8 @@ fn emits_associative_union_operator_with_four_args() {
     let source = "Object a = Ball3D(r=4)\nObject b = Ball3D(r=3) + (1, 0, 0)\nObject c = Ball3D(r=2) + (2, 0, 0)\nObject d = Ball3D(r=1) + (3, 0, 0)\nconst Object output = union(a, b, c, d)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("return op_union(op_union("));
-    assert!(glsl.contains(", op_union("));
+    assert!(glsl.contains("return _op_union(_op_union("));
+    assert!(glsl.contains(", _op_union("));
 }
 
 #[test]
@@ -1797,8 +2100,8 @@ fn emits_associative_union_operator_with_three_args() {
     let source = "Object a = Ball3D(r=3)\nObject b = Ball3D(r=2) + (1, 0, 0)\nObject c = Ball3D(r=1) + (2, 0, 0)\nconst Object output = union(a, b, c)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("return op_union(sdf0_Ball3D("));
-    assert!(glsl.contains(", op_union("));
+    assert!(glsl.contains("return _op_union(sdf0_Ball3D("));
+    assert!(glsl.contains(", _op_union("));
 }
 
 #[test]
@@ -1807,9 +2110,9 @@ fn emits_intersection_operator() {
         "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = intersect(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_intersection(float a, float b) {"));
-    assert!(glsl.contains("return max(a, b);"));
-    assert!(glsl.contains("return op_intersection("));
+    assert!(glsl.contains("float _op_intersection(float _a, float _b) {"));
+    assert!(glsl.contains("return max(_a, _b);"));
+    assert!(glsl.contains("return _op_intersection("));
 }
 
 #[test]
@@ -1818,9 +2121,9 @@ fn emits_xor_operator() {
         "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = xor(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_xor(float a, float b) {"));
-    assert!(glsl.contains("return max(min(a, b), -max(a, b));"));
-    assert!(glsl.contains("return op_xor("));
+    assert!(glsl.contains("float _op_xor(float _a, float _b) {"));
+    assert!(glsl.contains("return max(min(_a, _b), -max(_a, _b));"));
+    assert!(glsl.contains("return _op_xor("));
 }
 
 #[test]
@@ -1829,9 +2132,10 @@ fn emits_smooth_union_operator() {
         "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = smoothUnion(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_smooth_union_min(float a, float b, float k) {"));
-    assert!(glsl.contains("k *= 1.0 / (1.0 - sqrt(0.5));"));
-    assert!(glsl.contains("return op_smooth_union("));
+    assert!(glsl.contains("float _op_smooth_union(float _a, float _b, float _k) {"));
+    assert!(!glsl.contains("_op_smooth_union_min"));
+    assert!(glsl.contains("_k *= 1.0 / (1.0 - sqrt(0.5));"));
+    assert!(glsl.contains("return _op_smooth_union("));
 }
 
 #[test]
@@ -1839,9 +2143,9 @@ fn emits_smooth_intersection_operator() {
     let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = smoothIntersect(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_smooth_intersection(float a, float b, float k) {"));
-    assert!(glsl.contains("return op_smooth_intersection_max(a, b, k);"));
-    assert!(glsl.contains("return op_smooth_intersection("));
+    assert!(glsl.contains("float _op_smooth_intersection(float _a, float _b, float _k) {"));
+    assert!(glsl.contains("return _op_smooth_intersection_max(_a, _b, _k);"));
+    assert!(glsl.contains("return _op_smooth_intersection("));
 }
 
 #[test]
@@ -1849,9 +2153,9 @@ fn emits_smooth_difference_operator() {
     let source = "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = smoothDiff(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_smooth_difference(float a, float b, float k) {"));
-    assert!(glsl.contains("return op_smooth_difference_max(a, -b, k);"));
-    assert!(glsl.contains("return op_smooth_difference("));
+    assert!(glsl.contains("float _op_smooth_difference(float _a, float _b, float _k) {"));
+    assert!(glsl.contains("return _op_smooth_difference_max(_a, -_b, _k);"));
+    assert!(glsl.contains("return _op_smooth_difference("));
 }
 
 #[test]
@@ -1860,11 +2164,11 @@ fn emits_smooth_xor_operator() {
         "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1) + (0.5, 0, 0)\nconst Object output = smoothXor(0.25)(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float op_smooth_xor(float a, float b, float k) {"));
+    assert!(glsl.contains("float _op_smooth_xor(float _a, float _b, float _k) {"));
     assert!(glsl.contains(
-        "return op_smooth_xor_max(op_smooth_xor_min(a, b, k), -op_smooth_xor_max(a, b, k), k);"
+        "return _op_smooth_xor_max(_op_smooth_xor_min(_a, _b, _k), -_op_smooth_xor_max(_a, _b, _k), _k);"
     ));
-    assert!(glsl.contains("return op_smooth_xor("));
+    assert!(glsl.contains("return _op_smooth_xor("));
 }
 
 #[test]
@@ -1873,14 +2177,14 @@ fn emits_only_used_object_operator_support() {
         "Object a = Ball3D(r=2)\nObject b = Ball3D(r=1)\nconst Object output = diff(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("op_difference"));
-    assert!(!glsl.contains("op_smooth_union"));
-    assert!(!glsl.contains("op_union"));
-    assert!(!glsl.contains("op_intersection"));
-    assert!(!glsl.contains("op_xor"));
-    assert!(!glsl.contains("op_smooth_intersection"));
-    assert!(!glsl.contains("op_smooth_difference"));
-    assert!(!glsl.contains("op_smooth_xor"));
+    assert!(glsl.contains("_op_difference"));
+    assert!(!glsl.contains("_op_smooth_union"));
+    assert!(!glsl.contains("_op_union"));
+    assert!(!glsl.contains("_op_intersection"));
+    assert!(!glsl.contains("_op_xor"));
+    assert!(!glsl.contains("_op_smooth_intersection"));
+    assert!(!glsl.contains("_op_smooth_difference"));
+    assert!(!glsl.contains("_op_smooth_xor"));
 }
 
 #[test]
@@ -1900,8 +2204,8 @@ fn emits_array_types_for_inputs_and_function_returns() {
     let source = "provided Array(R) weights\nFunc(Float, Array(R)) pair = [sin, cos]\nR radius = weights[0] + pair(0)[1]\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float[] pair(float t) {"));
-    assert!(glsl.contains("return float[2](sin(t), cos(t));"));
+    assert!(glsl.contains("float[] pair(float _t) {"));
+    assert!(glsl.contains("return float[2](sin(_t), cos(_t));"));
     assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("float radius = (weights[0] + pair(0.0)[1]);"));
 }

@@ -314,8 +314,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
-                    glsl_name: "op_smooth_union",
-                    support_glsl: "float op_smooth_union_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_union(float a, float b, float k) {\n    return op_smooth_union_min(a, b, k);\n}",
+                    glsl_name: "_op_smooth_union",
+                    support_glsl: "float _op_smooth_union(float _a, float _b, float _k) {\n    _k *= 1.0 / (1.0 - sqrt(0.5));\n    float _h = max(_k - abs(_a - _b), 0.0) / _k;\n    return min(_a, _b) - (_k * 0.5 * (1.0 + _h - sqrt(1.0 - (_h * (_h - 2.0)))));\n}",
                 },
             ),
             (
@@ -325,8 +325,8 @@ impl Default for Registry {
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: true,
-                    glsl_name: "op_union",
-                    support_glsl: "float op_union(float a, float b) {\n    return min(a, b);\n}",
+                    glsl_name: "_op_union",
+                    support_glsl: "float _op_union(float _a, float _b) {\n    return min(_a, _b);\n}",
                 },
             ),
             (
@@ -336,8 +336,8 @@ impl Default for Registry {
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: true,
-                    glsl_name: "op_intersection",
-                    support_glsl: "float op_intersection(float a, float b) {\n    return max(a, b);\n}",
+                    glsl_name: "_op_intersection",
+                    support_glsl: "float _op_intersection(float _a, float _b) {\n    return max(_a, _b);\n}",
                 },
             ),
             (
@@ -347,8 +347,8 @@ impl Default for Registry {
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: false,
-                    glsl_name: "op_difference",
-                    support_glsl: "float op_difference(float a, float b) {\n    return max(a, -b);\n}",
+                    glsl_name: "_op_difference",
+                    support_glsl: "float _op_difference(float _a, float _b) {\n    return max(_a, -_b);\n}",
                 },
             ),
             (
@@ -358,8 +358,8 @@ impl Default for Registry {
                     value_arg_types: vec![],
                     object_arg_count: 2,
                     associative_binary: true,
-                    glsl_name: "op_xor",
-                    support_glsl: "float op_xor(float a, float b) {\n    return max(min(a, b), -max(a, b));\n}",
+                    glsl_name: "_op_xor",
+                    support_glsl: "float _op_xor(float _a, float _b) {\n    return max(min(_a, _b), -max(_a, _b));\n}",
                 },
             ),
             (
@@ -369,8 +369,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
-                    glsl_name: "op_smooth_intersection",
-                    support_glsl: "float op_smooth_intersection_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_intersection_max(float a, float b, float k) {\n    return -op_smooth_intersection_min(-a, -b, k);\n}\n\nfloat op_smooth_intersection(float a, float b, float k) {\n    return op_smooth_intersection_max(a, b, k);\n}",
+                    glsl_name: "_op_smooth_intersection",
+                    support_glsl: "float _op_smooth_intersection_min(float _a, float _b, float _k) {\n    _k *= 1.0 / (1.0 - sqrt(0.5));\n    float _h = max(_k - abs(_a - _b), 0.0) / _k;\n    return min(_a, _b) - (_k * 0.5 * (1.0 + _h - sqrt(1.0 - (_h * (_h - 2.0)))));\n}\n\nfloat _op_smooth_intersection_max(float _a, float _b, float _k) {\n    return -_op_smooth_intersection_min(-_a, -_b, _k);\n}\n\nfloat _op_smooth_intersection(float _a, float _b, float _k) {\n    return _op_smooth_intersection_max(_a, _b, _k);\n}",
                 },
             ),
             (
@@ -380,8 +380,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
-                    glsl_name: "op_smooth_difference",
-                    support_glsl: "float op_smooth_difference_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_difference_max(float a, float b, float k) {\n    return -op_smooth_difference_min(-a, -b, k);\n}\n\nfloat op_smooth_difference(float a, float b, float k) {\n    return op_smooth_difference_max(a, -b, k);\n}",
+                    glsl_name: "_op_smooth_difference",
+                    support_glsl: "float _op_smooth_difference_min(float _a, float _b, float _k) {\n    _k *= 1.0 / (1.0 - sqrt(0.5));\n    float _h = max(_k - abs(_a - _b), 0.0) / _k;\n    return min(_a, _b) - (_k * 0.5 * (1.0 + _h - sqrt(1.0 - (_h * (_h - 2.0)))));\n}\n\nfloat _op_smooth_difference_max(float _a, float _b, float _k) {\n    return -_op_smooth_difference_min(-_a, -_b, _k);\n}\n\nfloat _op_smooth_difference(float _a, float _b, float _k) {\n    return _op_smooth_difference_max(_a, -_b, _k);\n}",
                 },
             ),
             (
@@ -391,8 +391,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 2,
                     associative_binary: false,
-                    glsl_name: "op_smooth_xor",
-                    support_glsl: "float op_smooth_xor_min(float a, float b, float k) {\n    k *= 1.0 / (1.0 - sqrt(0.5));\n    float h = max(k - abs(a - b), 0.0) / k;\n    return min(a, b) - (k * 0.5 * (1.0 + h - sqrt(1.0 - (h * (h - 2.0)))));\n}\n\nfloat op_smooth_xor_max(float a, float b, float k) {\n    return -op_smooth_xor_min(-a, -b, k);\n}\n\nfloat op_smooth_xor(float a, float b, float k) {\n    return op_smooth_xor_max(op_smooth_xor_min(a, b, k), -op_smooth_xor_max(a, b, k), k);\n}",
+                    glsl_name: "_op_smooth_xor",
+                    support_glsl: "float _op_smooth_xor_min(float _a, float _b, float _k) {\n    _k *= 1.0 / (1.0 - sqrt(0.5));\n    float _h = max(_k - abs(_a - _b), 0.0) / _k;\n    return min(_a, _b) - (_k * 0.5 * (1.0 + _h - sqrt(1.0 - (_h * (_h - 2.0)))));\n}\n\nfloat _op_smooth_xor_max(float _a, float _b, float _k) {\n    return -_op_smooth_xor_min(-_a, -_b, _k);\n}\n\nfloat _op_smooth_xor(float _a, float _b, float _k) {\n    return _op_smooth_xor_max(_op_smooth_xor_min(_a, _b, _k), -_op_smooth_xor_max(_a, _b, _k), _k);\n}",
                 },
             ),
             (
@@ -402,8 +402,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 1,
                     associative_binary: false,
-                    glsl_name: "op_revolution",
-                    support_glsl: "vec3 op_revolution_point(vec3 p, float offset) {\n    return vec3(length(p.xz) - offset, p.y, 0.0);\n}",
+                    glsl_name: "_op_revolution",
+                    support_glsl: "vec3 _op_revolution_point(vec3 _p, float _offset) {\n    return vec3(length(_p.xz) - _offset, _p.y, 0.0);\n}",
                 },
             ),
             (
@@ -413,8 +413,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Float],
                     object_arg_count: 1,
                     associative_binary: false,
-                    glsl_name: "op_extrusion",
-                    support_glsl: "float op_extrusion(float base_distance, float z, float height) {\n    vec2 w = vec2(base_distance, abs(z) - height);\n    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));\n}",
+                    glsl_name: "_op_extrusion",
+                    support_glsl: "float _op_extrusion(float _base_distance, float _z, float _height) {\n    vec2 _w = vec2(_base_distance, abs(_z) - _height);\n    return min(max(_w.x, _w.y), 0.0) + length(max(_w, 0.0));\n}",
                 },
             ),
             (
@@ -424,8 +424,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Vec3, Type::Vec3, Type::Float],
                     object_arg_count: 1,
                     associative_binary: false,
-                    glsl_name: "op_rot",
-                    support_glsl: "mat3 op_rot_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nvec3 op_rot_inverse_point(vec3 p, vec3 binormal, vec3 anchor, float angle) {\n    mat3 r = op_rot_matrix(binormal, angle);\n    return anchor + (transpose(r) * (p - anchor));\n}",
+                    glsl_name: "_op_rot",
+                    support_glsl: "mat3 _op_rot_matrix(vec3 _binormal, float _angle) {\n    vec3 _axis = normalize(_binormal);\n    float _c = cos(_angle);\n    float _s = sin(_angle);\n    float _oc = 1.0 - _c;\n    return mat3(\n        vec3((_axis.x * _axis.x * _oc) + _c, (_axis.y * _axis.x * _oc) + (_axis.z * _s), (_axis.z * _axis.x * _oc) - (_axis.y * _s)),\n        vec3((_axis.x * _axis.y * _oc) - (_axis.z * _s), (_axis.y * _axis.y * _oc) + _c, (_axis.z * _axis.y * _oc) + (_axis.x * _s)),\n        vec3((_axis.x * _axis.z * _oc) + (_axis.y * _s), (_axis.y * _axis.z * _oc) - (_axis.x * _s), (_axis.z * _axis.z * _oc) + _c)\n    );\n}\n\nvec3 _op_rot_inverse_point(vec3 _p, vec3 _binormal, vec3 _anchor, float _angle) {\n    mat3 _r = _op_rot_matrix(_binormal, _angle);\n    return _anchor + (transpose(_r) * (_p - _anchor));\n}",
                 },
             ),
             (
@@ -435,8 +435,8 @@ impl Default for Registry {
                     value_arg_types: vec![Type::Vec2, Type::Float],
                     object_arg_count: 1,
                     associative_binary: false,
-                    glsl_name: "op_rot2D",
-                    support_glsl: "mat2 op_rot2D_matrix(float angle) {\n    float c = cos(angle);\n    float s = sin(angle);\n    return mat2(vec2(c, s), vec2(-s, c));\n}\n\nvec3 op_rot2D_inverse_point(vec3 p, vec2 anchor, float angle) {\n    mat2 r = op_rot2D_matrix(angle);\n    return vec3(anchor + (transpose(r) * (p.xy - anchor)), p.z);\n}",
+                    glsl_name: "_op_rot2D",
+                    support_glsl: "mat2 _op_rot2D_matrix(float _angle) {\n    float _c = cos(_angle);\n    float _s = sin(_angle);\n    return mat2(vec2(_c, _s), vec2(-_s, _c));\n}\n\nvec3 _op_rot2D_inverse_point(vec3 _p, vec2 _anchor, float _angle) {\n    mat2 _r = _op_rot2D_matrix(_angle);\n    return vec3(_anchor + (transpose(_r) * (_p.xy - _anchor)), _p.z);\n}",
                 },
             ),
         ]);
@@ -625,70 +625,52 @@ impl Default for Registry {
                 "derivative",
                 ValueFuncDef {
                     ty: Type::func(
-                        Type::Float,
-                        Type::func(
-                            Type::func(Type::Float, Type::Float),
-                            Type::func(Type::Float, Type::Float),
-                        ),
+                        Type::func(Type::Float, Type::Float),
+                        Type::func(Type::Float, Type::Float),
                     ),
                     support_glsl: None,
                     listed: true,
                 },
             ),
             (
-                "partialX",
+                "dfdx",
                 ValueFuncDef {
                     ty: Type::func(
-                        Type::Float,
-                        Type::func(
-                            Type::func(Type::Vec3, Type::Float),
-                            Type::func(Type::Vec3, Type::Float),
-                        ),
+                        Type::func(Type::Vec3, Type::Float),
+                        Type::func(Type::Vec3, Type::Float),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
-                "partialY",
+                "dfdy",
                 ValueFuncDef {
                     ty: Type::func(
-                        Type::Float,
-                        Type::func(
-                            Type::func(Type::Vec3, Type::Float),
-                            Type::func(Type::Vec3, Type::Float),
-                        ),
+                        Type::func(Type::Vec3, Type::Float),
+                        Type::func(Type::Vec3, Type::Float),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
-                "partialZ",
+                "dfdz",
                 ValueFuncDef {
                     ty: Type::func(
-                        Type::Float,
-                        Type::func(
-                            Type::func(Type::Vec3, Type::Float),
-                            Type::func(Type::Vec3, Type::Float),
-                        ),
+                        Type::func(Type::Vec3, Type::Float),
+                        Type::func(Type::Vec3, Type::Float),
                     ),
                     support_glsl: None,
-                    listed: false,
+                    listed: true,
                 },
             ),
             (
-                "directionalDerivative",
+                "dfdw",
                 ValueFuncDef {
                     ty: Type::func(
-                        Type::Float,
-                        Type::func(
-                            Type::Vec3,
-                            Type::func(
-                                Type::func(Type::Vec3, Type::Float),
-                                Type::func(Type::Vec3, Type::Float),
-                            ),
-                        ),
+                        Type::func(Type::Vec4, Type::Float),
+                        Type::func(Type::Vec4, Type::Float),
                     ),
                     support_glsl: None,
                     listed: true,
@@ -699,10 +681,7 @@ impl Default for Registry {
                 ValueFuncDef {
                     ty: Type::func(
                         Type::func(Type::Vec3, Type::Float),
-                        Type::func(
-                            Type::Vec3,
-                            Type::Vec3,
-                        ),
+                        Type::func(Type::Vec3, Type::Vec3),
                     ),
                     support_glsl: None,
                     listed: true,
@@ -712,11 +691,8 @@ impl Default for Registry {
                 "divergence",
                 ValueFuncDef {
                     ty: Type::func(
-                        Type::Float,
-                        Type::func(
-                            Type::func(Type::Vec3, Type::Vec3),
-                            Type::func(Type::Vec3, Type::Float),
-                        ),
+                        Type::func(Type::Vec3, Type::Vec3),
+                        Type::func(Type::Vec3, Type::Float),
                     ),
                     support_glsl: None,
                     listed: true,
@@ -807,9 +783,9 @@ impl Registry {
             });
         }
 
-        let mut op_names: Vec<_> = self.object_ops.keys().copied().collect();
-        op_names.sort_unstable();
-        for name in op_names {
+        let mut _op_names: Vec<_> = self.object_ops.keys().copied().collect();
+        _op_names.sort_unstable();
+        for name in _op_names {
             if self.value_funcs.get(name).is_some_and(|func| func.listed)
                 || listed_builtin_value_func_overloads(name).is_some()
             {
@@ -890,9 +866,9 @@ impl Registry {
             objects.extend(self.primitives[name].preregistered_objects(name));
         }
 
-        let mut op_names: Vec<_> = self.object_ops.keys().copied().collect();
-        op_names.sort_unstable();
-        for name in op_names {
+        let mut _op_names: Vec<_> = self.object_ops.keys().copied().collect();
+        _op_names.sort_unstable();
+        for name in _op_names {
             let op = &self.object_ops[name];
             objects.push(PreregisteredObject {
                 name: op.glsl_name.to_string(),

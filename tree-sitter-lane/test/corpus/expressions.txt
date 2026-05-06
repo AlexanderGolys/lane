@@ -178,3 +178,63 @@ const Object output = concat(a, [4, 5])[size(a) - 1]
           (argument_list
             (identifier)))
         (number)))))
+
+==================
+Raw GLSL Closure Placeholders
+==================
+
+#module
+const Hom(Object, Hom(Ray, Hit)) raytrace = obj -> "Hit raytrace(Ray ray) { float _d = ${obj.sdf}(ray.origin); return Hit(ray.origin, ${obj.grad}(ray.origin), _d, true); }"
+
+---
+
+(source_file
+  (directive)
+  (binding_declaration
+    (gen_modifier)
+    (hom_type
+      (type_identifier)
+      (hom_type
+        (type_identifier)
+        (type_identifier)))
+    (identifier)
+    (closure_expression
+      (identifier)
+      (string
+        (string_content)
+        (placeholder
+          (identifier)
+          (identifier))
+        (string_content)
+        (placeholder
+          (identifier)
+          (identifier))
+        (string_content)))))
+
+==================
+Product Closure Parameters
+==================
+
+const Hom(R x R, R) g = (x, y) -> sin(x + y)
+
+---
+
+(source_file
+  (binding_declaration
+    (gen_modifier)
+    (hom_type
+      (product_type
+        (type_identifier)
+        (type_identifier))
+      (type_identifier))
+    (identifier)
+    (closure_expression
+      (closure_parameter_list
+        (identifier)
+        (identifier))
+      (call_expression
+        (identifier)
+        (argument_list
+          (binary_expression
+            (identifier)
+            (identifier)))))))
