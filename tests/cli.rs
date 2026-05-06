@@ -592,7 +592,7 @@ fn writes_vulkan_preview_glsl_shaders() {
     let frag = std::fs::read_to_string(&frag_path).unwrap();
     assert!(frag.starts_with("#version 450\n"));
     assert!(frag.contains("layout(location = 0) out vec4 outColor;"));
-    assert!(frag.contains("layout(set = 0, binding = 0) uniform PreviewUniforms"));
+    assert!(frag.contains("layout(std140, push_constant) uniform PreviewUniforms"));
     assert!(frag.contains("    vec3 cameraPosition;"));
     assert!(frag.contains("    float time;"));
     assert!(!frag.contains("uniform vec3 cameraPosition;"));

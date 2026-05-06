@@ -227,7 +227,7 @@ fn preview_uniforms(program: &Program, target: PreviewShaderTarget) -> String {
                 String::new()
             } else {
                 format!(
-                    "layout(set = 0, binding = 0) uniform PreviewUniforms {{\n{}\n}};",
+                    "layout(std140, push_constant) uniform PreviewUniforms {{\n{}\n}};",
                     uniforms.join("\n")
                 )
             }

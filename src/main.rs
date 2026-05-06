@@ -3,13 +3,15 @@ use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::process::{self, Command};
 
+mod preview;
+
 const COLOR_FUNCTION: &str = "34";
 const COLOR_TYPE: &str = "33";
 const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 const COLOR_ERROR: &str = "31";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output uses glslc.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane preview SOURCE\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -33,11 +35,11 @@ const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     fi
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--show -s --list -l --list2d -l2 --list3d -l3 --list-objects -lo --list-all -la --print-completion -pc --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--show -s --frag= --vert= --frag-spv= --vert-spv= --version= --target= --list -l --list2d -l2 --list3d -l3 --list-objects -lo --list-all -la --print-completion -pc --help -h" -- "$cur") )
         return
     fi
 
-    COMPREPLY=( $(compgen -W "list-all" -- "$cur") )
+    COMPREPLY=( $(compgen -W "preview list-all" -- "$cur") )
 }
 
 complete -F _lane lane
@@ -55,6 +57,12 @@ _lane() {
         '(-la --list-all)'{-la,--list-all}'[list every builtin object, function, type, and constructor]' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-s --show)'{-s,--show}'[print compiled GLSL while also writing TARGET]' \
+        '--frag=[write complete preview fragment shader]:file:_files' \
+        '--vert=[write complete preview vertex shader]:file:_files' \
+        '--frag-spv=[write Vulkan preview fragment SPIR-V]:file:_files' \
+        '--vert-spv=[write Vulkan preview vertex SPIR-V]:file:_files' \
+        '--version=[preview shader GLSL version]:version:' \
+        '--target=[preview shader target]:target:(opengl vulkan)' \
         '(-h --help)'{-h,--help}'[show help]'
 }
 
@@ -72,7 +80,14 @@ complete -c lane -o la -l list-all -d 'List every builtin object, function, type
 complete -c lane -f -a 'list-all' -d 'List every builtin object, function, type, and constructor'
 complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s s -l show -d 'Print compiled GLSL while also writing TARGET'
+complete -c lane -l frag -r -d 'Write complete preview fragment shader'
+complete -c lane -l vert -r -d 'Write complete preview vertex shader'
+complete -c lane -l frag-spv -r -d 'Write Vulkan preview fragment SPIR-V'
+complete -c lane -l vert-spv -r -d 'Write Vulkan preview vertex SPIR-V'
+complete -c lane -l version -r -d 'Set preview shader GLSL version'
+complete -c lane -l target -r -a 'opengl vulkan' -d 'Set preview shader target'
 complete -c lane -s h -l help -d 'Show help'
+complete -c lane -f -a 'preview' -d 'Open native Vulkan preview'
 "#;
 
 fn main() {
@@ -142,6 +157,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_all_known_builtin_items();
             Ok(())
         }
+        [command, source_path] if command == "preview" => run_preview(source_path),
         [flag, shell] if matches!(flag.as_str(), "--print-completion" | "-pc") => {
             print_completion(shell)
         }
@@ -260,24 +276,45 @@ fn write_spirv_shader(
     source: &str,
     target_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = compile_spirv_shader(stage, source)?;
+    fs::write(target_path, bytes)?;
+    Ok(())
+}
+
+fn compile_spirv_shader(stage: &str, source: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let source_path = unique_temp_shader_path(stage, "glsl");
+    let target_path = unique_temp_shader_path(stage, "spv");
     fs::write(&source_path, source)?;
     let output = Command::new("glslc")
         .arg(format!("-fshader-stage={stage}"))
         .arg(&source_path)
         .arg("-o")
-        .arg(target_path)
+        .arg(&target_path)
         .output();
     let _ = fs::remove_file(&source_path);
     let output = output.map_err(|err| format!("failed to run glslc: {err}"))?;
-    if output.status.success() {
-        return Ok(());
+    if !output.status.success() {
+        let _ = fs::remove_file(&target_path);
+        return Err(format!(
+            "glslc failed for {stage} shader: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
-    Err(format!(
-        "glslc failed for {stage} shader: {}",
-        String::from_utf8_lossy(&output.stderr)
-    )
-    .into())
+    let bytes = fs::read(&target_path)?;
+    let _ = fs::remove_file(&target_path);
+    Ok(bytes)
+}
+
+fn run_preview(source_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let fragment = lane::compile_vulkan_preview_fragment_from_path(source_path)?;
+    let vertex = lane::compile_vulkan_preview_vertex();
+    let fragment_spv = compile_spirv_shader("frag", &fragment)?;
+    let vertex_spv = compile_spirv_shader("vert", &vertex)?;
+    preview::run(preview::PreviewShaders {
+        vertex_spv,
+        fragment_spv,
+    })
 }
 
 fn unique_temp_shader_path(stage: &str, extension: &str) -> std::path::PathBuf {
