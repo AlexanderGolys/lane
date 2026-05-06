@@ -82,10 +82,17 @@ function installFallbackPositionBuffer(gl, program) {
 function main() {
     const canvas = document.getElementById("canvas") || document.createElement("canvas");
     canvas.id = "canvas";
-    canvas.width = Number(canvas.dataset.width || 320);
-    canvas.height = Number(canvas.dataset.height || 180);
     document.body.style.margin = "0";
+    document.body.style.background = "#0d0f14";
+    canvas.style.display = "block";
+    canvas.style.width = canvas.dataset.width ? `${canvas.dataset.width}px` : "100vw";
+    canvas.style.height = canvas.dataset.height ? `${canvas.dataset.height}px` : "100vh";
     document.body.appendChild(canvas);
+    const cssWidth = Number(canvas.dataset.width || window.innerWidth || 960);
+    const cssHeight = Number(canvas.dataset.height || window.innerHeight || 540);
+    const pixelRatio = Number(canvas.dataset.pixelRatio || window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.floor(cssWidth * pixelRatio));
+    canvas.height = Math.max(1, Math.floor(cssHeight * pixelRatio));
 
     const gl = canvas.getContext("webgl2");
     if (!gl) {
