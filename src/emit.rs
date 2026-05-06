@@ -3405,9 +3405,14 @@ fn raw_glsl_function_signature(func: &TypedFunc) -> String {
     } else {
         func.output.glsl_name()
     };
+    let name = if func.input == Type::Unit && func.output == Type::Unit {
+        "main".to_string()
+    } else {
+        helper_name(&func.name)
+    };
     format!(
         "{output} {}({})",
-        helper_name(&func.name),
+        name,
         emit_raw_glsl_signature_params(&func.input)
     )
 }

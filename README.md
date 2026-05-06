@@ -651,6 +651,20 @@ Hom(R2, R) clipped = max(shape.sdf, 0)
 Hom(R2, R4) color = blend * (shape.sdf > 0)
 ```
 
+### Closures
+
+`t -> expr` builds a function by lifting `expr` over the parameter `t`. Product
+domains can name each component explicitly.
+
+```lane
+Hom(R, R) shifted = t -> sin(t + 1)
+Hom(R x R, R) diagonal = (x, y) -> sin(x + y)
+```
+
+The unit type `*` is used for shader entry functions. Raw GLSL module templates
+that instantiate to `Hom(*, *)` emit as `void main()` regardless of the Lane
+binding name.
+
 ### Function Products
 
 Tuples of functions with the same domain form a product-valued function. Products

@@ -847,6 +847,30 @@ fn imports_raytracing_module() {
 }
 
 #[test]
+fn raw_glsl_unit_templates_emit_shader_main() {
+    let dir = unique_temp_dir("module_raw_main");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("preview.lane"),
+        "#module\nconst Hom(Hom(R2, R4), Hom(*, *)) preview = shade -> \"outColor = ${shade}(gl_FragCoord.xy);\"\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import preview\nprovided Hom(R2, R4) shade\nconst Hom(*, *) entry = preview(shade)\n",
+    )
+    .unwrap();
+
+    let glsl = compile_program_from_path(&source_path).unwrap();
+
+    assert!(glsl.contains("void main()"));
+    assert!(glsl.contains("outColor = shade(gl_FragCoord.xy);"));
+    assert!(!glsl.contains("void entry()"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn raw_glsl_placeholders_accept_glsl_nameable_builtins() {
     let dir = unique_temp_dir("module_raw_builtin_placeholder");
     fs::create_dir_all(dir.join("modules")).unwrap();
