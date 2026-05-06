@@ -436,7 +436,7 @@ Categories classify which algebraic operations are available.
 | `Set` | plain values | no algebraic operations |
 | `Ab` | additive abelian group | `0`, `+`, `-` |
 | `Mon` | monoid | `1`, `*` |
-| `Grp` | group | `e`/`I`, `*`, inverse helpers |
+| `Grp` | group | `e`, `*`, inverse helpers |
 | `Ring` | ring | `0`, `1`, `+`, `-`, `*` |
 | `DivRing` | division ring | ring operations and `/` |
 | `VectR` | real vector space | `0`, `+`, `-`, scalar `*` and `/` |
@@ -482,7 +482,7 @@ Object ball = Ball3D(r=radius)
 const Object output = ball
 ```
 
-### Neutral Literals: `0`, `1`, `e`, `I`
+### Neutral Literals: `0`, `1`, `e`
 
 In expected-type contexts, Lane casts neutral literals:
 
@@ -494,7 +494,8 @@ Isom3 identity_motion = Isom3(e, 0)
 
 - `0` casts to the additive neutral element.
 - `1` casts to the multiplicative neutral element.
-- `e` and `I` cast to group or square-matrix identity elements.
+- `e` casts to group or square-matrix identity elements.
+- Matrix identities can also be written explicitly as `I{n}` or `eye{n}`.
 
 When overloads conflict, Lane prefers the uncast numeric type if that resolves
 the call; otherwise an explicit expected type may be required.
@@ -744,14 +745,14 @@ R3 color = mix(clamp(reflected, 0, 1), [1, 0, 0], 0.25)
 Mat3 adjusted = matrixCompMult(frame, inverse(transpose(frame)))
 ```
 
-Matrix identities can be written as `I` when the expected matrix type is known,
-or as `I{n}` when the dimension should be explicit. Matrix basis literals use
-`E{i}{j}` with one-based row and column indices, and the expected `Mat...` type
-sets the full matrix size. Unit vector literals use `e{N}{n}`, with `N` as the
-vector dimension and `n` as the one-based component index.
+Matrix identities can be written as `I{n}` or `eye{n}`. Matrix basis literals
+use `E{i}{j}` with one-based row and column indices, and the expected `Mat...`
+type sets the full matrix size. Unit vector literals use `e{N}{n}`, with `N` as
+the vector dimension and `n` as the one-based component index.
 
 ```lane
 Mat3 eye = I{3}
+Mat3 also_eye = eye{3}
 Mat3 ez = E{1}{3}
 Mat12x3 large = E12_3
 R3 y_axis = e{3}{2}

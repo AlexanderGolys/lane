@@ -579,13 +579,23 @@ fn supports_generic_matrix_dimensions() {
 
 #[test]
 fn supports_matrix_identity_and_basis_literals() {
-    let source = "Mat3 eye = I{3}\nMat3 axis = E{1}{3}\nMat3 alias = E13\nR3 unit = e{3}{2}\nconst Object output = Ball3D(r=determinant(eye + axis + alias) + length(unit))\n";
+    let source = "Mat3 eye = I{3}\nMat3 also_eye = eye{3}\nMat3 axis = E{1}{3}\nMat3 alias = E13\nR3 unit = e{3}{2}\nconst Object output = Ball3D(r=determinant(eye + also_eye + axis + alias) + length(unit))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("mat3 eye = mat3(1.0);"));
+    assert!(glsl.contains("mat3 also_eye = mat3(1.0);"));
     assert!(glsl.contains("mat3 axis = mat3(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);"));
     assert!(glsl.contains("mat3 alias = mat3(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);"));
     assert!(glsl.contains("vec3 unit = vec3(0.0, 1.0, 0.0);"));
+}
+
+#[test]
+fn rejects_bare_i_identity_alias() {
+    let error = compile_program("Mat3 m = I\nconst Object output = Ball3D(r=1)\n")
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("function 'I' needs an explicit call outside function bodies"));
 }
 
 #[test]

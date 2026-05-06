@@ -2390,7 +2390,7 @@ fn infer_value_expr_for_type(
                 ty: expected,
             })
         }
-        (_, Expr::Ident(name)) if matches!(name.as_str(), "e" | "I") && !env.has_binding(name) => {
+        (_, Expr::Ident(name)) if name == "e" && !env.has_binding(name) => {
             if let Some(kind) = neutral_kind_for_type(expected_ty, NeutralKind::Identity) {
                 return Ok(ValueExpr::Neutral {
                     kind,
@@ -2824,6 +2824,12 @@ fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKin
 
 fn parse_identity_matrix_name(name: &str) -> Option<usize> {
     if let Some(suffixes) = parse_braced_usize_suffixes(name, "I") {
+        let [dimension] = suffixes.as_slice() else {
+            return None;
+        };
+        return (*dimension > 0).then_some(*dimension);
+    }
+    if let Some(suffixes) = parse_braced_usize_suffixes(name, "eye") {
         let [dimension] = suffixes.as_slice() else {
             return None;
         };
