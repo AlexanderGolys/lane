@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Read};
-use std::process;
+use std::process::{self, Command};
 
 const COLOR_FUNCTION: &str = "34";
 const COLOR_TYPE: &str = "33";
@@ -9,7 +9,7 @@ const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 const COLOR_ERROR: &str = "31";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output uses glslc.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -107,9 +107,7 @@ fn error_type(err: &(dyn std::error::Error + 'static)) -> &'static str {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.iter().any(|arg| {
-        arg.starts_with("--frag=") || arg.starts_with("--vert=") || arg.starts_with("--version=")
-    }) {
+    if args.iter().any(|arg| is_preview_arg(arg)) {
         return write_preview_shaders(&args);
     }
     match args.as_slice() {
@@ -165,15 +163,26 @@ fn write_preview_shaders(args: &[String]) -> Result<(), Box<dyn std::error::Erro
     let mut source_path = None;
     let mut frag_path = None;
     let mut vert_path = None;
+    let mut frag_spv_path = None;
+    let mut vert_spv_path = None;
     let mut version = "300es".to_string();
+    let mut target = PreviewTarget::OpenGl;
 
     for arg in args {
         if let Some(path) = arg.strip_prefix("--frag=") {
             frag_path = Some(path.to_string());
         } else if let Some(path) = arg.strip_prefix("--vert=") {
             vert_path = Some(path.to_string());
+        } else if let Some(path) = arg.strip_prefix("--frag-spv=") {
+            frag_spv_path = Some(path.to_string());
+            target = PreviewTarget::Vulkan;
+        } else if let Some(path) = arg.strip_prefix("--vert-spv=") {
+            vert_spv_path = Some(path.to_string());
+            target = PreviewTarget::Vulkan;
         } else if let Some(value) = arg.strip_prefix("--version=") {
             version = value.to_string();
+        } else if let Some(value) = arg.strip_prefix("--target=") {
+            target = PreviewTarget::parse(value)?;
         } else if arg.starts_with('-') {
             return Err(format!("unsupported preview flag '{arg}'").into());
         } else if source_path.replace(arg.to_string()).is_some() {
@@ -184,18 +193,105 @@ fn write_preview_shaders(args: &[String]) -> Result<(), Box<dyn std::error::Erro
     let Some(source_path) = source_path else {
         return Err("preview shader generation requires SOURCE".into());
     };
-    if frag_path.is_none() && vert_path.is_none() {
-        return Err("preview shader generation requires --frag=PATH or --vert=PATH".into());
+    if frag_path.is_none()
+        && vert_path.is_none()
+        && frag_spv_path.is_none()
+        && vert_spv_path.is_none()
+    {
+        return Err(
+            "preview shader generation requires --frag=PATH, --vert=PATH, --frag-spv=PATH, or --vert-spv=PATH"
+                .into(),
+        );
     }
 
     if let Some(path) = frag_path {
-        let output = lane::compile_preview_fragment_from_path(&source_path, &version)?;
+        let output = match target {
+            PreviewTarget::OpenGl => {
+                lane::compile_preview_fragment_from_path(&source_path, &version)?
+            }
+            PreviewTarget::Vulkan => lane::compile_vulkan_preview_fragment_from_path(&source_path)?,
+        };
         fs::write(path, output)?;
     }
     if let Some(path) = vert_path {
-        fs::write(path, lane::compile_preview_vertex(&version))?;
+        let output = match target {
+            PreviewTarget::OpenGl => lane::compile_preview_vertex(&version),
+            PreviewTarget::Vulkan => lane::compile_vulkan_preview_vertex(),
+        };
+        fs::write(path, output)?;
+    }
+    if let Some(path) = frag_spv_path {
+        let output = lane::compile_vulkan_preview_fragment_from_path(&source_path)?;
+        write_spirv_shader("frag", &output, &path)?;
+    }
+    if let Some(path) = vert_spv_path {
+        write_spirv_shader("vert", &lane::compile_vulkan_preview_vertex(), &path)?;
     }
     Ok(())
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum PreviewTarget {
+    OpenGl,
+    Vulkan,
+}
+
+impl PreviewTarget {
+    fn parse(value: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        match value {
+            "opengl" | "gl" | "webgl" => Ok(Self::OpenGl),
+            "vulkan" | "vk" => Ok(Self::Vulkan),
+            _ => Err(format!("unsupported preview target '{value}'").into()),
+        }
+    }
+}
+
+fn is_preview_arg(arg: &str) -> bool {
+    arg.starts_with("--frag=")
+        || arg.starts_with("--vert=")
+        || arg.starts_with("--frag-spv=")
+        || arg.starts_with("--vert-spv=")
+        || arg.starts_with("--version=")
+        || arg.starts_with("--target=")
+}
+
+fn write_spirv_shader(
+    stage: &str,
+    source: &str,
+    target_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source_path = unique_temp_shader_path(stage, "glsl");
+    fs::write(&source_path, source)?;
+    let output = Command::new("glslc")
+        .arg(format!("-fshader-stage={stage}"))
+        .arg(&source_path)
+        .arg("-o")
+        .arg(target_path)
+        .output();
+    let _ = fs::remove_file(&source_path);
+    let output = output.map_err(|err| format!("failed to run glslc: {err}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "glslc failed for {stage} shader: {}",
+        String::from_utf8_lossy(&output.stderr)
+    )
+    .into())
+}
+
+fn unique_temp_shader_path(stage: &str, extension: &str) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "lane-preview-{}-{}-{}.{}",
+        stage,
+        process::id(),
+        nanos,
+        extension
+    ))
 }
 
 fn print_compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {

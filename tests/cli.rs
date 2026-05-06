@@ -563,6 +563,85 @@ fn preview_shader_version_flag_splits_es_suffix() {
 }
 
 #[test]
+fn writes_vulkan_preview_glsl_shaders() {
+    let temp_dir = unique_temp_dir("lane-cli-preview-vulkan-glsl");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let frag_path = temp_dir.join("preview.frag");
+    let vert_path = temp_dir.join("preview.vert");
+    std::fs::write(
+        &source_path,
+        "provided R time\nconst Object scene = Ball3D(r=1 + sin(time))\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg(&source_path)
+        .arg("--target=vulkan")
+        .arg(format!("--frag={}", frag_path.display()))
+        .arg(format!("--vert={}", vert_path.display()))
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let frag = std::fs::read_to_string(&frag_path).unwrap();
+    assert!(frag.starts_with("#version 450\n"));
+    assert!(frag.contains("layout(location = 0) out vec4 outColor;"));
+    assert!(frag.contains("layout(set = 0, binding = 0) uniform PreviewUniforms"));
+    assert!(frag.contains("    vec3 cameraPosition;"));
+    assert!(frag.contains("    float time;"));
+    assert!(!frag.contains("uniform vec3 cameraPosition;"));
+
+    let vert = std::fs::read_to_string(&vert_path).unwrap();
+    assert!(vert.starts_with("#version 450\n"));
+    assert!(vert.contains("gl_VertexIndex"));
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
+fn writes_vulkan_preview_spirv_shaders() {
+    let temp_dir = unique_temp_dir("lane-cli-preview-vulkan-spv");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let frag_path = temp_dir.join("preview.frag.spv");
+    let vert_path = temp_dir.join("preview.vert.spv");
+    std::fs::write(
+        &source_path,
+        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg(&source_path)
+        .arg(format!("--frag-spv={}", frag_path.display()))
+        .arg(format!("--vert-spv={}", vert_path.display()))
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read(&frag_path).unwrap()[..4],
+        [0x03, 0x02, 0x23, 0x07]
+    );
+    assert_eq!(
+        std::fs::read(&vert_path).unwrap()[..4],
+        [0x03, 0x02, 0x23, 0x07]
+    );
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
 fn show_prints_compiled_output_while_writing_target_path() {
     let temp_dir = unique_temp_dir("lane-cli-show-target");
     std::fs::create_dir(&temp_dir).unwrap();

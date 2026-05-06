@@ -29,7 +29,14 @@ pub fn compile_preview_fragment_from_path(
     let path = path.as_ref();
     let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    compile_preview_fragment(&source, base_dir, version)
+    compile_preview_fragment(&source, base_dir, version, PreviewShaderTarget::OpenGl)
+}
+
+pub fn compile_vulkan_preview_fragment_from_path(path: impl AsRef<Path>) -> Result<String, Error> {
+    let path = path.as_ref();
+    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    compile_preview_fragment(&source, base_dir, "450", PreviewShaderTarget::Vulkan)
 }
 
 pub fn compile_preview_vertex(version: &str) -> String {
@@ -39,6 +46,11 @@ pub fn compile_preview_vertex(version: &str) -> String {
     )
 }
 
+pub fn compile_vulkan_preview_vertex() -> String {
+    "#version 450\n\nconst vec2 vertices[3] = vec2[3](\n    vec2(-1.0, -1.0),\n    vec2(3.0, -1.0),\n    vec2(-1.0, 3.0)\n);\n\nvoid main() {\n    gl_Position = vec4(vertices[gl_VertexIndex], 0.0, 1.0);\n}\n"
+        .to_string()
+}
+
 fn compile_program_with_base(source: &str, base_dir: &Path) -> Result<String, Error> {
     let registry = Registry::default();
     let program = ModuleLoader::new(base_dir).load_main(source)?;
@@ -46,17 +58,38 @@ fn compile_program_with_base(source: &str, base_dir: &Path) -> Result<String, Er
     Ok(typed.emit_glsl(&registry))
 }
 
-fn compile_preview_fragment(source: &str, base_dir: &Path, version: &str) -> Result<String, Error> {
+#[derive(Clone, Copy)]
+enum PreviewShaderTarget {
+    OpenGl,
+    Vulkan,
+}
+
+fn compile_preview_fragment(
+    source: &str,
+    base_dir: &Path,
+    version: &str,
+    target: PreviewShaderTarget,
+) -> Result<String, Error> {
     let source = prepare_preview_source(source);
     let registry = Registry::default();
     let program = ModuleLoader::new(base_dir).load_main(&source)?;
     reject_preview_provided_functions(&program)?;
-    let uniforms = preview_uniforms(&program);
+    let uniforms = preview_uniforms(&program, target);
     let typed = TypedProgram::from_program(&program, &registry)?;
     let body = typed.emit_glsl(&registry);
+    let output = match target {
+        PreviewShaderTarget::OpenGl => "out vec4 outColor;",
+        PreviewShaderTarget::Vulkan => "layout(location = 0) out vec4 outColor;",
+    };
+    let precision = match target {
+        PreviewShaderTarget::OpenGl => "precision highp float;\n\n",
+        PreviewShaderTarget::Vulkan => "",
+    };
     Ok(format!(
-        "{}\nprecision highp float;\n\nout vec4 outColor;\n\n{}\n{}",
+        "{}\n\n{}{}\n\n{}\n{}",
         glsl_version_directive(version),
+        precision,
+        output,
         uniforms,
         body
     ))
@@ -176,14 +209,30 @@ fn reject_preview_provided_functions(program: &Program) -> Result<(), Error> {
     Ok(())
 }
 
-fn preview_uniforms(program: &Program) -> String {
-    program
+fn preview_uniforms(program: &Program, target: PreviewShaderTarget) -> String {
+    let uniforms = program
         .inputs
         .iter()
         .filter(|input| !matches!(input.ty, Type::Object | Type::Object2D))
-        .map(|input| format!("uniform {} {};", input.ty.glsl_name(), input.name))
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|input| format!("    {} {};", input.ty.glsl_name(), input.name))
+        .collect::<Vec<_>>();
+    match target {
+        PreviewShaderTarget::OpenGl => uniforms
+            .into_iter()
+            .map(|uniform| format!("uniform {};", uniform.trim_end_matches(';').trim()))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        PreviewShaderTarget::Vulkan => {
+            if uniforms.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "layout(set = 0, binding = 0) uniform PreviewUniforms {{\n{}\n}};",
+                    uniforms.join("\n")
+                )
+            }
+        }
+    }
 }
 
 fn glsl_version_directive(version: &str) -> String {
