@@ -61,7 +61,7 @@ for (int bounce = 0; bounce < ${config}.max_bounces; bounce++) {
 return _radiance;
 "
 
-const Hom(Hom(R2, Ray) × Hom(Ray, R3), Hom(R2, R4)) shade = (make_ray, color_ray) -> v -> (color_ray(make_ray(v)), 1)
+const Hom(Hom(R2, Ray) × Hom(Ray, {Color}), Hom(R2, R4)) shade = (make_ray, color_ray) -> v -> (color_ray(make_ray(v)), 1)
 
 const Hom(Hom(R2, R4), Hom(*, *)) fragment_main = shade_at -> "
 outColor = ${shade_at}(gl_FragCoord.xy);

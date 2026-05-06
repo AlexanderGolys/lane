@@ -116,11 +116,18 @@ module.exports = grammar({
             $.end_type,
             $.array_type,
             $.unit_type,
+            $.generic_type,
             $.parenthesized_type,
             alias($.identifier, $.type_identifier),
         ),
 
         unit_type: () => '*',
+
+        generic_type: ($) => seq(
+            '{',
+            field('name', $.identifier),
+            '}',
+        ),
 
         product_type: ($) => prec.left(PREC.product, seq(
             field('left', $._non_product_type),

@@ -164,6 +164,20 @@ module directory. The shipped modules include `std` and `raytracing`.
 R z = projection_1([3, 4])
 ```
 
+The `raytracing` module provides the `Ray`, `Hit`, `Material`, `Camera`,
+`RaytraceConfig`, and `RaycolorConfig` product types plus helpers for preview
+shaders. `shade` composes a screen-coordinate ray function with a ray-color
+function; its ray color input is generic, with the preview `R4` output context
+deducing the concrete color type.
+
+```lane
+#import raytracing
+const Hom(R2, Ray) rays = camera_ray(camera)
+const Hom(Ray, R3) colors = raycolor_with(default_raycolor_config, ambientColor, hit, material)
+const Hom(R2, R4) pixels = shade(rays, colors)
+const Hom(*, *) main = fragment_main(pixels)
+```
+
 ## Declarations
 
 ### `provided TYPE name`

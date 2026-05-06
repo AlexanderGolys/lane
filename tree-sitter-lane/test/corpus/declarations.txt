@@ -143,6 +143,7 @@ provided Array(R) weights
 Array(R) a = Array(1, 2, 3)
 Func(Float, Array(R)) pair = Array(sin, cos)
 Mat{n}x{m} matrix = eye{n}
+provided Hom(Ray, {Color}) color_ray
 
 ---
 
@@ -175,6 +176,12 @@ Mat{n}x{m} matrix = eye{n}
   (binding_declaration
     (type_identifier)
     (identifier)
+    (identifier))
+  (input_declaration
+    (hom_type
+      (type_identifier)
+      (generic_type
+        (identifier)))
     (identifier)))
 
 ==================

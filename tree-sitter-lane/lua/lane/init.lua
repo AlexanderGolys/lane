@@ -83,6 +83,13 @@ local function query_for_parser(query, symbols)
     query = query:gsub('\n%(bracket_literal\n  %["%[" "%]"%] @punctuation%.bracket%)\n', "\n")
   end
 
+  if not has_symbol(symbols, "generic_type") then
+    query = query:gsub(
+      "\n?" .. vim.pesc('(generic_type\n  ["{" "}"] @punctuation.bracket\n  name: (identifier) @type)') .. "\n?",
+      "\n"
+    )
+  end
+
   return query
 end
 

@@ -19,6 +19,10 @@
 (placeholder field: (identifier) @property)
 (unit_type) @type.builtin
 
+(generic_type
+  ["{" "}"] @punctuation.bracket
+  name: (identifier) @type)
+
 ((type_identifier) @constant.builtin
   (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "DivRing" "VectR" "RAlg" "Set")
   (#set! priority 110))
