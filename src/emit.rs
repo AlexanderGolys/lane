@@ -871,7 +871,7 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
                 collect_object_getter_value_refs(row, names);
             }
         }
-        ValueExpr::MatrixBasis { .. } => {}
+        ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
         ValueExpr::Derivative {
             epsilon, func, at, ..
         }
@@ -1726,7 +1726,7 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
                 collect_concat_helpers(row, helpers);
             }
         }
-        ValueExpr::MatrixBasis { .. } => {}
+        ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
         | ValueExpr::Divergence { epsilon, at, .. } => {
@@ -1764,7 +1764,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         ValueExpr::Matrix { rows, .. } => rows
             .iter()
             .all(|row| is_global_const_value_expr(row, names)),
-        ValueExpr::MatrixBasis { .. } => true,
+        ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => true,
         ValueExpr::Binary { left, right, .. } => {
             is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
         }
@@ -1923,7 +1923,7 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_refs(row, names);
             }
         }
-        ValueExpr::MatrixBasis { .. } => {}
+        ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
         | ValueExpr::Divergence { epsilon, at, .. } => {
@@ -2009,7 +2009,7 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_function_refs(row, names);
             }
         }
-        ValueExpr::MatrixBasis { .. } => {}
+        ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Partial { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
@@ -2230,7 +2230,7 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_support(row, names);
             }
         }
-        ValueExpr::MatrixBasis { .. } => {}
+        ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
         ValueExpr::Derivative {
             epsilon, func, at, ..
         }
@@ -2452,6 +2452,11 @@ fn emit_value_expr(
             emit_matrix(rows, *columns, helper_names, value_names)
         }
         ValueExpr::MatrixBasis { row, column, ty } => emit_matrix_basis(*row, *column, ty),
+        ValueExpr::UnitVectorBasis {
+            dimension,
+            index,
+            ty,
+        } => emit_unit_vector_basis(*dimension, *index, ty),
         ValueExpr::Derivative {
             epsilon, func, at, ..
         } => emit_scalar_derivative(func, epsilon, at, helper_names, value_names),
@@ -2534,6 +2539,15 @@ fn emit_matrix_basis(row: usize, column: usize, ty: &Type) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!("{}({})", matrix_glsl_type(*rows, *columns), values)
+}
+
+fn emit_unit_vector_basis(dimension: usize, index: usize, ty: &Type) -> String {
+    debug_assert_eq!(vector_type_dimension(ty), Some(dimension));
+    let values = (1..=dimension)
+        .map(|current| if current == index { "1.0" } else { "0.0" })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{}({})", ty.glsl_name(), values)
 }
 
 fn emit_binary_expr(

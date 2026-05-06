@@ -2024,7 +2024,9 @@ fn infer_value_expr(
             lift_param,
         ),
         Expr::Tuple(items) => infer_tuple_value_expr(items, env, lift_param),
-        Expr::Array(items) => infer_array_literal(items, env, lift_param, None),
+        Expr::Array(_) => Err(Error::new(
+            "bracket literals need an expected vector or matrix type; use Array(...) for arrays",
+        )),
         Expr::Index { array, index } => infer_index_expr(array, index, env, lift_param),
         Expr::Call { callee, args } => {
             if let Expr::Operator(op) = &**callee {
@@ -2160,6 +2162,9 @@ fn infer_value_expr(
             })
         }
         Expr::Constructor { name, args } => match args {
+            ConstructorArgs::Positional(args) if name == "Array" => {
+                infer_array_literal(args, env, lift_param, None)
+            }
             ConstructorArgs::Positional(args) => infer_value_expr(
                 &Expr::Call {
                     callee: Box::new(Expr::Ident(name.clone())),
@@ -2339,6 +2344,37 @@ fn infer_value_expr_for_type(
                 ty: expected_ty.clone(),
             })
         }
+        (_, Expr::Ident(name)) if parse_unit_vector_basis_name(name).is_some() => {
+            let Some((dimension, index)) = parse_unit_vector_basis_name(name) else {
+                unreachable!();
+            };
+            let Some(expected_dimension) = vector_dimension(expected_ty) else {
+                return Err(Error::new(format!(
+                    "unit vector literal '{}' needs an expected vector type",
+                    name
+                )));
+            };
+            if dimension != expected_dimension {
+                return Err(Error::new(format!(
+                    "unit vector literal '{}' has dimension {}, expected {}",
+                    name,
+                    dimension,
+                    format_type(expected_ty)
+                )));
+            }
+            if index == 0 || index > dimension {
+                return Err(Error::new(format!(
+                    "unit vector literal '{}' is outside {}",
+                    name,
+                    format_type(expected_ty)
+                )));
+            }
+            Ok(ValueExpr::UnitVectorBasis {
+                dimension,
+                index,
+                ty: expected_ty.clone(),
+            })
+        }
         (_, Expr::Ident(name)) if parse_identity_matrix_name(name).is_some() => {
             let Some(dimension) = parse_identity_matrix_name(name) else {
                 unreachable!();
@@ -2454,9 +2490,16 @@ fn infer_value_expr_for_type(
             }
             Ok(value)
         }
-        (Type::Array(element_ty), Expr::Array(items)) => {
-            infer_array_literal(items, env, lift_param, Some(element_ty))
-        }
+        (
+            Type::Array(element_ty),
+            Expr::Constructor {
+                name,
+                args: ConstructorArgs::Positional(items),
+            },
+        ) if name == "Array" => infer_array_literal(items, env, lift_param, Some(element_ty)),
+        (Type::Array(_), Expr::Array(_)) => Err(Error::new(
+            "array values use Array(...); brackets are reserved for vectors and matrices",
+        )),
         (_, Expr::Call { callee, args }) => {
             let Expr::Ident(name) = &**callee else {
                 return infer_value_expr(expr, env, lift_param);
@@ -2734,6 +2777,7 @@ fn collect_lifted_param_type(
             }
         }
         ValueExpr::MatrixBasis { .. } => {}
+        ValueExpr::UnitVectorBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Partial { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
@@ -2810,6 +2854,14 @@ fn parse_matrix_basis_name(name: &str) -> Option<(usize, usize)> {
         ));
     }
     None
+}
+
+fn parse_unit_vector_basis_name(name: &str) -> Option<(usize, usize)> {
+    let suffixes = parse_braced_usize_suffixes(name, "e")?;
+    let [dimension, index] = suffixes.as_slice() else {
+        return None;
+    };
+    (*dimension > 0).then_some((*dimension, *index))
 }
 
 fn parse_braced_usize_suffixes(name: &str, prefix: &str) -> Option<Vec<usize>> {
@@ -3130,9 +3182,7 @@ fn infer_array_literal(
     expected_element_ty: Option<&Type>,
 ) -> Result<ValueExpr, Error> {
     if items.is_empty() {
-        return Err(Error::new(
-            "array literals must contain at least one element",
-        ));
+        return Err(Error::new("Array(...) requires at least one element"));
     }
 
     let element_ty = if let Some(expected) = expected_element_ty {
@@ -4514,6 +4564,12 @@ fn infer_identifier_value(
         if parse_matrix_basis_name(name).is_some() {
             return Err(Error::new(format!(
                 "matrix basis literal '{}' needs an expected matrix type",
+                name
+            )));
+        }
+        if parse_unit_vector_basis_name(name).is_some() {
+            return Err(Error::new(format!(
+                "unit vector literal '{}' needs an expected vector type",
                 name
             )));
         }

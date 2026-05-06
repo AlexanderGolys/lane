@@ -505,11 +505,11 @@ fn parse_product_type_decl(
 }
 
 fn split_product_type_fields(source: &str) -> Result<(&str, Option<Vec<String>>), Error> {
-    let Some(stripped) = source.strip_suffix('}') else {
+    let Some(stripped) = source.strip_suffix('>') else {
         return Ok((source, None));
     };
-    let Some(open_index) = stripped.rfind('{') else {
-        return Err(Error::new("expected '{' before product field names"));
+    let Some(open_index) = stripped.rfind('<') else {
+        return Err(Error::new("expected '<' before product field names"));
     };
     let fields = stripped[open_index + 1..]
         .split(',')

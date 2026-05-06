@@ -579,12 +579,13 @@ fn supports_generic_matrix_dimensions() {
 
 #[test]
 fn supports_matrix_identity_and_basis_literals() {
-    let source = "Mat3 eye = I{3}\nMat3 axis = E{1}{3}\nMat3 alias = E13\nconst Object output = Ball3D(r=determinant(eye + axis + alias))\n";
+    let source = "Mat3 eye = I{3}\nMat3 axis = E{1}{3}\nMat3 alias = E13\nR3 unit = e{3}{2}\nconst Object output = Ball3D(r=determinant(eye + axis + alias) + length(unit))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("mat3 eye = mat3(1.0);"));
     assert!(glsl.contains("mat3 axis = mat3(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);"));
     assert!(glsl.contains("mat3 alias = mat3(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);"));
+    assert!(glsl.contains("vec3 unit = vec3(0.0, 1.0, 0.0);"));
 }
 
 #[test]
@@ -1043,7 +1044,7 @@ fn module_can_provide_its_own_product_type() {
     fs::create_dir_all(dir.join("modules")).unwrap();
     fs::write(
         dir.join("modules").join("materials.lane"),
-        "#module\nprovided VectR Material = R3 x R3 x R {color, emission, reflectiveness}\n",
+        "#module\nprovided VectR Material = R3 x R3 x R <color, emission, reflectiveness>\n",
     )
     .unwrap();
     let source_path = dir.join("scene.lane");
@@ -1062,7 +1063,7 @@ fn module_can_provide_its_own_product_type() {
 
 #[test]
 fn provided_product_type_is_declared_but_not_emitted() {
-    let source = "provided VectR External = R3 x R {color, weight}\nprovided External external\nconst Hom(R, External) copied = external\n";
+    let source = "provided VectR External = R3 x R <color, weight>\nprovided External external\nconst Hom(R, External) copied = external\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(!glsl.contains("struct External"));
@@ -1189,7 +1190,7 @@ fn supports_provided_group_category_types() {
 
 #[test]
 fn supports_product_group_types_with_named_fields() {
-    let source = "Grp G = Isom3 x Isom2 {m, n}\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "Grp G = Isom3 x Isom2 <m, n>\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct G {\n    Isom3 m;\n    Isom2 n;\n};"));
@@ -1249,7 +1250,7 @@ fn emits_all_product_ops_for_const_product_types() {
 
 #[test]
 fn rejects_product_field_count_mismatches() {
-    let source = "Grp G = Isom3 x Isom2 {m}\nconst Object output = Ball3D(r=1)\n";
+    let source = "Grp G = Isom3 x Isom2 <m>\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' has 2 component(s) but 1 field name(s)"));
@@ -1257,7 +1258,7 @@ fn rejects_product_field_count_mismatches() {
 
 #[test]
 fn rejects_duplicate_product_field_names() {
-    let source = "Grp G = Isom3 x Isom2 {m, m}\nconst Object output = Ball3D(r=1)\n";
+    let source = "Grp G = Isom3 x Isom2 <m, m>\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' has duplicate field name 'm'"));
@@ -1265,7 +1266,7 @@ fn rejects_duplicate_product_field_names() {
 
 #[test]
 fn rejects_reserved_glsl_product_field_names() {
-    let source = "Set Hit = R3 x R {position, distance}\nconst Object output = Ball3D(r=1)\n";
+    let source = "Set Hit = R3 x R <position, distance>\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'Hit' field name 'distance' is reserved in GLSL"));
@@ -2351,7 +2352,7 @@ fn emits_only_used_object_operator_support() {
 
 #[test]
 fn emits_array_literals_index_size_and_concat() {
-    let source = "Array(R) a = [1, 2, 3]\nR x = a[1]\nZ n = size(a)\nArray(R) b = concat(a, [4, 5])\nconst Object output = Ball3D(r=x + b[n])\n";
+    let source = "Array(R) a = Array(1, 2, 3)\nR x = a[1]\nZ n = size(a)\nArray(R) b = concat(a, Array(4, 5))\nconst Object output = Ball3D(r=x + b[n])\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float a[3] = float[3](1.0, 2.0, 3.0);"));
@@ -2363,7 +2364,7 @@ fn emits_array_literals_index_size_and_concat() {
 
 #[test]
 fn emits_array_types_for_inputs_and_function_returns() {
-    let source = "provided Array(R) weights\nFunc(Float, Array(R)) pair = [sin, cos]\nR radius = weights[0] + pair(0)[1]\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided Array(R) weights\nFunc(Float, Array(R)) pair = Array(sin, cos)\nR radius = weights[0] + pair(0)[1]\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float[] pair(float _t) {"));
@@ -2374,18 +2375,18 @@ fn emits_array_types_for_inputs_and_function_returns() {
 
 #[test]
 fn rejects_empty_array_literal() {
-    let source = "Array(R) a = []\nconst Object output = Ball3D(r=1)\n";
+    let source = "Array(R) a = Array()\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(
         err.to_string(),
-        "line 1: array literals must contain at least one element"
+        "line 1: Array(...) requires at least one element"
     );
 }
 
 #[test]
 fn rejects_mixed_array_elements() {
-    let source = "Array(R) a = [1, (1, 2)]\nconst Object output = Ball3D(r=1)\n";
+    let source = "Array(R) a = Array(1, (1, 2))\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(
@@ -2396,7 +2397,7 @@ fn rejects_mixed_array_elements() {
 
 #[test]
 fn rejects_non_integer_array_index() {
-    let source = "Array(R) a = [1, 2]\nR x = a[0.5]\nconst Object output = Ball3D(r=x)\n";
+    let source = "Array(R) a = Array(1, 2)\nR x = a[0.5]\nconst Object output = Ball3D(r=x)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(
@@ -2415,7 +2416,7 @@ fn rejects_indexing_non_array() {
 
 #[test]
 fn rejects_concat_element_mismatch() {
-    let source = "Array(R) a = [1]\nArray(R2) b = [(1, 2)]\nArray(R) c = concat(a, b)\nconst Object output = Ball3D(r=1)\n";
+    let source = "Array(R) a = Array(1)\nArray(R2) b = Array([1, 2])\nArray(R) c = concat(a, b)\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err();
 
     assert_eq!(

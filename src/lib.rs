@@ -1686,6 +1686,11 @@ enum ValueExpr {
         column: usize,
         ty: Type,
     },
+    UnitVectorBasis {
+        dimension: usize,
+        index: usize,
+        ty: Type,
+    },
     Derivative {
         epsilon: Box<ValueExpr>,
         func: FunctionExpr,
@@ -1735,6 +1740,7 @@ impl ValueExpr {
             Self::Vec4(_, _, _, _) => Type::Vec4,
             Self::Matrix { columns, rows } => Type::Mat(rows.len(), *columns),
             Self::MatrixBasis { ty, .. } => ty.clone(),
+            Self::UnitVectorBasis { ty, .. } => ty.clone(),
             Self::Derivative { ty, .. } => ty.clone(),
             Self::Partial { ty, .. } => ty.clone(),
             Self::Gradient { ty, .. } => ty.clone(),

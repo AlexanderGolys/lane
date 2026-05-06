@@ -195,13 +195,13 @@ const Object output = Ball3D(r=radius)
 This emits calls such as `mult_G(a, b)`. For neutral literals, Lane expects
 globals such as `zero_G`, `one_G`, and `e_G` when those operations are needed.
 
-### `[const] CATEGORY TypeName = TYPE x TYPE [{field, field}]`
+### `[const] CATEGORY TypeName = TYPE x TYPE <field, field>`
 
 Constructs a nominal product type and emits a GLSL struct. Every component must
 satisfy the declared category or a subcategory. `DivRing` products are rejected.
 
 ```lane
-Grp G = Isom3 x Isom2 {m, n}
+Grp G = Isom3 x Isom2 <m, n>
 provided G a
 provided G b
 G product = a * b
@@ -390,11 +390,11 @@ R y = loop(0.5)
 
 ### `Array(T)`
 
-Array type. Array literals are fixed-size at construction time, and indexing
-uses integer indices.
+Array type. Array values are fixed-size at construction time, and indexing uses
+integer indices.
 
 ```lane
-Array(R) weights = [1, 2, 3]
+Array(R) weights = Array(1, 2, 3)
 R first = weights[0]
 R count = size(weights)
 ```
@@ -402,8 +402,8 @@ R count = size(weights)
 Use `concat(left, right)` to concatenate arrays:
 
 ```lane
-Array(R) a = [1, 2]
-Array(R) b = [3]
+Array(R) a = Array(1, 2)
+Array(R) b = Array(3)
 Array(R) c = concat(a, b)
 ```
 
@@ -529,11 +529,11 @@ the correct column-major form.
 
 ### Arrays
 
-Array literals also use square brackets when an `Array(T)` type is expected. All
-elements must have the same type.
+Array values use `Array(...)`. All elements must have the same type. Brackets
+are reserved for vector and matrix literals.
 
 ```lane
-Array(R3) points = [[0, 0, 0], [1, 0, 0]]
+Array(R3) points = Array([0, 0, 0], [1, 0, 0])
 R3 first = points[0]
 ```
 
@@ -720,7 +720,7 @@ R2 q = warp([1, 2])
 Array indexing uses square brackets and integer indices.
 
 ```lane
-Array(R) xs = [1, 2, 3]
+Array(R) xs = Array(1, 2, 3)
 R x = xs[1]
 ```
 
@@ -747,12 +747,14 @@ Mat3 adjusted = matrixCompMult(frame, inverse(transpose(frame)))
 Matrix identities can be written as `I` when the expected matrix type is known,
 or as `I{n}` when the dimension should be explicit. Matrix basis literals use
 `E{i}{j}` with one-based row and column indices, and the expected `Mat...` type
-sets the full matrix size.
+sets the full matrix size. Unit vector literals use `e{N}{n}`, with `N` as the
+vector dimension and `n` as the one-based component index.
 
 ```lane
 Mat3 eye = I{3}
 Mat3 ez = E{1}{3}
 Mat12x3 large = E12_3
+R3 y_axis = e{3}{2}
 ```
 
 Registered GLSL functions include:
@@ -1016,7 +1018,7 @@ names such as `p`, `eps`, `dx`, `dy`, or `dz`.
 provided R time
 provided Hom(R3, R) density
 
-Grp Motion = Isom3 x Isom3 {left, right}
+Grp Motion = Isom3 x Isom3 <left, right>
 
 R3 axis = [0, 0, 1]
 Isom3 spin = rot(axis, 0, time)

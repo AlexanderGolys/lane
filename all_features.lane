@@ -17,7 +17,7 @@ provided ExtMotion externalA
 provided ExtMotion externalB
 provided Hom(ExtMotion, R) extMeasure
 
-const Grp Motion = Isom3 x Isom2 {space, plane}
+const Grp Motion = Isom3 x Isom2 <space, plane>
 Set Bundle = R x R3
 
 provided Hom(Motion, R) motionMeasure
@@ -56,11 +56,11 @@ R measured = density(probe) + motionMeasure(motion) + bundleMeasure(bundle) + ex
 Func(R, R) wave = pow2 @ sin + .5
 Func(R, R) slope = derivative(sin)
 Func(R, R) defaultSlope = grad(sin)
-Func(R, Array(R)) wavePair = [sin, cos]
+Func(R, Array(R)) wavePair = Array(sin, cos)
 Func(R, Mat3) spinMatrix = ((cos, 0 - sin, 0), (sin, cos, 0), (0, 0, 1))
 
-Array(R) weights = [1, 2, 3]
-Array(R) moreWeights = concat(weights, [4, 5])
+Array(R) weights = Array(1, 2, 3)
+Array(R) moreWeights = concat(weights, Array(4, 5))
 Z count = size(weights)
 R picked = moreWeights[1] + wavePair(time)[0]
 
