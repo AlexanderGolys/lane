@@ -76,10 +76,10 @@ module.exports = grammar({
         ), $.type_identifier),
 
         product_field_list: ($) => seq(
-            '{',
+            '<',
             commaSep1(field('name', $.identifier)),
             optional(','),
-            '}',
+            '>',
         ),
 
         input_declaration: ($) => seq(
@@ -172,7 +172,7 @@ module.exports = grammar({
             $.unary_expression,
             $.parenthesized_expression,
             $.tuple_expression,
-            $.array_expression,
+            $.bracket_literal,
             $.string,
             $.identifier,
             $.number,
@@ -198,7 +198,7 @@ module.exports = grammar({
                 $.unary_expression,
                 $.parenthesized_expression,
                 $.tuple_expression,
-                $.array_expression,
+                $.bracket_literal,
                 $.string,
                 $.identifier,
                 $.number,
@@ -214,7 +214,7 @@ module.exports = grammar({
                 $.unary_expression,
                 $.parenthesized_expression,
                 $.tuple_expression,
-                $.array_expression,
+                $.bracket_literal,
                 $.string,
                 $.identifier,
                 $.number,
@@ -231,7 +231,7 @@ module.exports = grammar({
                 $.index_expression,
                 $.parenthesized_expression,
                 $.tuple_expression,
-                $.array_expression,
+                $.bracket_literal,
                 $.string,
                 $.identifier,
                 $.number,
@@ -298,13 +298,13 @@ module.exports = grammar({
             ')',
         ),
 
-        array_expression: ($) => seq(
+        bracket_literal: ($) => seq(
             '[',
             optional(commaSep1($._expression)),
             ']',
         ),
 
-        identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
+        identifier: () => /[A-Za-z_][A-Za-z0-9_]*(?:\{[A-Za-z0-9_]+\}[A-Za-z0-9_]*)*/,
 
         number: () => token(choice(
             /\d+(?:\.\d+)?[eE][+-]?\d+/,

@@ -2,6 +2,12 @@
 
 Tree-sitter grammar for the Lane DSL.
 
+## Syntax Notes
+
+- Product type field names use angle brackets: `Set Hit = R3 x R <point, distance>`.
+- `Array(...)` constructs arrays. Square brackets are reserved for vector and matrix literals.
+- Generic placeholder suffixes are part of identifiers, for example `R{n}`, `I{3}`, `eye{3}`, and `e{3}{2}`.
+
 ## Neovim
 
 Add this directory as a Neovim plugin so the `.lane` filetype, highlight query,
@@ -62,10 +68,22 @@ The grammar includes highlight queries for both the tree-sitter CLI and Neovim:
 Neovim captures Lane conditionals with `@keyword.conditional`, so `if` and
 `else` follow the active colorscheme's conditional keyword style.
 
+After changing grammar, parser, or query files in a running Neovim session, run:
+
+```vim
+:LaneTSReload
+```
+
+If `parser.so` is older than `src/parser.c`, rebuild it first:
+
+```sh
+cc -fPIC -shared -I src src/parser.c -o parser.so
+```
+
 Generate the parser with:
 
 ```sh
-tree-sitter generate
+npm run generate
 ```
 
 Commit the regenerated `src/parser.c` and `src/grammar.json` artifacts whenever `grammar.js` changes so Neovim and other tree-sitter consumers pick up the new syntax.
@@ -73,7 +91,7 @@ Commit the regenerated `src/parser.c` and `src/grammar.json` artifacts whenever 
 Run the corpus tests with:
 
 ```sh
-tree-sitter test
+npm test
 ```
 
 To use the parser and the new `lane-lsp` binary together in Neovim, register the filetype and built-in LSP config:

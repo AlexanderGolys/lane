@@ -1,5 +1,11 @@
 local M = {}
 
+local function notify(message, level)
+  vim.schedule(function()
+    vim.notify(message, level or vim.log.levels.INFO, { title = "tree-sitter-lane" })
+  end)
+end
+
 local function plugin_root()
   local source = debug.getinfo(1, "S").source
   if source:sub(1, 1) == "@" then
@@ -58,7 +64,7 @@ local function query_for_parser(query, symbols)
   end
 
   if not has_symbol(symbols, '"=="') then
-    query = remove_line(query, '["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x"] @operator')
+    query = remove_line(query, '["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "->"] @operator')
     query = query:gsub(
       '(%(gen_modifier%) @keyword\n)',
       '%1\n(binary_expression operator: _ @operator)\n(unary_expression operator: _ @operator)\n'
@@ -71,6 +77,10 @@ local function query_for_parser(query, symbols)
 
   if not has_symbol(symbols, "field_access_expression") then
     query = query:gsub('\n%(field_access_expression\n  field: %(identifier%) @property%)\n', "\n")
+  end
+
+  if not has_symbol(symbols, "bracket_literal") then
+    query = query:gsub('\n%(bracket_literal\n  %["%[" "%]"%] @punctuation%.bracket%)\n', "\n")
   end
 
   return query
@@ -102,7 +112,17 @@ local function register_language(root, opts)
       and vim.fn.filereadable(parser_path) == 1
       and (parser_path_is_explicit or parser_is_current(root, parser_path)) then
     vim.treesitter.language.add("lane", { path = parser_path })
+    return true
   end
+
+  if parser_path and vim.fn.filereadable(parser_path) == 1 and not parser_path_is_explicit then
+    notify(
+      "parser.so is older than src/parser.c; rebuild it with `cc -fPIC -shared -I src src/parser.c -o parser.so`",
+      vim.log.levels.WARN
+    )
+  end
+
+  return false
 end
 
 local function start_highlighting(bufnr)
@@ -111,6 +131,36 @@ local function start_highlighting(bufnr)
   end
 
   pcall(vim.treesitter.start, bufnr, "lane")
+end
+
+local function restart_highlighting()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].filetype == "lane" then
+      pcall(vim.treesitter.stop, bufnr, "lane")
+      start_highlighting(bufnr)
+    end
+  end
+end
+
+local function load_highlight_query(root)
+  if not root then
+    return false
+  end
+
+  local query = read_file(root .. "/queries/lane/highlights.scm")
+  if not query then
+    return false
+  end
+
+  local ok, err = pcall(function()
+    vim.treesitter.query.set("lane", "highlights", query_for_parser(query, parser_symbols("lane")))
+  end)
+  if not ok then
+    notify("failed to load highlight query: " .. err, vim.log.levels.ERROR)
+    return false
+  end
+
+  return true
 end
 
 function M.setup(opts)
@@ -140,13 +190,7 @@ function M.setup(opts)
 
   local root = opts.root or plugin_root()
   register_language(root, opts)
-
-  if root then
-    local query = read_file(root .. "/queries/lane/highlights.scm")
-    if query then
-      vim.treesitter.query.set("lane", "highlights", query_for_parser(query, parser_symbols("lane")))
-    end
-  end
+  load_highlight_query(root)
 
   if root then
     register_nvim_treesitter_parser(root)
@@ -156,6 +200,14 @@ function M.setup(opts)
       callback = function()
         register_nvim_treesitter_parser(root)
       end,
+    })
+
+    vim.api.nvim_create_user_command("LaneTSReload", function()
+      register_language(root, opts)
+      load_highlight_query(root)
+      restart_highlighting()
+    end, {
+      desc = "Reload Lane Tree-sitter parser and highlight query",
     })
   end
 end

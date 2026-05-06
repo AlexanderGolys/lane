@@ -7,7 +7,7 @@
 
 ["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "->"] @operator
 
-["(" ")" "[" "]" "{" "}"] @punctuation.bracket
+["(" ")" "[" "]"] @punctuation.bracket
 ["," "."] @punctuation.delimiter
 
 (comment) @comment
@@ -35,6 +35,12 @@
 
 (product_field_list
   name: (identifier) @property)
+
+(product_field_list
+  ["<" ">"] @punctuation.bracket)
+
+(bracket_literal
+  ["[" "]"] @punctuation.bracket)
 
 (named_argument
   name: (identifier) @property)

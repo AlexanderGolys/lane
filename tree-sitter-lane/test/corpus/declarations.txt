@@ -140,8 +140,9 @@ Array Declarations
 ==================
 
 provided Array(R) weights
-Array(R) a = [1, 2, 3]
-Func(Float, Array(R)) pair = [sin, cos]
+Array(R) a = Array(1, 2, 3)
+Func(Float, Array(R)) pair = Array(sin, cos)
+Mat{n}x{m} matrix = eye{n}
 
 ---
 
@@ -154,19 +155,27 @@ Func(Float, Array(R)) pair = [sin, cos]
     (array_type
       (type_identifier))
     (identifier)
-    (array_expression
-      (number)
-      (number)
-      (number)))
+    (call_expression
+      (identifier)
+      (argument_list
+        (number)
+        (number)
+        (number))))
   (binding_declaration
     (function_type
       (type_identifier)
       (array_type
         (type_identifier)))
     (identifier)
-    (array_expression
+    (call_expression
       (identifier)
-      (identifier))))
+      (argument_list
+        (identifier)
+        (identifier))))
+  (binding_declaration
+    (type_identifier)
+    (identifier)
+    (identifier)))
 
 ==================
 Provided Categories
@@ -200,7 +209,7 @@ G product = a * b
 Product Type Declarations
 ==================
 
-Grp G = E3 x E2 {m, n}
+Grp G = Isom3 x Isom2 <m, n>
 const Ab Pair = R2 x R3
 provided G g
 provided Pair p

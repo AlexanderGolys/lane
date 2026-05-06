@@ -152,26 +152,51 @@ const R masked = if(inside) distance
       (identifier))))
 
 ==================
-Arrays
+Array Calls And Bracket Literals
 ==================
 
-const Object output = concat(a, [4, 5])[size(a) - 1]
+Array(R) values = concat(a, Array(4, 5))
+const Vec3 axis = [0, 1, 0]
+const R y = e{3}{2}.y
+const Object output = values[size(a) - 1]
 
 ---
 
 (source_file
   (binding_declaration
+    (array_type
+      (type_identifier))
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (identifier)
+        (call_expression
+          (identifier)
+          (argument_list
+            (number)
+            (number))))))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (bracket_literal
+      (number)
+      (number)
+      (number)))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (field_access_expression
+      (identifier)
+      (identifier)))
+  (binding_declaration
     (gen_modifier)
     (type_identifier)
     (identifier)
     (index_expression
-      (call_expression
-        (identifier)
-        (argument_list
-          (identifier)
-          (array_expression
-            (number)
-            (number))))
+      (identifier)
       (binary_expression
         (call_expression
           (identifier)
