@@ -18,7 +18,14 @@
 - `cargo run -p lane-lsp`
 - `cargo test`
 
+## Editor Tooling
+- When changing Tree-sitter grammar, queries, highlights, or Neovim integration, verify that nvim is not using stale cached parser/query state.
+- After any Tree-sitter-related change, explicitly reload/reinstall the parser or restart nvim as needed, then confirm highlight queries load correctly before considering the work done.
+
 ## Style
 - Keep functions short and explicit.
 - Prefer nominal Lane types with simple internal representations.
+- In Lane type signatures, put spaces around product signs: write `R3 × R3`, not `R3×R3`.
+- Preserve explicit product syntax in function signatures: `R × R` means two real-valued arguments, while `R2` means a Euclidean-plane/vector argument. They may be treated as isomorphic for compatibility where needed, but parsing or formatting must not silently replace one with the other, especially in larger domains such as `R × R × A` versus `R2 × A`.
+- When resolving adjacent numeric generic placeholders in a name, insert `_` if either resolved number has more than one digit: `E{1}{2}` may become `E12`, but `E{12}{3}` becomes `E12_3`.
 - Add focused tests for each new DSL feature.

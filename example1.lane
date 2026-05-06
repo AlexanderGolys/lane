@@ -9,10 +9,10 @@ R v2 = 2
 
 construct Object T2 = Torus3D(major=3, minor=1)
 
-E3 r1 = rot(e3, e3*0, time*v1)
+Isom3 r1 = rot(e3, e3*0, time*v1)
 R3 c = r1 * c0
 R3 p1 = r1 * p0
-E3 r2 = rot(cross(c, p1), c, time*v2)
+Isom3 r2 = rot(cross(c, p1), c, time*v2)
 R3 p = r2 * p1
 
 construct Object B = Ball3D(r=1) + p

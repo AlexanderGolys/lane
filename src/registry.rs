@@ -505,7 +505,7 @@ impl Default for Registry {
                 ValueFuncDef {
                     ty: Type::func(
                         Type::Product(vec![Type::Vec3, Type::Vec3, Type::Float]),
-                        Type::E3,
+                        Type::Isom3,
                     ),
                     support_glsl: None,
                     listed: true,
@@ -514,9 +514,9 @@ impl Default for Registry {
             (
                 "rot2D",
                 ValueFuncDef {
-                    ty: Type::func(Type::Product(vec![Type::Vec2, Type::Float]), Type::E2),
+                    ty: Type::func(Type::Product(vec![Type::Vec2, Type::Float]), Type::Isom2),
                     support_glsl: Some(
-                        "mat2 rot2D_E2_matrix(float angle) {\n    float c = cos(angle);\n    float s = sin(angle);\n    return mat2(vec2(c, s), vec2(-s, c));\n}\n\nE2 rot2D(vec2 anchor, float angle) {\n    mat2 A = rot2D_E2_matrix(angle);\n    return E2(A, anchor - (A * anchor));\n}",
+                        "mat2 rot2D_Isom2_matrix(float angle) {\n    float c = cos(angle);\n    float s = sin(angle);\n    return mat2(vec2(c, s), vec2(-s, c));\n}\n\nIsom2 rot2D(vec2 anchor, float angle) {\n    mat2 A = rot2D_Isom2_matrix(angle);\n    return Isom2(A, anchor - (A * anchor));\n}",
                     ),
                     listed: true,
                 },
@@ -900,7 +900,7 @@ impl Registry {
             });
         }
 
-        for name in ["C", "H", "E2", "E3"] {
+        for name in ["C", "H", "Isom2", "Isom3"] {
             objects.push(PreregisteredObject {
                 name: name.to_string(),
                 kind: PreregisteredObjectKind::Type,

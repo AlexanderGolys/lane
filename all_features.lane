@@ -17,7 +17,7 @@ provided ExtMotion externalA
 provided ExtMotion externalB
 provided Hom(ExtMotion, R) extMeasure
 
-const Grp Motion = E3 x E2 {space, plane}
+const Grp Motion = Isom3 x Isom2 {space, plane}
 Set Bundle = R x R3
 
 provided Hom(Motion, R) motionMeasure
@@ -40,14 +40,14 @@ Mat4 m4 = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
 Mat2x3 wide = ((1, 2, 3), (4, 5, 6))
 Mat3x2 tall = ((1, 2), (3, 4), (5, 6))
 
-R3 axis = (0, 0, 1)
-R3 probe = (1, 2, 3)
+R3 axis = [0, 0, 1]
+R3 probe = [1, 2, 3]
 R3 crossed = cross(axis, probe) + crossUnicode(axis, probe)
 R3 scaled = 2 * (probe / 3)
 
-E3 spin = rot(axis, zeroPoint, time)
-E2 turn = rot2D((0, 0), time)
-Motion motion = Motion(spin, turn) * Motion(E3(e, 0), E2(e, 0))
+Isom3 spin = rot(axis, zeroPoint, time)
+Isom2 turn = rot2D([0, 0], time)
+Motion motion = Motion(spin, turn) * Motion(Isom3(e, 0), Isom2(e, 0))
 Bundle bundle = Bundle(radius, probe)
 ExtMotion externalProduct = externalA * externalB
 
@@ -81,7 +81,7 @@ Object segmentByLength = Segment3D(2)
 Object revolved = revolution(1.5)(profile)
 Object extruded = extrude(.25)(polygon)
 Object rotatedObject = rot(axis, zeroPoint, time)(reusableBall)
-Object rotated2DObject = rot2D((0, 0), time)(Box2D(a=1, b=.5))
+Object rotated2DObject = rot2D([0, 0], time)(Box2D(a=1, b=.5))
 Object matrixAction = hostRotation * Ball3D(r=1)
 Object isometryAction = spin * cachedBox
 

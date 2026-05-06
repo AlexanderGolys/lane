@@ -3,22 +3,34 @@
 const VectR Ray = R3 x R3 {origin, dir}
 const Set Hit = R3 x R3 x R x Bool {position, normal, travel, hit}
 const VectR Material = R3 x R3 x R {color, emission, reflectiveness}
+const Set Camera = R3 x R3 x R3 x R2 {position, forward, global_up, resolution}
+const Set RaytraceConfig = Z x R x R {max_steps, hit_threshold, max_travel}
+const Set RaycolorConfig = Z x R x R {max_bounces, ray_bias, throughput_threshold}
 
-const Hom(R3×R3×R3×R2, Hom(R2, Ray)) camera_ray = (cameraPosition, cameraForward, cameraGlobalUp, resolution) -> (x, y) -> Ray(cameraPosition, normalize(normalize(cameraForward) + ((((((x, y) * 2) - resolution) / min(resolution.x, resolution.y)).x) * normalize(cross(normalize(cameraForward), cameraGlobalUp))) + ((((((x, y) * 2) - resolution) / min(resolution.x, resolution.y)).y) * normalize(cross(normalize(cross(normalize(cameraForward), cameraGlobalUp)), normalize(cameraForward))))))
+const RaytraceConfig default_raytrace_config = RaytraceConfig(128, 0.0005, 100)
+const RaycolorConfig default_raycolor_config = RaycolorConfig(6, 0.001, 0.001)
 
-const Hom(Object, Hom(Ray, Hit)) raytrace = scene -> "
+const Hom(Camera × R2, R2) camera_uv = (camera, v) -> ((v * 2) - camera.resolution) / min(camera.resolution.x, camera.resolution.y)
+
+const Hom(Camera, R3) camera_right = camera -> normalize(cross(camera.forward, camera.global_up))
+
+const Hom(Camera, R3) camera_up = camera -> normalize(cross(cross(camera.forward, camera.global_up), camera.forward))
+
+const Hom(Camera, Hom(R2, Ray)) camera_ray = camera -> v -> Ray(camera.position, normalize(normalize(camera.forward) + (camera_uv(camera, v).x * camera_right(camera)) + (camera_uv(camera, v).y * camera_up(camera))))
+
+const Hom(RaytraceConfig × Object, Hom(Ray, Hit)) raytrace_with = (config, scene) -> "
 vec3 _origin = _t.origin;
 vec3 _dir = normalize(_t.dir);
 float _travel = 0.0f;
-for (int i = 0; i < 128; i++) {
+for (int i = 0; i < ${config}.max_steps; i++) {
     vec3 _p = _origin + _dir * _travel;
     float _d = ${scene.sdf}(_p);
-    if (_d < 0.0005f) {
+    if (_d < ${config}.hit_threshold) {
         vec3 _n = ${scene.grad}(_p);
         return Hit(_p, _n, _travel, true);
     }
     _travel += _d;
-    if (_travel > 100.0f) {
+    if (_travel > ${config}.max_travel) {
         break;
     }
 }
@@ -26,11 +38,11 @@ vec3 _miss = _origin + _dir * _travel;
 return Hit(_miss, vec3(0.0f, 1.0f, 0.0f), _travel, false);
 "
 
-const Hom(R3×Hom(Ray, Hit)×Hom(R3, Material), Hom(Ray, R3)) raycolor = (ambientColor, hit_at, material_at) -> "
+const Hom(RaycolorConfig × R3 × Hom(Ray, Hit) × Hom(R3, Material), Hom(Ray, R3)) raycolor_with = (config, ambientColor, hit_at, material_at) -> "
 Ray _ray = Ray(_t.origin, normalize(_t.dir));
 vec3 _radiance = vec3(0.0f);
 vec3 _throughput = vec3(1.0f);
-for (int bounce = 0; bounce < 6; bounce++) {
+for (int bounce = 0; bounce < ${config}.max_bounces; bounce++) {
     Hit _hit = ${hit_at}(_ray);
     if (!_hit.hit) {
         _radiance += _throughput * ${ambientColor};
@@ -40,17 +52,17 @@ for (int bounce = 0; bounce < 6; bounce++) {
     float _reflectiveness = clamp(_material.reflectiveness, 0.0f, 1.0f);
     _radiance += _throughput * (_material.emission + ((1.0f - _reflectiveness) * ${ambientColor} * _material.color));
     _throughput *= _material.color * _reflectiveness;
-    if (max(max(_throughput.r, _throughput.g), _throughput.b) < 0.001f) {
+    if (max(max(_throughput.r, _throughput.g), _throughput.b) < ${config}.throughput_threshold) {
         break;
     }
     vec3 _dir = reflect(_ray.dir, _hit.normal);
-    _ray = Ray(_hit.position + _hit.normal * 0.001f, _dir);
+    _ray = Ray(_hit.position + _hit.normal * ${config}.ray_bias, _dir);
 }
 return _radiance;
 "
 
-const Hom(Hom(R2, Ray)×Hom(Ray, R3), Hom(R2, R4)) shade = (make_ray, color_ray) -> (x, y) -> (color_ray(make_ray((x, y))), 1)
+const Hom(Hom(R2, Ray) × Hom(Ray, R3), Hom(R2, R4)) shade = (make_ray, color_ray) -> v -> (color_ray(make_ray(v)), 1)
 
-const Hom(Hom(R2, R4), Hom(*, *)) preview_raytrace = shade_at -> "
+const Hom(Hom(R2, R4), Hom(*, *)) fragment_main = shade_at -> "
 outColor = ${shade_at}(gl_FragCoord.xy);
 "

@@ -80,11 +80,11 @@ fn prepare_preview_source(source: &str) -> String {
     if !has_const_main(source) {
         append_preview_provided_values(source, &mut out);
         out.push_str(
-            "\nconst Hom(R2, Ray) preview_camera_ray = camera_ray(cameraPosition, cameraForward, cameraGlobalUp, resolution)\n\
-const Hom(Ray, Hit) preview_hit = raytrace(scene)\n\
-const Hom(Ray, R3) preview_color = raycolor(ambientColor, preview_hit, scene_material)\n\
+            "\nconst Hom(R2, Ray) preview_camera_ray = camera_ray(Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution))\n\
+const Hom(Ray, Hit) preview_hit = raytrace_with(default_raytrace_config, scene)\n\
+const Hom(Ray, R3) preview_color = raycolor_with(default_raycolor_config, ambientColor, preview_hit, scene_material)\n\
 const Hom(R2, R4) preview_shade = shade(preview_camera_ray, preview_color)\n\
-const Hom(*, *) main = preview_raytrace(preview_shade)\n",
+const Hom(*, *) main = fragment_main(preview_shade)\n",
         );
     }
     out
@@ -558,6 +558,7 @@ fn rename_expr(expr: &mut Expr, renames: &HashMap<String, String>) {
             rename_expr(body, renames);
         }
         Expr::Ident(name) => rename_ident(name, renames),
+        Expr::Operator(_) => {}
         Expr::Tuple(items) | Expr::Array(items) => {
             for item in items {
                 rename_expr(item, renames);
@@ -831,8 +832,8 @@ pub fn is_known_category_name(name: &str) -> bool {
 const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
     ("Bool", ""),
     ("C", "#define Complex vec2"),
-    ("E2", ""),
-    ("E3", ""),
+    ("Isom2", ""),
+    ("Isom3", ""),
     ("H", "#define H vec4"),
 ];
 
@@ -885,11 +886,11 @@ fn complex_overload_support_glsl(name: &str) -> Option<&'static str> {
     }
 }
 
-const E2_GROUP_SUPPORT_GLSL: &str = "struct E2 {\n    mat2 A;\n    vec2 t;\n};\n\nvec2 act_E2(E2 g, vec2 p) {\n    return (g.A * p) + g.t;\n}\n\nE2 mult_E2(E2 a, E2 b) {\n    return E2(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE2 inv_E2(E2 g) {\n    mat2 inverse_linear = transpose(g.A);\n    return E2(inverse_linear, -(inverse_linear * g.t));\n}";
+const ISOM2_GROUP_SUPPORT_GLSL: &str = "struct Isom2 {\n    mat2 A;\n    vec2 t;\n};\n\nvec2 act_Isom2(Isom2 g, vec2 p) {\n    return (g.A * p) + g.t;\n}\n\nIsom2 mult_Isom2(Isom2 a, Isom2 b) {\n    return Isom2(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nIsom2 inv_Isom2(Isom2 g) {\n    mat2 inverse_linear = transpose(g.A);\n    return Isom2(inverse_linear, -(inverse_linear * g.t));\n}";
 
 const QUAT_FIELD_SUPPORT_GLSL: &str = "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}";
 
-const E3_GROUP_SUPPORT_GLSL: &str = "struct E3 {\n    mat3 A;\n    vec3 t;\n};\n\nvec3 act_E3(E3 g, vec3 p) {\n    return (g.A * p) + g.t;\n}\n\nE3 mult_E3(E3 a, E3 b) {\n    return E3(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nE3 inv_E3(E3 g) {\n    mat3 inverse_linear = transpose(g.A);\n    return E3(inverse_linear, -(inverse_linear * g.t));\n}\n\nmat3 rot_E3_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nE3 rot(vec3 binormal, vec3 anchor, float angle) {\n    mat3 A = rot_E3_matrix(binormal, angle);\n    return E3(A, anchor - (A * anchor));\n}";
+const ISOM3_GROUP_SUPPORT_GLSL: &str = "struct Isom3 {\n    mat3 A;\n    vec3 t;\n};\n\nvec3 act_Isom3(Isom3 g, vec3 p) {\n    return (g.A * p) + g.t;\n}\n\nIsom3 mult_Isom3(Isom3 a, Isom3 b) {\n    return Isom3(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nIsom3 inv_Isom3(Isom3 g) {\n    mat3 inverse_linear = transpose(g.A);\n    return Isom3(inverse_linear, -(inverse_linear * g.t));\n}\n\nmat3 rot_Isom3_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nIsom3 rot(vec3 binormal, vec3 anchor, float angle) {\n    mat3 A = rot_Isom3_matrix(binormal, angle);\n    return Isom3(A, anchor - (A * anchor));\n}";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AlgebraicCategory {
@@ -1103,17 +1104,17 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         categories: &[],
     },
     BuiltinTypeDef {
-        ty: Type::E2,
-        aliases: &["E2"],
-        display_name: "E2",
-        support_glsl: Some(E2_GROUP_SUPPORT_GLSL),
+        ty: Type::Isom2,
+        aliases: &["Isom2"],
+        display_name: "Isom2",
+        support_glsl: Some(ISOM2_GROUP_SUPPORT_GLSL),
         categories: &[AlgebraicCategory::Grp],
     },
     BuiltinTypeDef {
-        ty: Type::E3,
-        aliases: &["E3"],
-        display_name: "E3",
-        support_glsl: Some(E3_GROUP_SUPPORT_GLSL),
+        ty: Type::Isom3,
+        aliases: &["Isom3"],
+        display_name: "Isom3",
+        support_glsl: Some(ISOM3_GROUP_SUPPORT_GLSL),
         categories: &[AlgebraicCategory::Grp],
     },
 ];
@@ -1139,6 +1140,12 @@ pub struct PreregisteredObject {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+enum GenericDim {
+    Known(usize),
+    Var(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
     Unit,
     Bool,
@@ -1146,8 +1153,8 @@ enum Type {
     Int,
     Complex,
     Quat,
-    E2,
-    E3,
+    Isom2,
+    Isom3,
     Custom {
         name: String,
         categories: Vec<AlgebraicCategory>,
@@ -1156,6 +1163,9 @@ enum Type {
     Vec3,
     Vec4,
     Mat(usize, usize),
+    Generic(String),
+    VecGeneric(GenericDim),
+    MatGeneric(GenericDim, GenericDim),
     Array(Box<Type>),
     Object,
     Object2D,
@@ -1176,21 +1186,32 @@ impl Type {
             Self::Int => "int".to_string(),
             Self::Complex => "vec2".to_string(),
             Self::Quat => "vec4".to_string(),
-            Self::E2 => "E2".to_string(),
-            Self::E3 => "E3".to_string(),
+            Self::Isom2 => "Isom2".to_string(),
+            Self::Isom3 => "Isom3".to_string(),
             Self::Custom { name, .. } => name.clone(),
             Self::Vec2 => "vec2".to_string(),
             Self::Vec3 => "vec3".to_string(),
             Self::Vec4 => "vec4".to_string(),
             Self::Mat(rows, columns) => matrix_glsl_type(*rows, *columns),
+            Self::Generic(_) | Self::VecGeneric(_) | Self::MatGeneric(_, _) => String::new(),
             Self::Array(element) => format!("{}[]", element.glsl_name()),
             Self::Object | Self::Object2D | Self::Product(_) | Self::Func(_, _) => "".to_string(),
         }
     }
 
     fn type_name(&self) -> String {
-        if let Self::Mat(rows, columns) = self {
-            return matrix_type_name(*rows, *columns);
+        match self {
+            Self::Mat(rows, columns) => return matrix_type_name(*rows, *columns),
+            Self::Generic(name) => return format!("{{{name}}}"),
+            Self::VecGeneric(dim) => return format!("R{{{}}}", format_generic_dim(dim)),
+            Self::MatGeneric(rows, columns) => {
+                return format!(
+                    "Mat{{{}}}x{{{}}}",
+                    format_generic_dim(rows),
+                    format_generic_dim(columns)
+                );
+            }
+            _ => {}
         }
         BUILTIN_TYPE_DEFS
             .iter()
@@ -1208,11 +1229,33 @@ impl Type {
 }
 
 fn parse_builtin_type_name(name: &str) -> Option<Type> {
+    if let Some(ty) = parse_generic_type_name(name) {
+        return Some(ty);
+    }
     BUILTIN_TYPE_DEFS
         .iter()
         .find(|def| def.aliases.contains(&name))
         .map(|def| def.ty.clone())
         .or_else(|| parse_matrix_type_name(name))
+}
+
+fn parse_generic_type_name(name: &str) -> Option<Type> {
+    if let Some(inner) = name
+        .strip_prefix('R')
+        .and_then(|rest| rest.strip_prefix('{'))
+    {
+        let dim = inner.strip_suffix('}')?;
+        return Some(vector_type_for_generic_dim(parse_generic_dim(dim)?));
+    }
+    if let Some(inner) = name.strip_prefix("Mat") {
+        if let Some(square) = parse_braced_generic_dim(inner) {
+            return Some(matrix_type_for_generic_dims(square.clone(), square));
+        }
+        let (rows, columns) = split_matrix_generic_dims(inner)?;
+        return Some(matrix_type_for_generic_dims(rows, columns));
+    }
+    let inner = name.strip_prefix('{')?.strip_suffix('}')?;
+    parse_generic_name(inner).map(Type::Generic)
 }
 
 fn custom_type(name: &str, category: AlgebraicCategory) -> Type {
@@ -1241,11 +1284,61 @@ fn parse_matrix_type_name(name: &str) -> Option<Type> {
 }
 
 fn parse_matrix_dimension(source: &str) -> Option<usize> {
-    match source {
-        "2" => Some(2),
-        "3" => Some(3),
-        "4" => Some(4),
-        _ => None,
+    source
+        .parse::<usize>()
+        .ok()
+        .filter(|dimension| *dimension > 0)
+}
+
+fn parse_generic_dim(source: &str) -> Option<GenericDim> {
+    parse_matrix_dimension(source)
+        .map(GenericDim::Known)
+        .or_else(|| parse_generic_name(source).map(GenericDim::Var))
+}
+
+fn parse_generic_name(source: &str) -> Option<String> {
+    let mut chars = source.chars();
+    let first = chars.next()?;
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return None;
+    }
+    chars
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        .then(|| source.to_string())
+}
+
+fn parse_braced_generic_dim(source: &str) -> Option<GenericDim> {
+    let inner = source.strip_prefix('{')?.strip_suffix('}')?;
+    parse_generic_dim(inner)
+}
+
+fn split_matrix_generic_dims(source: &str) -> Option<(GenericDim, GenericDim)> {
+    let rows_end = source.strip_prefix('{')?.find('}')? + 1;
+    let rows = parse_braced_generic_dim(&source[..=rows_end])?;
+    let columns = parse_braced_generic_dim(source[rows_end + 1..].strip_prefix('x')?)?;
+    Some((rows, columns))
+}
+
+fn format_generic_dim(dim: &GenericDim) -> String {
+    match dim {
+        GenericDim::Known(value) => value.to_string(),
+        GenericDim::Var(name) => name.clone(),
+    }
+}
+
+fn vector_type_for_generic_dim(dim: GenericDim) -> Type {
+    match dim {
+        GenericDim::Known(2) => Type::Vec2,
+        GenericDim::Known(3) => Type::Vec3,
+        GenericDim::Known(4) => Type::Vec4,
+        dim => Type::VecGeneric(dim),
+    }
+}
+
+fn matrix_type_for_generic_dims(rows: GenericDim, columns: GenericDim) -> Type {
+    match (&rows, &columns) {
+        (GenericDim::Known(rows), GenericDim::Known(columns)) => Type::Mat(*rows, *columns),
+        _ => Type::MatGeneric(rows, columns),
     }
 }
 
@@ -1276,6 +1369,24 @@ fn matrix_constructor_type(rows: usize, columns: usize) -> String {
 fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
     if category == AlgebraicCategory::Set {
         return !matches!(ty, Type::Object | Type::Object2D | Type::Func(_, _));
+    }
+    if matches!(ty, Type::Generic(_)) {
+        return true;
+    }
+    if matches!(ty, Type::VecGeneric(_)) {
+        return matches!(
+            category,
+            AlgebraicCategory::VectR
+                | AlgebraicCategory::Ab
+                | AlgebraicCategory::Mon
+                | AlgebraicCategory::Grp
+        );
+    }
+    if let Type::MatGeneric(rows, columns) = ty {
+        return category == AlgebraicCategory::VectR
+            || (unify_symbolic_dims(rows, columns, &mut GenericSubstitution::default())
+                && (category == AlgebraicCategory::Ring
+                    || category_implies(AlgebraicCategory::Ring, category)));
     }
     if let Type::Mat(rows, columns) = ty {
         return category == AlgebraicCategory::VectR
@@ -1439,6 +1550,7 @@ enum Expr {
         body: Box<Expr>,
     },
     Ident(String),
+    Operator(BinOp),
     Tuple(Vec<Expr>),
     Array(Vec<Expr>),
     Call {
@@ -1569,6 +1681,11 @@ enum ValueExpr {
         columns: usize,
         rows: Vec<ValueExpr>,
     },
+    MatrixBasis {
+        row: usize,
+        column: usize,
+        ty: Type,
+    },
     Derivative {
         epsilon: Box<ValueExpr>,
         func: FunctionExpr,
@@ -1617,6 +1734,7 @@ impl ValueExpr {
             Self::Vec3(_, _, _) => Type::Vec3,
             Self::Vec4(_, _, _, _) => Type::Vec4,
             Self::Matrix { columns, rows } => Type::Mat(rows.len(), *columns),
+            Self::MatrixBasis { ty, .. } => ty.clone(),
             Self::Derivative { ty, .. } => ty.clone(),
             Self::Partial { ty, .. } => ty.clone(),
             Self::Gradient { ty, .. } => ty.clone(),
@@ -1651,6 +1769,7 @@ struct FunctionExpr {
 #[derive(Clone, Debug)]
 enum FunctionExprKind {
     Named(String),
+    Operator(BinOp),
     ObjectGetter {
         object: String,
         getter: ObjectGetter,
@@ -1691,6 +1810,15 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             args: vec![arg],
             ty: func.output.clone(),
         },
+        FunctionExprKind::Operator(op) => {
+            let (left, right) = operator_function_args(func, arg);
+            ValueExpr::Binary {
+                op: *op,
+                left: Box::new(left),
+                right: Box::new(right),
+                ty: func.output.clone(),
+            }
+        }
         FunctionExprKind::ObjectGetter {
             object,
             getter,
@@ -1752,6 +1880,36 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
                 apply_function_expr(right, right_arg),
             ])
         }
+    }
+}
+
+fn operator_function_args(func: &FunctionExpr, arg: ValueExpr) -> (ValueExpr, ValueExpr) {
+    match &func.input {
+        Type::Product(parts) if parts.len() == 2 => (
+            ValueExpr::Var {
+                name: "_t0".to_string(),
+                ty: parts[0].clone(),
+                array_len: None,
+            },
+            ValueExpr::Var {
+                name: "_t1".to_string(),
+                ty: parts[1].clone(),
+                array_len: None,
+            },
+        ),
+        Type::Vec2 if func.output == Type::Float || func.output == Type::Bool => (
+            ValueExpr::FieldAccess {
+                value: Box::new(arg.clone()),
+                field: "x".to_string(),
+                ty: Type::Float,
+            },
+            ValueExpr::FieldAccess {
+                value: Box::new(arg),
+                field: "y".to_string(),
+                ty: Type::Float,
+            },
+        ),
+        _ => unreachable!("operator function expects a binary domain"),
     }
 }
 
@@ -1977,7 +2135,7 @@ fn object_op_arg_type(op: &ObjectOpDef, _index: usize) -> Type {
 }
 
 fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Error> {
-    if actual == expected {
+    if types_match(actual, expected) {
         return Ok(());
     }
     if let (Type::Array(actual), Type::Array(expected)) = (actual, expected) {
@@ -2005,6 +2163,159 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
         format_type(expected),
         format_type(actual)
     )))
+}
+
+fn types_match(actual: &Type, expected: &Type) -> bool {
+    unify_types(actual, expected, &mut GenericSubstitution::default())
+}
+
+#[derive(Clone, Debug, Default)]
+struct GenericSubstitution {
+    types: HashMap<String, Type>,
+    dims: HashMap<String, usize>,
+}
+
+fn unify_types(left: &Type, right: &Type, substitutions: &mut GenericSubstitution) -> bool {
+    if left == right {
+        return true;
+    }
+    match (left, right) {
+        (Type::Generic(name), other) | (other, Type::Generic(name)) => {
+            unify_type_var(name, other, substitutions)
+        }
+        (Type::VecGeneric(dim), other) | (other, Type::VecGeneric(dim)) => {
+            vector_type_dimension(other)
+                .is_some_and(|dimension| unify_generic_dim(dim, dimension, substitutions))
+        }
+        (Type::MatGeneric(rows, columns), Type::Mat(actual_rows, actual_columns))
+        | (Type::Mat(actual_rows, actual_columns), Type::MatGeneric(rows, columns)) => {
+            unify_generic_dim(rows, *actual_rows, substitutions)
+                && unify_generic_dim(columns, *actual_columns, substitutions)
+        }
+        (
+            Type::MatGeneric(left_rows, left_columns),
+            Type::MatGeneric(right_rows, right_columns),
+        ) => {
+            unify_symbolic_dims(left_rows, right_rows, substitutions)
+                && unify_symbolic_dims(left_columns, right_columns, substitutions)
+        }
+        (Type::Array(left), Type::Array(right)) => unify_types(left, right, substitutions),
+        (Type::Product(left), Type::Product(right)) if left.len() == right.len() => left
+            .iter()
+            .zip(right.iter())
+            .all(|(left, right)| unify_types(left, right, substitutions)),
+        (Type::Func(left_input, left_output), Type::Func(right_input, right_output)) => {
+            unify_types(left_input, right_input, substitutions)
+                && unify_types(left_output, right_output, substitutions)
+        }
+        _ => false,
+    }
+}
+
+fn unify_type_var(name: &str, ty: &Type, substitutions: &mut GenericSubstitution) -> bool {
+    if let Some(bound) = substitutions.types.get(name).cloned() {
+        return unify_types(&bound, ty, substitutions);
+    }
+    substitutions.types.insert(name.to_string(), ty.clone());
+    true
+}
+
+fn unify_symbolic_dims(
+    left: &GenericDim,
+    right: &GenericDim,
+    substitutions: &mut GenericSubstitution,
+) -> bool {
+    match (left, right) {
+        (GenericDim::Known(left), GenericDim::Known(right)) => left == right,
+        (GenericDim::Var(name), GenericDim::Known(value))
+        | (GenericDim::Known(value), GenericDim::Var(name)) => {
+            unify_generic_dim_var(name, *value, substitutions)
+        }
+        (GenericDim::Var(_), GenericDim::Var(_)) => true,
+    }
+}
+
+fn unify_generic_dim(
+    dim: &GenericDim,
+    concrete: usize,
+    substitutions: &mut GenericSubstitution,
+) -> bool {
+    match dim {
+        GenericDim::Known(value) => *value == concrete,
+        GenericDim::Var(name) => unify_generic_dim_var(name, concrete, substitutions),
+    }
+}
+
+fn unify_generic_dim_var(
+    name: &str,
+    concrete: usize,
+    substitutions: &mut GenericSubstitution,
+) -> bool {
+    match substitutions.dims.get(name) {
+        Some(bound) => *bound == concrete,
+        None => {
+            substitutions.dims.insert(name.to_string(), concrete);
+            true
+        }
+    }
+}
+
+fn vector_type_dimension(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Vec2 => Some(2),
+        Type::Vec3 => Some(3),
+        Type::Vec4 => Some(4),
+        Type::VecGeneric(GenericDim::Known(value)) => Some(*value),
+        _ => None,
+    }
+}
+
+fn substitute_type(ty: &Type, substitutions: &GenericSubstitution) -> Type {
+    match ty {
+        Type::Generic(name) => substitutions
+            .types
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| ty.clone()),
+        Type::VecGeneric(dim) => match substitute_dim(dim, substitutions) {
+            GenericDim::Known(2) => Type::Vec2,
+            GenericDim::Known(3) => Type::Vec3,
+            GenericDim::Known(4) => Type::Vec4,
+            resolved => Type::VecGeneric(resolved),
+        },
+        Type::MatGeneric(rows, columns) => {
+            let rows = substitute_dim(rows, substitutions);
+            let columns = substitute_dim(columns, substitutions);
+            match (&rows, &columns) {
+                (GenericDim::Known(rows), GenericDim::Known(columns)) => Type::Mat(*rows, *columns),
+                _ => Type::MatGeneric(rows, columns),
+            }
+        }
+        Type::Array(element) => Type::Array(Box::new(substitute_type(element, substitutions))),
+        Type::Product(parts) => Type::Product(
+            parts
+                .iter()
+                .map(|part| substitute_type(part, substitutions))
+                .collect(),
+        ),
+        Type::Func(input, output) => Type::func(
+            substitute_type(input, substitutions),
+            substitute_type(output, substitutions),
+        ),
+        _ => ty.clone(),
+    }
+}
+
+fn substitute_dim(dim: &GenericDim, substitutions: &GenericSubstitution) -> GenericDim {
+    match dim {
+        GenericDim::Known(_) => dim.clone(),
+        GenericDim::Var(name) => substitutions
+            .dims
+            .get(name)
+            .copied()
+            .map(GenericDim::Known)
+            .unwrap_or_else(|| dim.clone()),
+    }
 }
 
 fn format_type(ty: &Type) -> String {
@@ -2063,25 +2374,25 @@ fn compact_overload_set(overloads: &[Type]) -> Option<String> {
     take_pattern(
         &mut remaining,
         &transpose_matrix_overloads(),
-        "Hom(Matnxm, Matmxn)",
+        "Hom(Mat{n}x{m}, Mat{m}x{n})",
         &mut parts,
     );
     take_pattern(
         &mut remaining,
         &same_matrix_overloads(),
-        "Hom(Matnxm × Matnxm, Matnxm)",
+        "Hom(Mat{n}x{m} × Mat{n}x{m}, Mat{n}x{m})",
         &mut parts,
     );
     take_pattern(
         &mut remaining,
         &square_matrix_to_float_overloads(),
-        "Hom(Matn, R)",
+        "Hom(Mat{n}x{n}, R)",
         &mut parts,
     );
     take_pattern(
         &mut remaining,
         &square_matrix_overloads(),
-        "Hom(Matn, Matn)",
+        "Hom(Mat{n}x{n}, Mat{n}x{n})",
         &mut parts,
     );
 
@@ -2352,10 +2663,10 @@ fn glsl_builtin_value_func_overloads() -> Vec<(&'static str, Vec<Type>)> {
         ("faceforward", same_type_float_gen_overloads(3)),
         ("reflect", same_type_float_gen_overloads(2)),
         ("refract", gen_type_with_scalar_last_overloads(3)),
-        ("matrixCompMult", same_matrix_overloads()),
-        ("transpose", transpose_matrix_overloads()),
-        ("determinant", square_matrix_to_float_overloads()),
-        ("inverse", square_matrix_overloads()),
+        ("matrixCompMult", generic_same_matrix_overloads()),
+        ("transpose", generic_transpose_matrix_overloads()),
+        ("determinant", generic_square_matrix_to_float_overloads()),
+        ("inverse", generic_square_matrix_overloads()),
     ]);
 
     funcs.extend([
@@ -2383,6 +2694,40 @@ fn unary_float_gen_type_overloads() -> Vec<Type> {
         .into_iter()
         .map(|ty| Type::func(ty.clone(), ty))
         .collect()
+}
+
+fn generic_dim_var(name: &str) -> GenericDim {
+    GenericDim::Var(name.to_string())
+}
+
+fn generic_matrix_type(rows: &str, columns: &str) -> Type {
+    Type::MatGeneric(generic_dim_var(rows), generic_dim_var(columns))
+}
+
+fn generic_square_matrix_type(dim: &str) -> Type {
+    let dim = generic_dim_var(dim);
+    Type::MatGeneric(dim.clone(), dim)
+}
+
+fn generic_transpose_matrix_overloads() -> Vec<Type> {
+    vec![Type::func(
+        generic_matrix_type("n", "m"),
+        generic_matrix_type("m", "n"),
+    )]
+}
+
+fn generic_same_matrix_overloads() -> Vec<Type> {
+    let matrix = generic_matrix_type("n", "m");
+    vec![func_type(vec![matrix.clone(), matrix.clone()], matrix)]
+}
+
+fn generic_square_matrix_to_float_overloads() -> Vec<Type> {
+    vec![Type::func(generic_square_matrix_type("n"), Type::Float)]
+}
+
+fn generic_square_matrix_overloads() -> Vec<Type> {
+    let matrix = generic_square_matrix_type("n");
+    vec![Type::func(matrix.clone(), matrix)]
 }
 
 fn same_type_float_gen_overloads(arity: usize) -> Vec<Type> {

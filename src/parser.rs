@@ -23,6 +23,7 @@ enum Token {
     Minus,
     Star,
     Slash,
+    Amp,
     Dot,
     At,
     Arrow,
@@ -878,12 +879,29 @@ impl ExprParser {
                 }
                 Ok(Expr::Ident(name))
             }
+            Some(Token::Amp) => Ok(Expr::Operator(self.parse_operator_ref()?)),
             Some(Token::LParen) => self.parse_paren_or_tuple(),
             Some(Token::LBracket) => self.parse_array_literal(),
             _ => Err(Error::new(format!(
                 "unexpected token {} in expression",
                 self.describe_previous_token()
             ))),
+        }
+    }
+
+    fn parse_operator_ref(&mut self) -> Result<BinOp, Error> {
+        match self.next() {
+            Some(Token::Plus) => Ok(BinOp::Add),
+            Some(Token::Minus) => Ok(BinOp::Sub),
+            Some(Token::Star) => Ok(BinOp::Mul),
+            Some(Token::Slash) => Ok(BinOp::Div),
+            Some(Token::EqualEqual) => Ok(BinOp::Eq),
+            Some(Token::BangEqual) => Ok(BinOp::Ne),
+            Some(Token::Less) => Ok(BinOp::Lt),
+            Some(Token::LessEqual) => Ok(BinOp::Le),
+            Some(Token::Greater) => Ok(BinOp::Gt),
+            Some(Token::GreaterEqual) => Ok(BinOp::Ge),
+            _ => Err(Error::new("expected operator after '&'")),
         }
     }
 
@@ -1031,6 +1049,7 @@ impl ExprParser {
             Token::Minus => "'-'".to_string(),
             Token::Star => "'*'".to_string(),
             Token::Slash => "'/'".to_string(),
+            Token::Amp => "'&'".to_string(),
             Token::Dot => "'.'".to_string(),
             Token::At => "'@'".to_string(),
             Token::Arrow => "'->'".to_string(),
@@ -1135,6 +1154,21 @@ fn tokenize(source: &str) -> Vec<Token> {
             {
                 index += 1;
             }
+            while index < chars.len() && chars[index] == '{' {
+                let brace_start = index;
+                index += 1;
+                let inner_start = index;
+                while index < chars.len()
+                    && (chars[index].is_ascii_alphanumeric() || chars[index] == '_')
+                {
+                    index += 1;
+                }
+                if inner_start == index || index >= chars.len() || chars[index] != '}' {
+                    index = brace_start;
+                    break;
+                }
+                index += 1;
+            }
             tokens.push(Token::Ident(chars[start..index].iter().collect()));
             continue;
         }
@@ -1152,6 +1186,7 @@ fn tokenize(source: &str) -> Vec<Token> {
             '-' => Token::Minus,
             '*' => Token::Star,
             '/' => Token::Slash,
+            '&' => Token::Amp,
             '.' => Token::Dot,
             '@' => Token::At,
             _ => panic!("unsupported token: {ch}"),
@@ -1176,7 +1211,7 @@ fn parse_type_with_custom_types(
         for part in parts {
             parsed.push(parse_type_with_custom_types(part, custom_types)?);
         }
-        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
+        return Ok(Type::Product(parsed));
     }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
@@ -1249,7 +1284,7 @@ fn parse_type_with_custom_types_for_ambient(
                 ambient_dimension,
             )?);
         }
-        return Ok(scalar_product_type(&parsed).unwrap_or(Type::Product(parsed)));
+        return Ok(Type::Product(parsed));
     }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
@@ -1275,19 +1310,6 @@ fn parse_type_with_custom_types_for_ambient(
         )));
     }
     parse_type_with_custom_types(source, custom_types)
-}
-
-fn scalar_product_type(parts: &[Type]) -> Option<Type> {
-    if !parts.iter().all(|part| part == &Type::Float) {
-        return None;
-    }
-    match parts.len() {
-        1 => Some(Type::Float),
-        2 => Some(Type::Vec2),
-        3 => Some(Type::Vec3),
-        4 => Some(Type::Vec4),
-        _ => None,
-    }
 }
 
 fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {

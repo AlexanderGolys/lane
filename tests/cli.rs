@@ -179,7 +179,7 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("Bool: DivRing"));
     assert!(stdout.contains("C: DivRing, RAlg"));
     assert!(stdout.contains("H: DivRing, RAlg"));
-    assert!(stdout.contains("E2: Grp"));
+    assert!(stdout.contains("Isom2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(stdout.contains("pow: Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)"));
     assert!(stdout.contains("Hom(C × C, C)"));
@@ -193,8 +193,8 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("smoothUnion: Hom(R, Hom(Object × Object, Object))"));
     assert!(stdout.contains("revolution: Hom(R, Hom(Object2D, Object))"));
     assert!(stdout.contains("extrude: Hom(R, Hom(Object, Object))"));
-    assert!(stdout.contains("rot: Hom(R3 × R3 × R, E3)"));
-    assert!(stdout.contains("rot2D: Hom(R2 × R, E2)"));
+    assert!(stdout.contains("rot: Hom(R3 × R3 × R, Isom3)"));
+    assert!(stdout.contains("rot2D: Hom(R2 × R, Isom2)"));
     assert!(stdout.contains("derivative: Hom(Hom(R, R), Hom(R, R))"));
     assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
     assert!(stdout.contains("dfdx: Hom(Hom(R3, R), Hom(R3, R))"));
@@ -206,7 +206,7 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("inv: Hom(C, C)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("reflect: Hom(Rn × Rn, Rn)"));
-    assert!(stdout.contains("transpose: Hom(Matnxm, Matmxn)"));
+    assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
 
@@ -220,7 +220,7 @@ fn lists_known_builtin_objects_from_short_flag() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("E3: Grp"));
+    assert!(stdout.contains("Isom3: Grp"));
     assert!(stdout.contains("RAlg: Cat"));
     assert!(!stdout.contains("partialX: Hom(R, Hom(Hom(R3, R), Hom(R3, R)))"));
     assert!(!stdout.contains("directionalDerivative"));
@@ -246,7 +246,7 @@ fn lists_all_builtin_items_from_command() {
     assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("min: Hom(Rn × Rn, Rn) | Hom(Rn × R, Rn) | Hom(R × Rn, Rn)"));
-    assert!(stdout.contains("transpose: Hom(Matnxm, Matmxn)"));
+    assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
     assert!(stdout.contains("union: Hom(Object × Object, Object)"));
     assert!(!stdout.contains("matrixCompMult:"));
     assert!(!stdout.contains("sdf0_Ball3D"));
@@ -278,7 +278,7 @@ fn lists_all_builtin_items_from_short_flag() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Ball3D: {r: R}"));
-    assert!(stdout.contains("transpose: Hom(Matnxm, Matmxn)"));
+    assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
 }
 
 #[test]
@@ -348,9 +348,9 @@ fn prints_bash_completion_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
     assert!(stdout.contains("Ab Mon Grp Ring DivRing VectR RAlg"));
-    assert!(stdout.contains("C E2 E3"));
+    assert!(stdout.contains("C Isom2 Isom3"));
     assert!(stdout.contains("diff"));
-    assert!(!stdout.contains("Complex diff E2"));
+    assert!(!stdout.contains("Complex diff Isom2"));
     assert!(stdout.contains("--print-completion"));
     assert!(stdout.contains("-pc"));
     assert!(stdout.contains("--list"));

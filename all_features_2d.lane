@@ -5,9 +5,9 @@
 provided R time
 provided Hom(R2, R) field
 
-E2 move = E2(e, (1, 2))
-E2 turn = rot2D((0, 0), time)
-R2 p = turn * (1, 0)
+Isom2 move = Isom2(e, [1, 2])
+Isom2 turn = rot2D([0, 0], time)
+R2 p = turn * [1, 0]
 R radius = field(p)
 
 construct Object profile = Box2D(a=2, b=1) + p

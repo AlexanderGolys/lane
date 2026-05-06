@@ -180,7 +180,7 @@ fn raw_glsl_placeholder_ref(
         if matches!(ty, Type::Object | Type::Object2D) {
             refs.object_getters.insert(glsl_ref.to_string());
         }
-        return raw_glsl_object_getter_ref(glsl_ref, field, ty);
+        return raw_glsl_field_ref(glsl_ref, field, ty, env);
     }
 
     if let Some(capture) = capture_bindings.get(name) {
@@ -234,7 +234,7 @@ fn raw_glsl_placeholder_ref(
     }
 }
 
-fn raw_glsl_object_getter_ref(base: &str, field: &str, ty: &Type) -> Result<String, Error> {
+fn raw_glsl_field_ref(base: &str, field: &str, ty: &Type, env: &Env<'_>) -> Result<String, Error> {
     match (ty, field) {
         (Type::Object, "sdf") | (Type::Object2D, "sdf") => Ok(format!("sdf_{base}")),
         (Type::Object, "grad") => Ok(format!("grad_sdf_{base}")),
@@ -246,8 +246,21 @@ fn raw_glsl_object_getter_ref(base: &str, field: &str, ty: &Type) -> Result<Stri
             "unknown object placeholder '{}.{}'",
             base, field
         ))),
+        (Type::Custom { name, .. }, _) => {
+            if let Some((_, resolved_field)) = env
+                .product_type(name)
+                .and_then(|product_type| product_field_access(product_type, field))
+            {
+                Ok(format!("{base}.{resolved_field}"))
+            } else {
+                Err(Error::new(format!(
+                    "unknown product placeholder '{}.{}'",
+                    base, field
+                )))
+            }
+        }
         _ => Err(Error::new(format!(
-            "raw GLSL placeholder '{}.{}' requires an object",
+            "raw GLSL placeholder '{}.{}' requires an object or product value",
             base, field
         ))),
     }
@@ -443,7 +456,7 @@ fn substitute_exprs(expr: &mut Expr, substitutions: &HashMap<String, Expr>) {
                 }
             }
         }
-        Expr::Bool(_) | Expr::Number(_) | Expr::RawString(_) => {}
+        Expr::Bool(_) | Expr::Number(_) | Expr::RawString(_) | Expr::Operator(_) => {}
     }
 }
 
@@ -632,6 +645,10 @@ fn function_output(ty: &Type) -> Result<&Type, Error> {
 fn raw_glsl_function_expr_ref(func: &FunctionExpr) -> Result<String, Error> {
     match &func.kind {
         FunctionExprKind::Named(name) => Ok(name.clone()),
+        FunctionExprKind::Operator(op) => Err(Error::new(format!(
+            "raw GLSL template operator argument '&{}' must be bound through Lane",
+            op.symbol()
+        ))),
         FunctionExprKind::ObjectGetter { object, getter, .. } => match getter {
             ObjectGetter::Sdf => Ok(format!("sdf_{object}")),
             ObjectGetter::Grad => Ok(format!("grad_sdf_{object}")),
@@ -669,8 +686,17 @@ fn infer_explicit_closure_expr(
     input_ty: &Type,
     output_ty: &Type,
 ) -> Result<(ValueExpr, Vec<TypedFuncParamBinding>), Error> {
-    let param_types = closure_param_types(input_ty);
-    if params.len() != param_types.len() {
+    let binds_whole_vector =
+        params.len() == 1 && matches!(input_ty, Type::Vec2 | Type::Vec3 | Type::Vec4);
+    let binds_whole_product = params.len() == 1 && matches!(input_ty, Type::Product(_));
+    let param_types = if binds_whole_vector {
+        vec![input_ty.clone()]
+    } else if binds_whole_product {
+        Vec::new()
+    } else {
+        closure_param_types(input_ty)
+    };
+    if !binds_whole_product && params.len() != param_types.len() {
         return Err(Error::new(format!(
             "closure expects {} parameter(s), got {}",
             param_types.len(),
@@ -680,17 +706,40 @@ fn infer_explicit_closure_expr(
     let mut renamed = HashMap::new();
     let mut local_env = env.clone();
     let mut param_bindings = Vec::new();
-    for (param, ty) in params.iter().zip(param_types.iter()) {
+    for param in params {
         if param.starts_with('_') {
             return Err(Error::new("closure parameter names cannot start with '_'"));
         }
+    }
+    if binds_whole_product {
+        let Type::Product(parts) = input_ty else {
+            unreachable!()
+        };
+        let param = params[0].clone();
+        let mut body = body.clone();
+        rewrite_whole_product_param_fields(
+            &mut body,
+            &param,
+            parts,
+            &mut local_env,
+            &mut param_bindings,
+        )?;
+        let expr = infer_value_expr_for_type(&body, output_ty, &local_env, None)?;
+        ensure_type(&expr.ty(), output_ty, "closure body")?;
+        return Ok((expr, param_bindings));
+    }
+    for (param, ty) in params.iter().zip(param_types.iter()) {
         let internal = internal_closure_param_name(param);
         renamed.insert(param.clone(), internal.clone());
         local_env.insert_value(internal.clone(), ty.clone())?;
         param_bindings.push(TypedFuncParamBinding {
             ty: ty.clone(),
             name: internal,
-            expr: closure_param_source_expr(input_ty, param_bindings.len())?,
+            expr: if binds_whole_vector {
+                "_t".to_string()
+            } else {
+                closure_param_source_expr(input_ty, param_bindings.len())?
+            },
         });
     }
     let mut body = body.clone();
@@ -698,6 +747,99 @@ fn infer_explicit_closure_expr(
     let expr = infer_value_expr_for_type(&body, output_ty, &local_env, None)?;
     ensure_type(&expr.ty(), output_ty, "closure body")?;
     Ok((expr, param_bindings))
+}
+
+fn rewrite_whole_product_param_fields(
+    expr: &mut Expr,
+    param: &str,
+    parts: &[Type],
+    env: &mut Env<'_>,
+    param_bindings: &mut Vec<TypedFuncParamBinding>,
+) -> Result<(), Error> {
+    match expr {
+        Expr::FieldAccess { object, field } => {
+            if matches!(&**object, Expr::Ident(name) if name == param) {
+                let Some(index) = positional_product_field_index(field) else {
+                    return Err(Error::new(format!(
+                        "product parameter '{}' has no positional field '{}'",
+                        param, field
+                    )));
+                };
+                let Some(ty) = parts.get(index) else {
+                    return Err(Error::new(format!(
+                        "product parameter '{}' has no field '{}'",
+                        param, field
+                    )));
+                };
+                let internal = format!("__lane_product_param_{index}");
+                if !env.has_binding(&internal) {
+                    env.insert_value(internal.clone(), ty.clone())?;
+                    param_bindings.push(TypedFuncParamBinding {
+                        ty: ty.clone(),
+                        name: internal.clone(),
+                        expr: format!("_t{index}"),
+                    });
+                }
+                *expr = Expr::Ident(internal);
+                return Ok(());
+            }
+            rewrite_whole_product_param_fields(object, param, parts, env, param_bindings)
+        }
+        Expr::Closure { .. } => Ok(()),
+        Expr::Tuple(items) | Expr::Array(items) => {
+            for item in items {
+                rewrite_whole_product_param_fields(item, param, parts, env, param_bindings)?;
+            }
+            Ok(())
+        }
+        Expr::Call { callee, args } => {
+            rewrite_whole_product_param_fields(callee, param, parts, env, param_bindings)?;
+            for arg in args {
+                rewrite_whole_product_param_fields(arg, param, parts, env, param_bindings)?;
+            }
+            Ok(())
+        }
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            rewrite_whole_product_param_fields(condition, param, parts, env, param_bindings)?;
+            rewrite_whole_product_param_fields(then_branch, param, parts, env, param_bindings)?;
+            if let Some(else_branch) = else_branch {
+                rewrite_whole_product_param_fields(else_branch, param, parts, env, param_bindings)?;
+            }
+            Ok(())
+        }
+        Expr::Index { array, index } => {
+            rewrite_whole_product_param_fields(array, param, parts, env, param_bindings)?;
+            rewrite_whole_product_param_fields(index, param, parts, env, param_bindings)
+        }
+        Expr::Binary { left, right, .. } => {
+            rewrite_whole_product_param_fields(left, param, parts, env, param_bindings)?;
+            rewrite_whole_product_param_fields(right, param, parts, env, param_bindings)
+        }
+        Expr::Constructor { args, .. } => {
+            match args {
+                ConstructorArgs::Named(args) => {
+                    for (_, arg) in args {
+                        rewrite_whole_product_param_fields(arg, param, parts, env, param_bindings)?;
+                    }
+                }
+                ConstructorArgs::Positional(args) => {
+                    for arg in args {
+                        rewrite_whole_product_param_fields(arg, param, parts, env, param_bindings)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+        Expr::Bool(_)
+        | Expr::Number(_)
+        | Expr::RawString(_)
+        | Expr::Ident(_)
+        | Expr::Operator(_) => Ok(()),
+    }
 }
 
 fn closure_param_source_expr(input_ty: &Type, index: usize) -> Result<String, Error> {
@@ -866,8 +1008,8 @@ impl TypedProgram {
                     | Type::Int
                     | Type::Complex
                     | Type::Quat
-                    | Type::E2
-                    | Type::E3
+                    | Type::Isom2
+                    | Type::Isom3
                     | Type::Custom { .. }
                     | Type::Vec2
                     | Type::Vec3
@@ -969,6 +1111,13 @@ impl TypedProgram {
                     }
                 }
             };
+            if input_ty == Type::Unit && output_ty == Type::Unit && func.name != "main" {
+                return Err(Error::new(format!(
+                    "shader entry function '{}' must be named 'main'",
+                    func.name
+                ))
+                .with_line(func.line));
+            }
             typed_funcs.push(TypedFunc {
                 name: func.name.clone(),
                 input: input_ty,
@@ -1493,7 +1642,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
                         linear: action,
                     })
                 }
-                Type::E2 if env.ambient_dimension == ShapeDimension::D2 => {
+                Type::Isom2 if env.ambient_dimension == ShapeDimension::D2 => {
                     Ok(ObjectExpr::IsometryTransform {
                         object: Box::new(object),
                         transform: action,
@@ -1506,7 +1655,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
                         linear: action,
                     })
                 }
-                Type::E3 if env.ambient_dimension == ShapeDimension::D3 => {
+                Type::Isom3 if env.ambient_dimension == ShapeDimension::D3 => {
                     Ok(ObjectExpr::IsometryTransform {
                         object: Box::new(object),
                         transform: action,
@@ -1523,6 +1672,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         | Expr::Number(_)
         | Expr::RawString(_)
         | Expr::Closure { .. }
+        | Expr::Operator(_)
         | Expr::Tuple(_)
         | Expr::Array(_)
         | Expr::Index { .. }
@@ -1796,7 +1946,7 @@ fn infer_rot2d_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr
         [] => (zero_vec2(), ValueExpr::Float(0.0)),
         [angle] => (zero_vec2(), infer_value_expr(angle, env, None)?),
         [anchor, angle] => (
-            infer_value_expr(anchor, env, None)?,
+            infer_value_expr_for_type(anchor, &Type::Vec2, env, None)?,
             infer_value_expr(angle, env, None)?,
         ),
         _ => unreachable!(),
@@ -1854,6 +2004,10 @@ fn infer_value_expr(
             "raw GLSL strings are only valid as module function bodies",
         )),
         Expr::Closure { .. } => Err(Error::new("closures are only valid as function bodies")),
+        Expr::Operator(op) => Err(Error::new(format!(
+            "operator reference '&{}' needs a call or function context",
+            op.symbol()
+        ))),
         Expr::Ident(name) => infer_identifier_value(name, env, lift_param),
         Expr::FieldAccess { object, field } => {
             infer_value_field_access(object, field, env, lift_param)
@@ -1873,6 +2027,24 @@ fn infer_value_expr(
         Expr::Array(items) => infer_array_literal(items, env, lift_param, None),
         Expr::Index { array, index } => infer_index_expr(array, index, env, lift_param),
         Expr::Call { callee, args } => {
+            if let Expr::Operator(op) = &**callee {
+                if args.len() != 2 {
+                    return Err(Error::new(format!(
+                        "operator '&{}' expects 2 argument(s), got {}",
+                        op.symbol(),
+                        args.len()
+                    )));
+                }
+                return infer_value_expr(
+                    &Expr::Binary {
+                        op: *op,
+                        left: Box::new(args[0].clone()),
+                        right: Box::new(args[1].clone()),
+                    },
+                    env,
+                    lift_param,
+                );
+            }
             if let Some(result) = infer_array_builtin(expr, env, lift_param)? {
                 return Ok(result);
             }
@@ -1903,6 +2075,9 @@ fn infer_value_expr(
             if let Some(result) = infer_monoid_pow_call(name, args, env, lift_param)? {
                 return Ok(result);
             }
+            if let Some(result) = infer_product_domain_call(callee, args, env, lift_param)? {
+                return Ok(result);
+            }
             if let Some(result) = infer_pointwise_value_call(name, args, env, lift_param, None)? {
                 return Ok(result);
             }
@@ -1920,7 +2095,15 @@ fn infer_value_expr(
         } => infer_function_product_value_expr(left, right, env, lift_param),
         Expr::Binary { op, left, right } => {
             let left = infer_value_expr(left, env, lift_param)?;
-            let right = infer_value_expr(right, env, lift_param)?;
+            let right = match (*op, left.ty()) {
+                (BinOp::Mul, Type::Isom2) => {
+                    infer_value_expr_for_type(right, &Type::Vec2, env, lift_param)?
+                }
+                (BinOp::Mul, Type::Isom3) => {
+                    infer_value_expr_for_type(right, &Type::Vec3, env, lift_param)?
+                }
+                _ => infer_value_expr(right, env, lift_param)?,
+            };
             let (left, right, ty) = match infer_binary_type(*op, &left.ty(), &right.ty()) {
                 Ok(ty) => (left, right, ty),
                 Err(original_err) => {
@@ -1999,10 +2182,10 @@ fn infer_value_field_access(
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
     if let Ok(value) = infer_value_expr(object, env, lift_param) {
-        if let Some(ty) = field_access_type(&value.ty(), field, env) {
+        if let Some((ty, field)) = field_access(&value.ty(), field, env) {
             return Ok(ValueExpr::FieldAccess {
                 value: Box::new(value),
-                field: field.to_string(),
+                field,
                 ty,
             });
         }
@@ -2025,26 +2208,79 @@ fn infer_value_field_access(
     Err(Error::new(format!("value has no field '{}'", field)))
 }
 
-fn field_access_type(ty: &Type, field: &str, env: &Env<'_>) -> Option<Type> {
-    match (ty, field) {
-        (Type::Vec2, "x" | "y") => Some(Type::Float),
-        (Type::Vec3, "x" | "y" | "z") => Some(Type::Float),
-        (Type::Vec4 | Type::Complex | Type::Quat, "x" | "y" | "z" | "w") => {
-            if ty == &Type::Complex && matches!(field, "z" | "w") {
-                None
-            } else {
-                Some(Type::Float)
-            }
+fn field_access(ty: &Type, field: &str, env: &Env<'_>) -> Option<(Type, String)> {
+    match ty {
+        Type::Vec2 | Type::Complex => {
+            vector_field_access(2, field).map(|field| (Type::Float, field))
         }
-        (Type::Custom { name, .. }, _) => {
+        Type::Vec3 => vector_field_access(3, field).map(|field| (Type::Float, field)),
+        Type::Vec4 | Type::Quat => vector_field_access(4, field).map(|field| (Type::Float, field)),
+        Type::Custom { name, .. } => {
             let product_type = env.product_type(name)?;
-            product_type
-                .field_names
-                .iter()
-                .position(|candidate| candidate == field)
-                .map(|index| product_type.components[index].clone())
+            product_field_access(product_type, field)
         }
         _ => None,
+    }
+}
+
+fn vector_field_access(dimension: usize, field: &str) -> Option<String> {
+    let index = positional_product_field_index(field)?;
+    if index >= dimension {
+        return None;
+    }
+    Some(["x", "y", "z", "w"][index].to_string())
+}
+
+fn product_field_access(product_type: &ProductTypeDecl, field: &str) -> Option<(Type, String)> {
+    if let Some(index) = product_type
+        .field_names
+        .iter()
+        .position(|candidate| candidate == field)
+    {
+        return Some((product_type.components[index].clone(), field.to_string()));
+    }
+    if !uses_default_product_field_names(product_type) {
+        return None;
+    }
+    let index = positional_product_field_index(field)?;
+    if index >= product_type.components.len() {
+        return None;
+    }
+    Some((
+        product_type.components[index].clone(),
+        default_product_field_name(product_type.components.len(), index),
+    ))
+}
+
+fn uses_default_product_field_names(product_type: &ProductTypeDecl) -> bool {
+    product_type.field_names.len() == product_type.components.len()
+        && product_type
+            .field_names
+            .iter()
+            .enumerate()
+            .all(|(index, field)| {
+                field == &default_product_field_name(product_type.components.len(), index)
+            })
+}
+
+fn positional_product_field_index(field: &str) -> Option<usize> {
+    match field {
+        "x" => Some(0),
+        "y" => Some(1),
+        "z" => Some(2),
+        "w" => Some(3),
+        _ => field.strip_prefix('x')?.parse::<usize>().ok(),
+    }
+}
+
+fn default_product_field_name(count: usize, index: usize) -> String {
+    match (count, index) {
+        (_, index) if index >= count => unreachable!("field index outside product"),
+        (1..=4, 0) => "x".to_string(),
+        (2..=4, 1) => "y".to_string(),
+        (3..=4, 2) => "z".to_string(),
+        (4, 3) => "w".to_string(),
+        _ => format!("x{index}"),
     }
 }
 
@@ -2079,6 +2315,44 @@ fn infer_value_expr_for_type(
                 });
             }
             infer_value_expr(expr, env, lift_param)
+        }
+        (_, Expr::Ident(name)) if parse_matrix_basis_name(name).is_some() => {
+            let Some((row, column)) = parse_matrix_basis_name(name) else {
+                unreachable!();
+            };
+            let Type::Mat(rows, columns) = expected_ty else {
+                return Err(Error::new(format!(
+                    "matrix basis literal '{}' needs an expected matrix type",
+                    name
+                )));
+            };
+            if row == 0 || column == 0 || row > *rows || column > *columns {
+                return Err(Error::new(format!(
+                    "matrix basis literal '{}' is outside {}",
+                    name,
+                    format_type(expected_ty)
+                )));
+            }
+            Ok(ValueExpr::MatrixBasis {
+                row,
+                column,
+                ty: expected_ty.clone(),
+            })
+        }
+        (_, Expr::Ident(name)) if parse_identity_matrix_name(name).is_some() => {
+            let Some(dimension) = parse_identity_matrix_name(name) else {
+                unreachable!();
+            };
+            let expected = Type::Mat(dimension, dimension);
+            ensure_type(
+                &expected,
+                expected_ty,
+                &format!("identity literal '{}'", name),
+            )?;
+            Ok(ValueExpr::Neutral {
+                kind: NeutralKind::Identity,
+                ty: expected,
+            })
         }
         (_, Expr::Ident(name)) if matches!(name.as_str(), "e" | "I") && !env.has_binding(name) => {
             if let Some(kind) = neutral_kind_for_type(expected_ty, NeutralKind::Identity) {
@@ -2148,6 +2422,12 @@ fn infer_value_expr_for_type(
                 },
             ))
         }
+        (Type::Vec2 | Type::Vec3 | Type::Vec4, Expr::Array(items)) => {
+            infer_vector_literal_for_type(items, expected_ty, env, lift_param)
+        }
+        (Type::Mat(_, _), Expr::Array(items)) => {
+            infer_matrix_literal_for_type(items, expected_ty, env, lift_param)
+        }
         (Type::Vec4, Expr::Tuple(items)) if items.len() == 2 => {
             let xyz = infer_value_expr_for_type(&items[0], &Type::Vec3, env, lift_param)?;
             let w = infer_value_expr_for_type(&items[1], &Type::Float, env, lift_param)?;
@@ -2185,7 +2465,16 @@ fn infer_value_expr_for_type(
                 ensure_type(&result.ty(), expected_ty, "constructor expression")?;
                 return Ok(result);
             }
+            if let Some(result) = infer_rot_builtin(callee, args, env, lift_param)? {
+                ensure_type(&result.ty(), expected_ty, "rotation expression")?;
+                return Ok(result);
+            }
             if let Some(result) = infer_monoid_pow_call(name, args, env, lift_param)? {
+                if types_compatible_for_expected(&result.ty(), expected_ty) {
+                    return Ok(result);
+                }
+            }
+            if let Some(result) = infer_product_domain_call(callee, args, env, lift_param)? {
                 if types_compatible_for_expected(&result.ty(), expected_ty) {
                     return Ok(result);
                 }
@@ -2444,6 +2733,7 @@ fn collect_lifted_param_type(
                 collect_lifted_param_type(row, name, ty)?;
             }
         }
+        ValueExpr::MatrixBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Partial { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
@@ -2488,6 +2778,55 @@ fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKin
     }
 }
 
+fn parse_identity_matrix_name(name: &str) -> Option<usize> {
+    if let Some(suffixes) = parse_braced_usize_suffixes(name, "I") {
+        let [dimension] = suffixes.as_slice() else {
+            return None;
+        };
+        return (*dimension > 0).then_some(*dimension);
+    }
+    name.strip_prefix('I')?
+        .parse::<usize>()
+        .ok()
+        .filter(|dimension| *dimension > 0)
+}
+
+fn parse_matrix_basis_name(name: &str) -> Option<(usize, usize)> {
+    if let Some(suffixes) = parse_braced_usize_suffixes(name, "E") {
+        let [row, column] = suffixes.as_slice() else {
+            return None;
+        };
+        return Some((*row, *column));
+    }
+    let suffix = name.strip_prefix('E')?;
+    if let Some((row, column)) = suffix.split_once('_') {
+        return Some((row.parse().ok()?, column.parse().ok()?));
+    }
+    if suffix.len() == 2 && suffix.chars().all(|ch| ch.is_ascii_digit()) {
+        let mut digits = suffix.chars();
+        return Some((
+            digits.next()?.to_digit(10)? as usize,
+            digits.next()?.to_digit(10)? as usize,
+        ));
+    }
+    None
+}
+
+fn parse_braced_usize_suffixes(name: &str, prefix: &str) -> Option<Vec<usize>> {
+    let mut rest = name.strip_prefix(prefix)?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut values = Vec::new();
+    while let Some(inner_start) = rest.strip_prefix('{') {
+        let end = inner_start.find('}')?;
+        let value = inner_start[..end].parse::<usize>().ok()?;
+        values.push(value);
+        rest = &inner_start[end + 1..];
+    }
+    rest.is_empty().then_some(values)
+}
+
 fn infer_type_constructor_call(
     name: &str,
     args: &[Expr],
@@ -2495,8 +2834,8 @@ fn infer_type_constructor_call(
     lift_param: Option<&str>,
 ) -> Result<Option<ValueExpr>, Error> {
     let (ty, arg_types) = match name {
-        "E2" => (Type::E2, vec![Type::Mat(2, 2), Type::Vec2]),
-        "E3" => (Type::E3, vec![Type::Mat(3, 3), Type::Vec3]),
+        "Isom2" => (Type::Isom2, vec![Type::Mat(2, 2), Type::Vec2]),
+        "Isom3" => (Type::Isom3, vec![Type::Mat(3, 3), Type::Vec3]),
         _ => {
             let Some(product_type) = env.product_type(name) else {
                 return Ok(None);
@@ -2526,6 +2865,68 @@ fn infer_type_constructor_call(
         args: typed_args,
         ty,
     }))
+}
+
+fn infer_product_domain_call(
+    callee: &Expr,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<Option<ValueExpr>, Error> {
+    let Expr::Ident(name) = callee else {
+        return Ok(None);
+    };
+    let Some(overloads) = env.function_overloads(name) else {
+        return Ok(None);
+    };
+    let mut candidates = Vec::new();
+    for overload in overloads {
+        let Type::Func(input, output) = &overload.ty else {
+            continue;
+        };
+        let Type::Product(parts) = input.as_ref() else {
+            continue;
+        };
+        if parts.len() != args.len() {
+            continue;
+        }
+        let mut typed_args = Vec::new();
+        let mut ok = true;
+        for (arg, expected_ty) in args.iter().zip(parts.iter()) {
+            match infer_value_expr_for_type(arg, expected_ty, env, lift_param) {
+                Ok(typed_arg) => typed_args.push(typed_arg),
+                Err(_) => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if ok {
+            let cost = typed_args
+                .iter()
+                .zip(parts.iter())
+                .map(|(arg, expected)| call_arg_cost(&arg.ty(), expected, arg))
+                .sum::<usize>();
+            candidates.push((
+                cost,
+                ValueExpr::Call {
+                    func: name.clone(),
+                    args: typed_args,
+                    ty: (**output).clone(),
+                },
+            ));
+        }
+    }
+    candidates.sort_by_key(|(cost, _)| *cost);
+    match candidates.len() {
+        0 => Ok(None),
+        1 => Ok(candidates.pop().map(|(_, candidate)| candidate)),
+        _ if candidates[0].0 < candidates[1].0 => Ok(Some(candidates.remove(0).1)),
+        _ => Err(Error::new(format!(
+            "ambiguous overload for '{}' with provided argument(s)",
+            name
+        ))),
+    }
 }
 
 fn infer_monoid_pow_call(
@@ -2576,8 +2977,11 @@ fn infer_value_call(
         if args.len() != inputs.len() {
             continue;
         }
+        let mut substitutions = GenericSubstitution::default();
         if let Some(expected) = expected_output {
-            if !types_compatible_for_expected(&output, expected) {
+            if !unify_types(&output, expected, &mut substitutions)
+                && !types_compatible_for_expected(&output, expected)
+            {
                 continue;
             }
         }
@@ -2587,18 +2991,13 @@ fn infer_value_call(
         for (arg, input_ty) in args.iter().zip(inputs.iter()) {
             match infer_value_expr_for_type(arg, input_ty, env, lift_param) {
                 Ok(typed_arg) => {
-                    if ensure_type(&typed_arg.ty(), input_ty, &format!("call '{}(...)'", name))
-                        .is_err()
+                    if !unify_types(input_ty, &typed_arg.ty(), &mut substitutions)
+                        && !types_compatible_for_expected(&typed_arg.ty(), input_ty)
                     {
                         ok = false;
                         break;
                     }
-                    if typed_arg.ty() != *input_ty {
-                        cost += 1;
-                    }
-                    if matches!(typed_arg, ValueExpr::Neutral { .. }) {
-                        cost += 1;
-                    }
+                    cost += call_arg_cost(&typed_arg.ty(), input_ty, &typed_arg);
                     typed_args.push(typed_arg);
                 }
                 Err(err) => {
@@ -2610,6 +3009,7 @@ fn infer_value_call(
                 }
             }
         }
+        let output = substitute_type(&output, &substitutions);
         if ok && is_value_type(&output) {
             candidates.push((cost, output, typed_args));
         }
@@ -2644,6 +3044,11 @@ fn infer_value_call(
     })
 }
 
+fn call_arg_cost(actual: &Type, expected: &Type, arg: &ValueExpr) -> usize {
+    usize::from(!types_match(actual, expected))
+        + usize::from(matches!(arg, ValueExpr::Neutral { .. }))
+}
+
 fn call_inputs_and_output(ty: &Type) -> Result<(Vec<Type>, Type), Error> {
     let (inputs, output) = flatten_func_type(ty);
     if inputs.is_empty() {
@@ -2663,7 +3068,7 @@ fn call_inputs_and_output(ty: &Type) -> Result<(Vec<Type>, Type), Error> {
 }
 
 fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
-    actual == expected
+    types_match(actual, expected)
         || matches!(
             (actual, expected),
             (Type::Vec2, Type::Complex)
@@ -2687,12 +3092,15 @@ fn is_value_type(ty: &Type) -> bool {
             | Type::Int
             | Type::Complex
             | Type::Quat
-            | Type::E2
-            | Type::E3
+            | Type::Isom2
+            | Type::Isom3
             | Type::Custom { .. }
             | Type::Vec2
             | Type::Vec3
             | Type::Vec4
+            | Type::Generic(_)
+            | Type::VecGeneric(_)
+            | Type::MatGeneric(_, _)
             | Type::Mat(_, _)
             | Type::Array(_)
     )
@@ -2864,6 +3272,70 @@ fn infer_tuple_value_expr(
     infer_matrix_tuple(values)
 }
 
+fn infer_vector_literal_for_type(
+    items: &[Expr],
+    expected_ty: &Type,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    if expected_ty == &Type::Vec4 && items.len() == 2 {
+        let xyz = infer_value_expr_for_type(&items[0], &Type::Vec3, env, lift_param)?;
+        let w = infer_value_expr_for_type(&items[1], &Type::Float, env, lift_param)?;
+        return Ok(ValueExpr::Call {
+            func: "vec4".to_string(),
+            args: vec![xyz, w],
+            ty: Type::Vec4,
+        });
+    }
+
+    let Some(expected_len) = vector_dimension(expected_ty) else {
+        unreachable!();
+    };
+    if items.len() != expected_len {
+        return Err(Error::new(format!(
+            "{} literal expects {} element(s), got {}",
+            format_type(expected_ty),
+            expected_len,
+            items.len()
+        )));
+    }
+    let values = items
+        .iter()
+        .map(|item| infer_value_expr_for_type(item, &Type::Float, env, lift_param))
+        .collect::<Result<Vec<_>, _>>()?;
+    infer_vector_tuple(values)
+}
+
+fn infer_matrix_literal_for_type(
+    items: &[Expr],
+    expected_ty: &Type,
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    let Type::Mat(rows, columns) = expected_ty else {
+        unreachable!();
+    };
+    if items.len() != *rows {
+        return Err(Error::new(format!(
+            "{} literal expects {} row(s), got {}",
+            format_type(expected_ty),
+            rows,
+            items.len()
+        )));
+    }
+    let row_ty = vector_type(*columns);
+    let mut row_values = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        let row = infer_value_expr_for_type(item, &row_ty, env, lift_param)?;
+        ensure_type(&row.ty(), &row_ty, &format!("matrix row {}", index + 1))?;
+        row_values.push(row);
+    }
+    Ok(ValueExpr::Matrix {
+        columns: *columns,
+        rows: row_values,
+    })
+}
+
 fn infer_vector_tuple(values: Vec<ValueExpr>) -> Result<ValueExpr, Error> {
     match values.as_slice() {
         [x, y] => Ok(ValueExpr::Vec2(Box::new(x.clone()), Box::new(y.clone()))),
@@ -2956,8 +3428,8 @@ fn is_array_element_type(ty: &Type) -> bool {
             | Type::Int
             | Type::Complex
             | Type::Quat
-            | Type::E2
-            | Type::E3
+            | Type::Isom2
+            | Type::Isom3
             | Type::Custom { .. }
             | Type::Vec2
             | Type::Vec3
@@ -3337,6 +3809,9 @@ fn infer_function_expr_for_type(
     expected_input: &Type,
     expected_output: &Type,
 ) -> Result<FunctionExpr, Error> {
+    if let Expr::Operator(op) = expr {
+        return infer_operator_function_expr_for_type(*op, expected_input, expected_output);
+    }
     if let Expr::Tuple(items) = expr {
         if let Some(count) = vector_dimension(expected_output) {
             if count == items.len() {
@@ -3374,8 +3849,7 @@ fn infer_function_expr_for_type(
     let matches = candidates
         .into_iter()
         .filter(|func| {
-            types_equivalent(&func.input, expected_input)
-                && types_equivalent(&func.output, expected_output)
+            types_match(&func.input, expected_input) && types_match(&func.output, expected_output)
         })
         .collect::<Vec<_>>();
     if matches.len() == 1 {
@@ -3397,6 +3871,7 @@ fn infer_function_expr_for_type(
 
 fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<FunctionExpr>, Error> {
     match expr {
+        Expr::Operator(op) => infer_operator_function_expr_candidates(*op),
         Expr::Ident(name) => {
             if let Some(overloads) = env.function_overloads(name) {
                 let mut candidates = Vec::new();
@@ -3429,13 +3904,16 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
-                | Type::E2
-                | Type::E3
+                | Type::Isom2
+                | Type::Isom3
                 | Type::Custom { .. }
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
                 | Type::Mat(_, _)
+                | Type::Generic(_)
+                | Type::VecGeneric(_)
+                | Type::MatGeneric(_, _)
                 | Type::Array(_) => {
                     Err(Error::new(format!("'{}' is a value, not a function", name)))
                 }
@@ -3494,7 +3972,7 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             let mut candidates = Vec::new();
             for outer in &outers {
                 for inner in &inners {
-                    if inner.output == outer.input {
+                    if types_match(&inner.output, &outer.input) {
                         candidates.push(FunctionExpr {
                             input: inner.input.clone(),
                             output: outer.output.clone(),
@@ -3544,6 +4022,80 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             "function composition currently only supports named unary functions",
         )),
     }
+}
+
+fn infer_operator_function_expr_for_type(
+    op: BinOp,
+    expected_input: &Type,
+    expected_output: &Type,
+) -> Result<FunctionExpr, Error> {
+    let Some([left, right]) = operator_input_types(expected_input) else {
+        return Err(Error::new(format!(
+            "operator '&{}' needs a binary domain",
+            op.symbol()
+        )));
+    };
+    let output = infer_binary_type(op, &left, &right)?;
+    ensure_type(
+        &output,
+        expected_output,
+        &format!("operator '&{}'", op.symbol()),
+    )?;
+    Ok(FunctionExpr {
+        input: expected_input.clone(),
+        output: expected_output.clone(),
+        kind: FunctionExprKind::Operator(op),
+    })
+}
+
+fn infer_operator_function_expr_candidates(op: BinOp) -> Result<Vec<FunctionExpr>, Error> {
+    let mut candidates: Vec<FunctionExpr> = Vec::new();
+    let types = operator_candidate_types();
+    for left in &types {
+        for right in &types {
+            let Ok(output) = infer_binary_type(op, left, right) else {
+                continue;
+            };
+            let input = operator_candidate_input_type(left, right);
+            let candidate = FunctionExpr {
+                input,
+                output,
+                kind: FunctionExprKind::Operator(op),
+            };
+            if !candidates.iter().any(|existing| {
+                existing.input == candidate.input && existing.output == candidate.output
+            }) {
+                candidates.push(candidate);
+            }
+        }
+    }
+    Ok(candidates)
+}
+
+fn operator_candidate_input_type(left: &Type, right: &Type) -> Type {
+    Type::Product(vec![left.clone(), right.clone()])
+}
+
+fn operator_input_types(input: &Type) -> Option<[Type; 2]> {
+    match input {
+        Type::Vec2 => Some([Type::Float, Type::Float]),
+        Type::Product(parts) if parts.len() == 2 => Some([parts[0].clone(), parts[1].clone()]),
+        _ => None,
+    }
+}
+
+fn operator_candidate_types() -> Vec<Type> {
+    let mut types = float_gen_types();
+    types.extend([
+        Type::Int,
+        Type::Bool,
+        Type::Complex,
+        Type::Quat,
+        Type::Isom2,
+        Type::Isom3,
+    ]);
+    types.extend(matrix_types());
+    types
 }
 
 fn infer_pointwise_binary_function_candidates(
@@ -3925,7 +4477,10 @@ fn normalize_scalar_product_type(ty: &Type) -> Type {
 }
 
 fn types_equivalent(left: &Type, right: &Type) -> bool {
-    normalize_scalar_product_type(left) == normalize_scalar_product_type(right)
+    types_match(
+        &normalize_scalar_product_type(left),
+        &normalize_scalar_product_type(right),
+    )
 }
 
 fn format_function_expr(expr: &Expr) -> String {
@@ -3950,6 +4505,18 @@ fn infer_identifier_value(
     lift_param: Option<&str>,
 ) -> Result<ValueExpr, Error> {
     let Some(info) = env.get_value(name).cloned() else {
+        if let Some(dimension) = parse_identity_matrix_name(name) {
+            return Ok(ValueExpr::Neutral {
+                kind: NeutralKind::Identity,
+                ty: Type::Mat(dimension, dimension),
+            });
+        }
+        if parse_matrix_basis_name(name).is_some() {
+            return Err(Error::new(format!(
+                "matrix basis literal '{}' needs an expected matrix type",
+                name
+            )));
+        }
         if lift_param.is_none() {
             return Err(Error::new(format!(
                 "function '{}' needs an explicit call outside function bodies",
@@ -3993,13 +4560,16 @@ fn infer_identifier_value(
         | Type::Int
         | Type::Complex
         | Type::Quat
-        | Type::E2
-        | Type::E3
+        | Type::Isom2
+        | Type::Isom3
         | Type::Custom { .. }
         | Type::Vec2
         | Type::Vec3
         | Type::Vec4
         | Type::Mat(_, _)
+        | Type::Generic(_)
+        | Type::VecGeneric(_)
+        | Type::MatGeneric(_, _)
         | Type::Array(_) => Ok(ValueExpr::Var {
             name: name.to_string(),
             ty: info.ty,
@@ -4054,7 +4624,7 @@ fn infer_rot_builtin(
         return Ok(Some(ValueExpr::Call {
             func: "rot2D".to_string(),
             args: vec![anchor, angle],
-            ty: Type::E2,
+            ty: Type::Isom2,
         }));
     }
 
@@ -4072,7 +4642,7 @@ fn infer_rot_builtin(
     Ok(Some(ValueExpr::Call {
         func: "rot".to_string(),
         args: vec![binormal, anchor, angle],
-        ty: Type::E3,
+        ty: Type::Isom3,
     }))
 }
 
@@ -4150,11 +4720,11 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         return Ok(right.clone());
     }
 
-    if op == BinOp::Mul && left == &Type::E3 && right == &Type::Vec3 {
+    if op == BinOp::Mul && left == &Type::Isom3 && right == &Type::Vec3 {
         return Ok(Type::Vec3);
     }
 
-    if op == BinOp::Mul && left == &Type::E2 && right == &Type::Vec2 {
+    if op == BinOp::Mul && left == &Type::Isom2 && right == &Type::Vec2 {
         return Ok(Type::Vec2);
     }
 

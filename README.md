@@ -64,7 +64,7 @@ Usage:
 - `lane list-all`, `lane -la`, or `lane --list-all` lists every builtin item on
   one line, including primitive constructors, GLSL functions, type aliases,
   object operators, and algebraic categories. Repeated scalar/vector overload
-  families are compacted with `Rn`, matrix families use `Matn` and `Matnxm`, and
+  families are compacted with `Rn`, matrix families use `Mat{n}x{m}`, and
   algebraic helper operations such as component-wise matrix multiplication are
   omitted from this broad list.
 - `lane -pc SHELL` prints completion code for `bash`, `zsh`, or `fish`.
@@ -128,7 +128,8 @@ and 3D object operators are rejected, and generated entry points use `vec2`.
 
 ```lane
 #2D
-Object shape = Box2D(a=2, b=1) + (1, 2)
+R2 offset = [1, 2]
+Object shape = Box2D(a=2, b=1) + offset
 const Object output = shape
 ```
 
@@ -152,6 +153,16 @@ const Object output = Ball3D(r=slope(0) + density(normal))
 
 Differential operators do not take per-call epsilon arguments; use `#prec` when
 a program needs a different precision.
+
+### `#import NAME`
+
+Imports a Lane module from the local `modules/` directory or the installed Lane
+module directory. The shipped modules include `std` and `raytracing`.
+
+```lane
+#import std
+R z = projection_1([3, 4])
+```
 
 ## Declarations
 
@@ -190,7 +201,7 @@ Constructs a nominal product type and emits a GLSL struct. Every component must
 satisfy the declared category or a subcategory. `DivRing` products are rejected.
 
 ```lane
-Grp G = E3 x E2 {m, n}
+Grp G = Isom3 x Isom2 {m, n}
 provided G a
 provided G b
 G product = a * b
@@ -201,12 +212,12 @@ Emitted support includes:
 
 ```glsl
 struct G {
-    E3 m;
-    E2 n;
+    Isom3 m;
+    Isom2 n;
 };
 
 G mult_G(G a, G b) {
-    return G(mult_E3(a.m, b.m), mult_E2(a.n, b.n));
+    return G(mult_Isom3(a.m, b.m), mult_Isom2(a.n, b.n));
 }
 ```
 
@@ -214,17 +225,19 @@ DivRing names are optional:
 
 ```lane
 Ab Pair = R2 x R3
-Pair p = Pair((1, 2), 0)
+Pair p = Pair([1, 2], 0)
 ```
 
 Default field names are `x`, `y`, `z`, `w` up to four components and `x0`,
-`x1`, ... after that.
+`x1`, ... after that. Positional aliases are accepted for default fields:
+`x`, `y`, `z`, `w` and `x0`, `x1`, `x2`, `x3` refer to the same first four
+components when present.
 
 Without `const`, product operations are emitted only when used. With `const`,
 all operations for the category are emitted:
 
 ```lane
-const Grp G = E3 x E2
+const Grp G = Isom3 x Isom2
 ```
 
 ### `TYPE name = expression`
@@ -234,7 +247,7 @@ match the annotated type.
 
 ```lane
 R radius = 1.5
-R3 offset = (1, 0, 0)
+R3 offset = [1, 0, 0]
 Object ball = Ball3D(r=radius) + offset
 Func(R, R) wobble = pow2 @ sin
 ```
@@ -246,7 +259,7 @@ the expression has one clear type.
 
 ```lane
 radius = 1 + 2
-offset = (1, 0, 0)
+R3 offset = [1, 0, 0]
 shape = Ball3D(r=radius) + offset
 const Object output = shape
 ```
@@ -258,7 +271,8 @@ Exports a reusable SDF helper named `sdf_name` and a gradient helper named
 
 ```lane
 provided R radius
-construct Object shell = Ball3D(r=radius) + (1, 0, 0)
+R3 offset = [1, 0, 0]
+construct Object shell = Ball3D(r=radius) + offset
 const Object output = shell
 ```
 
@@ -266,9 +280,9 @@ Object bindings also expose function getters:
 
 ```lane
 Object shell = Ball3D(r=2)
-R d = shell.sdf((0, 0, 0))
-R3 normal = shell.grad((0, 0, 0))
-R3 finite_diff_normal = gradient(shell.sdf)((0, 0, 0))
+R d = shell.sdf([0, 0, 0])
+R3 normal = shell.grad([0, 0, 0])
+R3 finite_diff_normal = gradient(shell.sdf)([0, 0, 0])
 const Object output = Ball3D(r=d + length(normal + finite_diff_normal))
 ```
 
@@ -281,7 +295,8 @@ lift over the ambient point:
 ```lane
 #2D
 const rect = Box2D(a=1, b=2)
-const color = rect.sdf * (.5, .5, .9, 1)
+R4 tint = [.5, .5, .9, 1]
+const color = rect.sdf * tint
 ```
 
 Here `color` is emitted as `Hom(R2, R4)`.
@@ -326,8 +341,8 @@ Lane type names are nominal and case-sensitive.
 | `Vec4` | `R4` | `vec4` |
 | `Mat2`, `Mat3`, `Mat4` | | `mat2`, `mat3`, `mat4` |
 | `MatNxM` | `N,M in {2,3,4}` | GLSL `matMxN` |
-| `E2` | | 2D isometry struct |
-| `E3` | | 3D isometry struct |
+| `Isom2` | | 2D isometry struct |
+| `Isom3` | | 3D isometry struct |
 | `Object` | `Object3D` | ambient 3D SDF object, or `Object2D` under `#2D` |
 | `Object2D` | | 2D SDF object |
 
@@ -355,11 +370,14 @@ Function type alias used for mathematical maps and external functions.
 ```lane
 provided Hom(R3, R) density
 provided Hom(R3 x R3, R3) cross
-R3 c = cross((1, 0, 0), (0, 1, 0))
+R3 c = cross([1, 0, 0], [0, 1, 0])
 ```
 
 If the domain is a product type, function calls use multiple positional
-arguments.
+arguments. `R x R` is an explicit product domain with two real-valued
+arguments; `R2` is a Euclidean vector type. Lane may use the GLSL isomorphism
+between them for selected built-in interop, but it does not collapse one syntax
+into the other in user function signatures.
 
 ### `End(T)`
 
@@ -471,7 +489,7 @@ In expected-type contexts, Lane casts neutral literals:
 ```lane
 R3 origin = 0
 Mat3 identity_matrix = e
-E3 identity_motion = E3(e, 0)
+Isom3 identity_motion = Isom3(e, 0)
 ```
 
 - `0` casts to the additive neutral element.
@@ -491,17 +509,19 @@ R weight = enabled
 Z count = enabled
 ```
 
-### Tuples
+### Product And Vector Literals
 
-Tuple literals construct vectors, complex numbers, quaternions, and matrices
-depending on expected type.
+Parentheses group expressions and are used for tuple-shaped function products.
+Explicit product domains such as `R x R` are called with multiple positional
+arguments. Brackets construct vectors, complex numbers, quaternions, and
+matrices when a vector or matrix type is expected.
 
 ```lane
-R2 uv = (0.5, 1)
-C z = (1, 0)
-R3 p = (1, 2, 3)
-H q = (1, 0, 0, 0)
-Mat3 m = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+R2 uv = [0.5, 1]
+C z = [1, 0]
+R3 p = [1, 2, 3]
+H q = [1, 0, 0, 0]
+Mat3 m = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 ```
 
 Matrix names use row-by-column shape. GLSL matrix constructors are emitted in
@@ -509,10 +529,11 @@ the correct column-major form.
 
 ### Arrays
 
-Array literals use square brackets. All elements must have the same type.
+Array literals also use square brackets when an `Array(T)` type is expected. All
+elements must have the same type.
 
 ```lane
-Array(R3) points = [(0, 0, 0), (1, 0, 0)]
+Array(R3) points = [[0, 0, 0], [1, 0, 0]]
 R3 first = points[0]
 ```
 
@@ -523,14 +544,24 @@ Function calls use parentheses.
 ```lane
 R y = sin(time)
 R z = pow2(y)
-R3 c = cross((1, 0, 0), (0, 1, 0))
+R3 c = cross([1, 0, 0], [0, 1, 0])
+```
+
+Operators can be referenced as binary functions with `&`. Operator references
+use the same type deduction and emission as infix syntax. Their natural domain
+is an explicit two-argument product such as `R x R`.
+
+```lane
+R sum = &+(x, y)
+Bool ordered = &<(x, y)
+const Hom(R x R, R) wave = sin @ &+
 ```
 
 Constructor calls use the same syntax:
 
 ```lane
-E3 g = E3(e, (1, 2, 3))
-Pair p = Pair((1, 2), 0)
+Isom3 g = Isom3(e, [1, 2, 3])
+Pair p = Pair([1, 2], 0)
 ```
 
 ### Named Arguments
@@ -540,7 +571,7 @@ Primitive constructors accept named arguments.
 ```lane
 Ball3D(r=1)
 Box3D(a=1, b=2, c=3)
-Triangle2D(p0=(0, 0), p1=(1, 0), p2=(0, 1))
+Triangle2D(p0=[0, 0], p1=[1, 0], p2=[0, 1])
 ```
 
 ### Positional Arguments
@@ -550,7 +581,7 @@ Primitive constructors also accept positional arguments in field order.
 ```lane
 Ball3D(1)
 Box3D(1, 2, 3)
-Segment3D((0, 0, 0), (1, 0, 0))
+Segment3D([0, 0, 0], [1, 0, 0])
 ```
 
 Named and positional arguments cannot be mixed in one call.
@@ -561,7 +592,7 @@ Numeric negation.
 
 ```lane
 R x = -1
-R3 p = (-1, -2, -3)
+R3 p = [-1, -2, -3]
 ```
 
 ### Binary `+` And `-`
@@ -572,8 +603,8 @@ vector translates the object.
 ```lane
 R a = 1 + 2
 Bool toggled = true + false
-R3 p = (1, 0, 0) - (0, 1, 0)
-Object moved = Ball3D(r=1) + (2, 0, 0)
+R3 p = [1, 0, 0] - [0, 1, 0]
+Object moved = Ball3D(r=1) + [2, 0, 0]
 ```
 
 ### Binary `*`
@@ -584,10 +615,10 @@ matrix action depending on operand types.
 ```lane
 R area = 2 * 3
 Bool both = true * false
-R3 p = 2 * (1, 0, 0)
-E3 composed = a * b
-R3 moved = composed * (1, 0, 0)
-Object rotated = rot((0, 0, 1), 0) * Ball3D(r=1)
+R3 p = 2 * [1, 0, 0]
+Isom3 composed = a * b
+R3 moved = composed * [1, 0, 0]
+Object rotated = rot([0, 0, 1], 0) * Ball3D(r=1)
 ```
 
 ### Binary `/`
@@ -596,9 +627,9 @@ Division for fields and scalar division for vector spaces. It is not accepted
 for plain `Grp` values.
 
 ```lane
-C z = (1, 2)
+C z = [1, 2]
 C normalized = z / z
-R3 half = (1, 2, 3) / 2
+R3 half = [1, 2, 3] / 2
 ```
 
 ### Comparisons
@@ -667,9 +698,9 @@ binding name.
 
 ### Function Products
 
-Tuples of functions with the same domain form a product-valued function. Products
-of `R` components are represented as `R2`, `R3`, or `R4`, so `R x R` and `R2`
-are equivalent in function domains and codomains.
+Tuples of functions with the same domain form a vector-valued function when the
+expected codomain is `R2`, `R3`, or `R4`. The domains must match as written:
+`Hom(R2, R)` and `Hom(R x R, R)` are different signatures.
 
 ```lane
 Hom(R, R2) circle = (sin, cos)
@@ -681,7 +712,7 @@ the first coordinate and the right function to the second.
 
 ```lane
 Hom(R2, R2) warp = sin x cos
-R2 q = warp((1, 2))
+R2 q = warp([1, 2])
 ```
 
 ### Indexing `[]`
@@ -698,19 +729,30 @@ R x = xs[1]
 ### GLSL Math Builtins
 
 Lane pre-registers GLSL math builtins whose signatures fit Lane's current value
-types: `Bool`, `R`, `Z`, `R2`, `R3`, `R4`, and `Mat2` through `Mat4x4`. Calls emit as
-direct GLSL calls and do not add support bodies.
+types: `Bool`, `R`, `Z`, `R2`, `R3`, `R4`, and generic matrix families such as
+`Mat{n}x{m}`. Calls emit as direct GLSL calls and do not add support bodies.
 `lane list-all` prints complete scalar/vector families compactly, for example
 `Hom(Rn, Rn)` for functions available on `R`, `R2`, `R3`, and `R4`, and
-`transpose` as `Hom(Matnxm, Matmxn)`.
+`transpose` as `Hom(Mat{n}x{m}, Mat{m}x{n})`.
 
 ```lane
 provided Mat3 frame
 R y = sin(time) + cos(time)
-R3 n = normalize((1, 2, 3))
-R3 reflected = reflect(n, (0, 1, 0))
-R3 color = mix(clamp(reflected, 0, 1), (1, 0, 0), 0.25)
+R3 n = normalize([1, 2, 3])
+R3 reflected = reflect(n, [0, 1, 0])
+R3 color = mix(clamp(reflected, 0, 1), [1, 0, 0], 0.25)
 Mat3 adjusted = matrixCompMult(frame, inverse(transpose(frame)))
+```
+
+Matrix identities can be written as `I` when the expected matrix type is known,
+or as `I{n}` when the dimension should be explicit. Matrix basis literals use
+`E{i}{j}` with one-based row and column indices, and the expected `Mat...` type
+sets the full matrix size.
+
+```lane
+Mat3 eye = I{3}
+Mat3 ez = E{1}{3}
+Mat12x3 large = E12_3
 ```
 
 Registered GLSL functions include:
@@ -746,7 +788,7 @@ Complex overloads are available for functions such as `exp`, `log`, `pow`, and
 `sin` on `C` inputs. Their GLSL overloads are emitted only when used.
 
 ```lane
-C seed = (1, 0)
+C seed = [1, 0]
 C z = exp(seed)
 ```
 
@@ -760,12 +802,12 @@ const Pair cubed = pow(3, p)
 
 ### `rot`
 
-Value-level `rot(axis, anchor, angle)` constructs an `E3` isometry.
+Value-level `rot(axis, anchor, angle)` constructs an `Isom3` isometry.
 
 ```lane
-R3 axis = (0, 0, 1)
-E3 r = rot(axis, 0, time)
-R3 p = r * (1, 0, 0)
+R3 axis = [0, 0, 1]
+Isom3 r = rot(axis, 0, time)
+R3 p = r * [1, 0, 0]
 const Object output = Ball3D(r=1) + p
 ```
 
@@ -773,25 +815,25 @@ Object-level `rot(...)` rotates an object by applying the inverse transform to
 the sampled point. Defaults are accepted:
 
 ```lane
-const Object output = rot((0, 1, 0), (1, 0, 0), 0.5)(Ball3D(r=1))
+const Object output = rot([0, 1, 0], [1, 0, 0], 0.5)(Ball3D(r=1))
 const Object output = rot(0.5)(Ball3D(r=1)) // axis=(0,0,1), anchor=0
 const Object output = rot()(Ball3D(r=1))    // angle=0
 ```
 
 ### `rot2D`
 
-Value-level `rot2D(anchor, angle)` constructs an `E2` isometry.
+Value-level `rot2D(anchor, angle)` constructs an `Isom2` isometry.
 
 ```lane
 #2D
-E2 r = rot2D((0, 0), time)
+Isom2 r = rot2D([0, 0], time)
 const Object output = r * Box2D(a=1, b=.5)
 ```
 
 Object-level `rot2D(...)` rotates 2D objects:
 
 ```lane
-const Object output = rot2D((1, 0), 0.5)(Box2D(a=1, b=.5))
+const Object output = rot2D([1, 0], 0.5)(Box2D(a=1, b=.5))
 const Object output = rot2D(0.5)(Box2D(a=1, b=.5)) // anchor=0
 const Object output = rot2D()(Box2D(a=1, b=.5))    // angle=0
 ```
@@ -844,7 +886,8 @@ actions produce `Object` or `Object2D` values.
 
 ```lane
 Object a = Ball3D(r=2)
-Object b = Box3D(1, .5, .25) + (2, 0, 0)
+R3 offset = [2, 0, 0]
+Object b = Box3D(1, .5, .25) + offset
 Object c = smoothUnion(.2)(a, b)
 const Object output = c
 ```
@@ -855,14 +898,14 @@ const Object output = c
 Ball3D(r=1)
 Box3D(a=1, b=2, c=3)
 Halfspace3D(n=(0, 1, 0), h=0)
-Line3D(x0=(0, 0, 0), dir=(1, 0, 0))
-Plane3D(n=(0, 1, 0), origin=(0, 2, 0))
-Quad3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(1, 1, 0), p4=(0, 1, 0))
-Segment3D(a=(0, 0, 0), b=(1, 0, 0))
+Line3D(x0=[0, 0, 0], dir=[1, 0, 0])
+Plane3D(n=[0, 1, 0], origin=[0, 2, 0])
+Quad3D(p1=[0, 0, 0], p2=[1, 0, 0], p3=[1, 1, 0], p4=[0, 1, 0])
+Segment3D(a=[0, 0, 0], b=[1, 0, 0])
 Segment3D(2) // centered length constructor
-Simplex3D(p0=(0, 0, 0), p1=(1, 0, 0), p2=(0, 1, 0), p3=(0, 0, 1))
+Simplex3D(p0=[0, 0, 0], p1=[1, 0, 0], p2=[0, 1, 0], p3=[0, 0, 1])
 Torus3D(major=3, minor=.5)
-Triangle3D(p1=(0, 0, 0), p2=(1, 0, 0), p3=(0, 1, 0))
+Triangle3D(p1=[0, 0, 0], p2=[1, 0, 0], p3=[0, 1, 0])
 ```
 
 ### 2D Primitive Constructors
@@ -872,10 +915,10 @@ Ball2D(r=1)
 Box2D(a=1, b=.5)
 Point2D(at=(3, 4))
 Polygon2D(points=((0, 0), (2, 0), (2, 1), (0, 1)))
-Quad2D(p1=(0, 0), p2=(1, 0), p3=(1, 1), p4=(0, 1))
-Segment2D(a=(0, 0), b=(1, 0))
+Quad2D(p1=[0, 0], p2=[1, 0], p3=[1, 1], p4=[0, 1])
+Segment2D(a=[0, 0], b=[1, 0])
 Segment2D(length=2) // centered length constructor
-Triangle2D(p0=(0, 0), p1=(1, 0), p2=(0, 1))
+Triangle2D(p0=[0, 0], p1=[1, 0], p2=[0, 1])
 ```
 
 ### Boolean Object Operators
@@ -885,7 +928,8 @@ Associative operators accept two or more objects:
 ```lane
 const Object output = union(Ball3D(r=1), Box3D(1, 1, 1), Torus3D(2, .2))
 const Object output = intersect(Ball3D(r=2), Box3D(1, 1, 1))
-const Object output = xor(Ball3D(r=1), Ball3D(r=1) + (1, 0, 0))
+R3 offset = [1, 0, 0]
+const Object output = xor(Ball3D(r=1), Ball3D(r=1) + offset)
 ```
 
 Binary difference accepts exactly two objects:
@@ -902,7 +946,8 @@ Smooth operators are curried by smoothing radius `k`.
 const Object output = smoothUnion(.2)(Ball3D(r=1), Box3D(1, 1, 1))
 const Object output = smoothIntersect(.2)(Ball3D(r=2), Box3D(1, 1, 1))
 const Object output = smoothDiff(.2)(Box3D(2, 2, 2), Ball3D(r=1))
-const Object output = smoothXor(.2)(Ball3D(r=1), Ball3D(r=1) + (1, 0, 0))
+R3 offset = [1, 0, 0]
+const Object output = smoothXor(.2)(Ball3D(r=1), Ball3D(r=1) + offset)
 ```
 
 ### `revolution`
@@ -910,7 +955,7 @@ const Object output = smoothXor(.2)(Ball3D(r=1), Ball3D(r=1) + (1, 0, 0))
 Lifts an `Object2D` profile into a 3D surface of revolution.
 
 ```lane
-Object2D profile = Segment2D(a=(0, -1), b=(0, 1))
+Object2D profile = Segment2D(a=[0, -1], b=[0, 1])
 const Object output = revolution(1.5)(profile)
 ```
 
@@ -927,7 +972,8 @@ const Object output = extrude(.25)(Box2D(a=1, b=.5))
 Translate objects with vector addition:
 
 ```lane
-const Object output = Ball3D(r=1) + (1, 2, 3)
+R3 offset = [1, 2, 3]
+const Object output = Ball3D(r=1) + offset
 ```
 
 Apply orthogonal matrix actions or isometry actions with `*`:
@@ -936,15 +982,15 @@ Apply orthogonal matrix actions or isometry actions with `*`:
 provided Mat3 R
 const Object output = R * Ball3D(r=1)
 
-E3 g = E3(e, (1, 2, 3))
+Isom3 g = Isom3(e, [1, 2, 3])
 const Object output = g * Ball3D(r=1)
 ```
 
-Under `#2D`, `E2 * Object2D` is accepted:
+Under `#2D`, `Isom2 * Object2D` is accepted:
 
 ```lane
 #2D
-E2 g = E2(e, (1, 2))
+Isom2 g = Isom2(e, [1, 2])
 const Object output = g * Box2D(a=2, b=1)
 ```
 
@@ -970,14 +1016,14 @@ names such as `p`, `eps`, `dx`, `dy`, or `dz`.
 provided R time
 provided Hom(R3, R) density
 
-Grp Motion = E3 x E3 {left, right}
+Grp Motion = Isom3 x Isom3 {left, right}
 
-R3 axis = (0, 0, 1)
-E3 spin = rot(axis, 0, time)
-Motion both = Motion(spin, E3(e, (2, 0, 0))) * Motion(E3(e, 0), spin)
+R3 axis = [0, 0, 1]
+Isom3 spin = rot(axis, 0, time)
+Motion both = Motion(spin, Isom3(e, [2, 0, 0])) * Motion(Isom3(e, 0), spin)
 
 construct Object ball = Ball3D(r=1 + sin(time))
-Object box = E3(e, (2, 0, 0)) * Box3D(a=1, b=.5, c=.5)
+Object box = Isom3(e, [2, 0, 0]) * Box3D(a=1, b=.5, c=.5)
 Object scene = smoothUnion(.2)(spin * ball, box)
 
 const Object output = scene
@@ -988,7 +1034,7 @@ Use the CLI for authoritative registered GLSL bodies:
 ```sh
 lane --list Ball3D
 lane --list-objects revolution
-lane --list-objects E3
+lane --list-objects Isom3
 ```
 
 ## Feature Samples

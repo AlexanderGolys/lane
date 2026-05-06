@@ -462,13 +462,16 @@ impl TypedProgram {
                 | Type::Int
                 | Type::Complex
                 | Type::Quat
-                | Type::E2
-                | Type::E3
+                | Type::Isom2
+                | Type::Isom3
                 | Type::Custom { .. }
                 | Type::Vec2
                 | Type::Vec3
                 | Type::Vec4
                 | Type::Mat(_, _)
+                | Type::Generic(_)
+                | Type::VecGeneric(_)
+                | Type::MatGeneric(_, _)
                 | Type::Array(_) => {
                     forbidden.insert(input.name.clone());
                 }
@@ -868,6 +871,7 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
                 collect_object_getter_value_refs(row, names);
             }
         }
+        ValueExpr::MatrixBasis { .. } => {}
         ValueExpr::Derivative {
             epsilon, func, at, ..
         }
@@ -892,6 +896,7 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
 fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet<String>) {
     match &func.kind {
         FunctionExprKind::Named(_) => {}
+        FunctionExprKind::Operator(_) => {}
         FunctionExprKind::ObjectGetter {
             object, captures, ..
         } => {
@@ -946,7 +951,7 @@ fn collect_object_getter_pointwise_call_arg_refs(
 
 fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
     match ty {
-        Type::E2 | Type::E3 => {
+        Type::Isom2 | Type::Isom3 => {
             names.insert(ty.type_name());
         }
         Type::Custom { name, .. } => {
@@ -972,6 +977,9 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
         | Type::Vec3
         | Type::Vec4
         | Type::Mat(_, _)
+        | Type::Generic(_)
+        | Type::VecGeneric(_)
+        | Type::MatGeneric(_, _)
         | Type::Object
         | Type::Object2D => {}
     }
@@ -1261,7 +1269,7 @@ fn emit_component_type_dependency(
     blocks: &mut Vec<String>,
 ) {
     match ty {
-        Type::E2 | Type::E3 => {
+        Type::Isom2 | Type::Isom3 => {
             emit_builtin_support_once(&ty.type_name(), emitted_builtin_support, blocks)
         }
         Type::Custom { name, .. } => {
@@ -1295,7 +1303,7 @@ fn emit_component_op_dependency(
         Type::Quat if matches!(op, ProductOp::Mult | ProductOp::Inv) => {
             emit_builtin_support_once("H", emitted_builtin_support, blocks);
         }
-        Type::E2 | Type::E3 => {
+        Type::Isom2 | Type::Isom3 => {
             emit_builtin_support_once(&ty.type_name(), emitted_builtin_support, blocks)
         }
         Type::Custom { name, .. } => {
@@ -1435,8 +1443,8 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
             Type::Int => "1".to_string(),
             Type::Complex => "vec2(1.0, 0.0)".to_string(),
             Type::Quat => "vec4(1.0, 0.0, 0.0, 0.0)".to_string(),
-            Type::E2 => "E2(mat2(1.0), vec2(0.0))".to_string(),
-            Type::E3 => "E3(mat3(1.0), vec3(0.0))".to_string(),
+            Type::Isom2 => "Isom2(mat2(1.0), vec2(0.0))".to_string(),
+            Type::Isom3 => "Isom3(mat3(1.0), vec3(0.0))".to_string(),
             Type::Custom { name, .. } => format!("e_{name}"),
             _ => emit_neutral_value(NeutralKind::Identity, ty),
         },
@@ -1454,8 +1462,8 @@ fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> S
         (ProductOp::Sub, Type::Custom { name, .. }) => format!("sub_{}({}, {})", name, left, right),
         (ProductOp::Mult, Type::Complex) => format!("mult_C({}, {})", left, right),
         (ProductOp::Mult, Type::Quat) => format!("mult_H({}, {})", left, right),
-        (ProductOp::Mult, Type::E2) => format!("mult_E2({}, {})", left, right),
-        (ProductOp::Mult, Type::E3) => format!("mult_E3({}, {})", left, right),
+        (ProductOp::Mult, Type::Isom2) => format!("mult_Isom2({}, {})", left, right),
+        (ProductOp::Mult, Type::Isom3) => format!("mult_Isom3({}, {})", left, right),
         (ProductOp::Mult, Type::Custom { name, .. }) => {
             format!("mult_{}({}, {})", name, left, right)
         }
@@ -1473,8 +1481,8 @@ fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
         (ProductOp::Inv, Type::Int) => format!("(1 / {value})"),
         (ProductOp::Inv, Type::Complex) => format!("div_C(vec2(1.0, 0.0), {value})"),
         (ProductOp::Inv, Type::Quat) => format!("inv_H({value})"),
-        (ProductOp::Inv, Type::E2) => format!("inv_E2({value})"),
-        (ProductOp::Inv, Type::E3) => format!("inv_E3({value})"),
+        (ProductOp::Inv, Type::Isom2) => format!("inv_Isom2({value})"),
+        (ProductOp::Inv, Type::Isom3) => format!("inv_Isom3({value})"),
         (ProductOp::Inv, Type::Custom { name, .. }) => format!("inv_{name}({value})"),
         _ => unreachable!(),
     }
@@ -1718,6 +1726,7 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
                 collect_concat_helpers(row, helpers);
             }
         }
+        ValueExpr::MatrixBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
         | ValueExpr::Divergence { epsilon, at, .. } => {
@@ -1755,6 +1764,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         ValueExpr::Matrix { rows, .. } => rows
             .iter()
             .all(|row| is_global_const_value_expr(row, names)),
+        ValueExpr::MatrixBasis { .. } => true,
         ValueExpr::Binary { left, right, .. } => {
             is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
         }
@@ -1913,6 +1923,7 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_refs(row, names);
             }
         }
+        ValueExpr::MatrixBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
         | ValueExpr::Divergence { epsilon, at, .. } => {
@@ -1998,6 +2009,7 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_function_refs(row, names);
             }
         }
+        ValueExpr::MatrixBasis { .. } => {}
         ValueExpr::Derivative { epsilon, at, .. }
         | ValueExpr::Partial { epsilon, at, .. }
         | ValueExpr::Gradient { epsilon, at, .. }
@@ -2218,6 +2230,7 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                 collect_value_support(row, names);
             }
         }
+        ValueExpr::MatrixBasis { .. } => {}
         ValueExpr::Derivative {
             epsilon, func, at, ..
         }
@@ -2243,6 +2256,13 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
     match &func.kind {
         FunctionExprKind::Named(name) => {
             names.insert(name.clone());
+        }
+        FunctionExprKind::Operator(op) => {
+            if let Some((left, right)) = operator_function_support_types(&func.input) {
+                if let Some(name) = binary_support_name(*op, &left, &right) {
+                    names.insert(name);
+                }
+            }
         }
         FunctionExprKind::ObjectGetter { captures, .. } => {
             for capture in captures {
@@ -2290,6 +2310,15 @@ fn collect_pointwise_call_arg_support(arg: &PointwiseCallArg, names: &mut BTreeS
         PointwiseCallArg::Value(value) => collect_value_support(value, names),
     }
 }
+
+fn operator_function_support_types(input: &Type) -> Option<(Type, Type)> {
+    match input {
+        Type::Vec2 => Some((Type::Float, Type::Float)),
+        Type::Product(parts) if parts.len() == 2 => Some((parts[0].clone(), parts[1].clone())),
+        _ => None,
+    }
+}
+
 fn emit_value_expr(
     expr: &ValueExpr,
     helper_names: &HashMap<String, String>,
@@ -2422,6 +2451,7 @@ fn emit_value_expr(
         ValueExpr::Matrix { columns, rows } => {
             emit_matrix(rows, *columns, helper_names, value_names)
         }
+        ValueExpr::MatrixBasis { row, column, ty } => emit_matrix_basis(*row, *column, ty),
         ValueExpr::Derivative {
             epsilon, func, at, ..
         } => emit_scalar_derivative(func, epsilon, at, helper_names, value_names),
@@ -2487,6 +2517,25 @@ fn emit_matrix(
     )
 }
 
+fn emit_matrix_basis(row: usize, column: usize, ty: &Type) -> String {
+    let Type::Mat(rows, columns) = ty else {
+        unreachable!("matrix basis literal has non-matrix type")
+    };
+    let values = (0..*columns)
+        .flat_map(|current_column| {
+            (0..*rows).map(move |current_row| {
+                if current_row + 1 == row && current_column + 1 == column {
+                    "1.0"
+                } else {
+                    "0.0"
+                }
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{}({})", matrix_glsl_type(*rows, *columns), values)
+}
+
 fn emit_binary_expr(
     op: BinOp,
     left: &ValueExpr,
@@ -2525,10 +2574,10 @@ fn emit_binary_expr(
         (BinOp::Div, Type::Complex, Type::Complex) => format!("div_C({}, {})", left, right),
         (BinOp::Mul, Type::Quat, Type::Quat) => format!("mult_H({}, {})", left, right),
         (BinOp::Div, Type::Quat, Type::Quat) => format!("div_H({}, {})", left, right),
-        (BinOp::Mul, Type::E2, Type::E2) => format!("mult_E2({}, {})", left, right),
-        (BinOp::Mul, Type::E2, Type::Vec2) => format!("act_E2({}, {})", left, right),
-        (BinOp::Mul, Type::E3, Type::E3) => format!("mult_E3({}, {})", left, right),
-        (BinOp::Mul, Type::E3, Type::Vec3) => format!("act_E3({}, {})", left, right),
+        (BinOp::Mul, Type::Isom2, Type::Isom2) => format!("mult_Isom2({}, {})", left, right),
+        (BinOp::Mul, Type::Isom2, Type::Vec2) => format!("act_Isom2({}, {})", left, right),
+        (BinOp::Mul, Type::Isom3, Type::Isom3) => format!("mult_Isom3({}, {})", left, right),
+        (BinOp::Mul, Type::Isom3, Type::Vec3) => format!("act_Isom3({}, {})", left, right),
         (
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div,
             Type::Custom { .. },
@@ -2646,8 +2695,8 @@ fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
         (NeutralKind::Identity, Type::Mat(rows, columns)) if rows == columns => {
             format!("mat{}(1.0)", rows)
         }
-        (NeutralKind::Identity, Type::E2) => "E2(mat2(1.0), vec2(0.0))".to_string(),
-        (NeutralKind::Identity, Type::E3) => "E3(mat3(1.0), vec3(0.0))".to_string(),
+        (NeutralKind::Identity, Type::Isom2) => "Isom2(mat2(1.0), vec2(0.0))".to_string(),
+        (NeutralKind::Identity, Type::Isom3) => "Isom3(mat3(1.0), vec3(0.0))".to_string(),
         (_, Type::Custom { name, .. }) => match kind {
             NeutralKind::Zero => format!("zero_{name}"),
             NeutralKind::One => format!("one_{name}"),
@@ -2671,11 +2720,11 @@ fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
         | (BinOp::Div, Type::Float, Type::Complex) => Some("C".to_string()),
         (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
         | (BinOp::Div, Type::Float, Type::Quat) => Some("H".to_string()),
-        (BinOp::Mul, Type::E2, Type::E2) | (BinOp::Mul, Type::E2, Type::Vec2) => {
-            Some("E2".to_string())
+        (BinOp::Mul, Type::Isom2, Type::Isom2) | (BinOp::Mul, Type::Isom2, Type::Vec2) => {
+            Some("Isom2".to_string())
         }
-        (BinOp::Mul, Type::E3, Type::E3) | (BinOp::Mul, Type::E3, Type::Vec3) => {
-            Some("E3".to_string())
+        (BinOp::Mul, Type::Isom3, Type::Isom3) | (BinOp::Mul, Type::Isom3, Type::Vec3) => {
+            Some("Isom3".to_string())
         }
         (
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div,
@@ -3097,9 +3146,9 @@ fn emit_object_expr(
         }
         ObjectExpr::IsometryTransform { object, transform } => {
             let type_name = if ambient_dimension == ShapeDimension::D2 {
-                "E2"
+                "Isom2"
             } else {
-                "E3"
+                "Isom3"
             };
             let inverse = format!(
                 "inv_{}({})",

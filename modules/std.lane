@@ -1,0 +1,15 @@
+#module
+
+const Hom(R2, R) projection_0 = v -> v.x0
+const Hom(R2, R) projection_1 = v -> v.x1
+const Hom(R3, R) projection_0 = v -> v.x0
+const Hom(R3, R) projection_1 = v -> v.x1
+const Hom(R3, R) projection_2 = v -> v.x2
+const Hom(R4, R) projection_0 = v -> v.x0
+const Hom(R4, R) projection_1 = v -> v.x1
+const Hom(R4, R) projection_2 = v -> v.x2
+const Hom(R4, R) projection_3 = v -> v.x3
+
+const Hom(R, R2) diagonal2 = x -> (x, x)
+const Hom(R, R3) diagonal3 = x -> (x, x, x)
+const Hom(R, R4) diagonal4 = x -> (x, x, x, x)

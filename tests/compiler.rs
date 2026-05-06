@@ -320,10 +320,10 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "H" && object.ty == "DivRing, RAlg"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "E2" && object.ty == "Grp"));
+        .any(|object| object.name == "Isom2" && object.ty == "Grp"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "E3" && object.ty == "Grp"));
+        .any(|object| object.name == "Isom3" && object.ty == "Grp"));
     assert!(objects
         .iter()
         .any(|object| object.name == "pow2" && object.ty == "Hom(R, R)"));
@@ -362,10 +362,10 @@ fn lists_builtin_lane_objects() {
         .any(|object| { object.name == "extrude" && object.ty == "Hom(R, Hom(Object, Object))" }));
     assert!(objects
         .iter()
-        .any(|object| { object.name == "rot" && object.ty == "Hom(R3 × R3 × R, E3)" }));
+        .any(|object| { object.name == "rot" && object.ty == "Hom(R3 × R3 × R, Isom3)" }));
     assert!(objects
         .iter()
-        .any(|object| { object.name == "rot2D" && object.ty == "Hom(R2 × R, E2)" }));
+        .any(|object| { object.name == "rot2D" && object.ty == "Hom(R2 × R, Isom2)" }));
     assert!(objects
         .iter()
         .any(|object| { object.name == "derivative" && object.ty == "Hom(Hom(R, R), Hom(R, R))" }));
@@ -403,7 +403,7 @@ fn lists_builtin_lane_objects() {
         .iter()
         .any(|object| object.name == "reflect" && object.ty == "Hom(Rn × Rn, Rn)"));
     assert!(objects.iter().any(|object| {
-        object.name == "matrixCompMult" && object.ty == "Hom(Matnxm × Matnxm, Matnxm)"
+        object.name == "matrixCompMult" && object.ty == "Hom(Mat{n}x{m} × Mat{n}x{m}, Mat{n}x{m})"
     }));
 }
 
@@ -423,7 +423,7 @@ fn looks_up_builtin_object_detail() {
         .body
         .contains("vec3 _op_revolution_point(vec3 _p, float _offset)"));
     let rot = known_builtin_object("rot").unwrap();
-    assert_eq!(rot.ty, "Hom(R3 × R3 × R, E3)");
+    assert_eq!(rot.ty, "Hom(R3 × R3 × R, Isom3)");
     assert_eq!(rot.body, "");
     assert_eq!(pow2.ty, "Hom(R, R)");
     assert!(pow2.body.contains("float pow2(float x)"));
@@ -440,22 +440,22 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(quat.ty, "DivRing, RAlg");
     assert!(quat.body.contains("#define H vec4"));
     assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
-    let e2 = known_builtin_object("E2").unwrap();
+    let e2 = known_builtin_object("Isom2").unwrap();
     assert_eq!(e2.ty, "Grp");
-    assert!(e2.body.contains("struct E2"));
-    assert!(e2.body.contains("E2 mult_E2(E2 a, E2 b)"));
-    assert!(e2.body.contains("E2 inv_E2(E2 g)"));
-    let e3 = known_builtin_object("E3").unwrap();
+    assert!(e2.body.contains("struct Isom2"));
+    assert!(e2.body.contains("Isom2 mult_Isom2(Isom2 a, Isom2 b)"));
+    assert!(e2.body.contains("Isom2 inv_Isom2(Isom2 g)"));
+    let e3 = known_builtin_object("Isom3").unwrap();
     assert_eq!(e3.ty, "Grp");
-    assert!(e3.body.contains("struct E3"));
+    assert!(e3.body.contains("struct Isom3"));
     assert!(e3.body.contains("mat3 A"));
     assert!(e3.body.contains("vec3 t"));
-    assert!(e3.body.contains("vec3 act_E3(E3 g, vec3 p)"));
-    assert!(e3.body.contains("E3 mult_E3(E3 a, E3 b)"));
-    assert!(e3.body.contains("E3 inv_E3(E3 g)"));
+    assert!(e3.body.contains("vec3 act_Isom3(Isom3 g, vec3 p)"));
+    assert!(e3.body.contains("Isom3 mult_Isom3(Isom3 a, Isom3 b)"));
+    assert!(e3.body.contains("Isom3 inv_Isom3(Isom3 g)"));
     assert!(e3
         .body
-        .contains("E3 rot(vec3 binormal, vec3 anchor, float angle)"));
+        .contains("Isom3 rot(vec3 binormal, vec3 anchor, float angle)"));
     assert_eq!(field.ty, "Cat");
     assert_eq!(field.body, "");
     assert_eq!(gradient.ty, "Hom(Hom(R3, R), Hom(R3, R3))");
@@ -525,13 +525,83 @@ fn composes_unary_functions_in_function_bodies() {
 #[test]
 fn supports_explicit_product_closure_parameters() {
     let source =
-        "const Hom(R x R, R) g = (x, y) -> sin(x + y)\nconst Object output = Ball3D(r=g((1, 2)))\n";
+        "const Hom(R x R, R) g = (x, y) -> sin(x + y)\nconst Object output = Ball3D(r=g(1, 2))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float g(float _t0, float _t1) {"));
+    assert!(glsl.contains("float _x = _t0;"));
+    assert!(glsl.contains("float _y = _t1;"));
+    assert!(glsl.contains("return sin((_x + _y));"));
+}
+
+#[test]
+fn preserves_explicit_scalar_product_function_domains() {
+    let source = "const Hom(R x R x R, R) g = v -> v.x + v.x1 + v.z\nprovided R a\nprovided R b\nprovided R c\nconst Object output = Ball3D(r=g(a, b, c))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float g(float _t0, float _t1, float _t2) {"));
+    assert!(glsl.contains("float __lane_product_param_0 = _t0;"));
+    assert!(glsl.contains("float __lane_product_param_1 = _t1;"));
+    assert!(glsl.contains("float __lane_product_param_2 = _t2;"));
+    assert!(glsl.contains(
+        "return ((__lane_product_param_0 + __lane_product_param_1) + __lane_product_param_2);"
+    ));
+    assert!(glsl.contains("g(a, b, c)"));
+}
+
+#[test]
+fn supports_single_vector_closure_parameter() {
+    let source = "const Hom(R2, R) g = v -> v.x + v.y\nconst Object output = Ball3D(r=g((1, 2)))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float g(vec2 _t) {"));
-    assert!(glsl.contains("float _x = _t.x;"));
-    assert!(glsl.contains("float _y = _t.y;"));
-    assert!(glsl.contains("return sin((_x + _y));"));
+    assert!(glsl.contains("vec2 _v = _t;"));
+    assert!(glsl.contains("return ((_v).x + (_v).y);"));
+}
+
+#[test]
+fn supports_generic_vector_function_calls_and_composition() {
+    let source = "provided Hom(R{n}, R) measure\nprovided Hom(R3, R3) warp\nprovided R3 p\nconst Hom(R3, R) h = measure @ warp\nconst Object output = Ball3D(r=h(p))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float h(vec3 _t)"));
+    assert!(glsl.contains("return measure(warp(_t));"));
+}
+
+#[test]
+fn supports_generic_matrix_dimensions() {
+    let source = "provided Hom(Mat{3}x{2}, R) measure\nprovided Mat{2}x{3} a\nMat3x2 b = transpose(a)\nR radius = measure(b)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat2x3 b = transpose(a);"));
+    assert!(glsl.contains("float radius = measure(b);"));
+}
+
+#[test]
+fn supports_matrix_identity_and_basis_literals() {
+    let source = "Mat3 eye = I{3}\nMat3 axis = E{1}{3}\nMat3 alias = E13\nconst Object output = Ball3D(r=determinant(eye + axis + alias))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat3 eye = mat3(1.0);"));
+    assert!(glsl.contains("mat3 axis = mat3(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);"));
+    assert!(glsl.contains("mat3 alias = mat3(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);"));
+}
+
+#[test]
+fn supports_delimited_double_digit_matrix_basis_names() {
+    let source = "provided Hom(Mat{12}x{3}, R) measure\nMat12x3 basis = E12_3\nR radius = measure(basis)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("mat3x12 basis = mat3x12("));
+    assert!(glsl.contains("float radius = measure(basis);"));
+}
+
+#[test]
+fn rejects_inconsistent_generic_matrix_dimensions() {
+    let source = "provided Hom(Mat{n}x{n}, R) trace_generic\nprovided Mat2x3 a\nR radius = trace_generic(a)\nconst Object output = Ball3D(r=radius)\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("no overload of 'trace_generic' matches provided argument(s)"));
 }
 
 #[test]
@@ -638,7 +708,7 @@ fn emits_support_for_custom_complex_functions() {
 
 #[test]
 fn supports_same_domain_function_products() {
-    let source = "provided Hom(R2, R) f\nprovided Hom(R x R, R) g\nHom(R2, R2) h = (f, g)\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
+    let source = "provided Hom(R2, R) f\nprovided Hom(R2, R) g\nHom(R2, R2) h = (f, g)\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 h(vec2 _t)"));
@@ -653,6 +723,26 @@ fn supports_tensor_function_products() {
 
     assert!(glsl.contains("vec2 h(vec2 _t)"));
     assert!(glsl.contains("return vec2(sin(_t[0]), cos(_t[1]));"));
+}
+
+#[test]
+fn supports_operator_references_as_value_calls() {
+    let source = "provided R x\nprovided R y\nR sum = &+(x, y)\nBool ordered = &<(x, y)\nconst Object output = Ball3D(r=sum + if(ordered) 1 else 0)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float sum = (x + y);"));
+    assert!(glsl.contains("bool ordered = (x < y);"));
+}
+
+#[test]
+fn supports_operator_references_as_function_expressions() {
+    let source = "const Hom(R x R, R) h = sin @ &+\nconst Hom(R x R, Bool) ordered = &<\nprovided R x\nprovided R y\nconst Object output = Ball3D(r=h(x, y) + if(ordered(x, y)) 1 else 0)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float h(float _t0, float _t1)"));
+    assert!(glsl.contains("return sin((_t0 + _t1));"));
+    assert!(glsl.contains("bool ordered(float _t0, float _t1)"));
+    assert!(glsl.contains("return (_t0 < _t1);"));
 }
 
 #[test]
@@ -820,34 +910,65 @@ fn rejects_module_import_cycles() {
 
 #[test]
 fn imports_raytracing_module() {
-    let source = "#import raytracing\nprovided R3 cameraPosition\nprovided R3 cameraForward\nprovided R3 cameraGlobalUp\nprovided R2 resolution\nprovided R3 ambientColor\nconst Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\nconst Hom(R2, Ray) scene_camera_ray = camera_ray(cameraPosition, cameraForward, cameraGlobalUp, resolution)\nconst Hom(Ray, Hit) scene_raytrace = raytrace(scene)\nconst Hom(Ray, R3) scene_raycolor = raycolor(ambientColor, scene_raytrace, scene_material)\nconst Hom(R2, R4) scene_shade = shade(scene_camera_ray, scene_raycolor)\nconst Hom(*, *) main = preview_raytrace(scene_shade)\n";
+    let source = "#import raytracing\nprovided R3 cameraPosition\nprovided R3 cameraForward\nprovided R3 cameraGlobalUp\nprovided R2 resolution\nprovided R3 ambientColor\nconst Camera camera = Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution)\nconst Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\nconst Hom(R2, Ray) scene_camera_ray = camera_ray(camera)\nconst Hom(Ray, Hit) scene_raytrace = raytrace_with(default_raytrace_config, scene)\nconst Hom(Ray, R3) scene_raycolor = raycolor_with(default_raycolor_config, ambientColor, scene_raytrace, scene_material)\nconst Hom(R2, R4) scene_shade = shade(scene_camera_ray, scene_raycolor)\nconst Hom(*, *) main = fragment_main(scene_shade)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct Ray"));
     assert!(glsl.contains("struct Hit"));
     assert!(glsl.contains("struct Material"));
+    assert!(glsl.contains("struct Camera"));
+    assert!(glsl.contains("vec2 camera_uv(Camera _t0, vec2 _t1)"));
+    assert!(glsl.contains("vec3 camera_right(Camera _t)"));
+    assert!(glsl.contains("vec3 camera_up(Camera _t)"));
     assert!(!glsl.contains("Ray camera_ray(vec2 fragCoord)"));
     assert!(glsl.contains("Ray scene_camera_ray(vec2 _t)"));
-    assert!(glsl.contains("return Ray(cameraPosition, normalize("));
+    assert!(glsl.contains("vec2 _v = _t;"));
+    assert!(glsl.contains("normalize(cross((_camera).forward, (_camera).global_up))"));
+    assert!(glsl.contains(
+        "normalize(cross(cross((_camera).forward, (_camera).global_up), (_camera).forward))"
+    ));
+    assert!(glsl.contains("return Ray((camera).position, normalize("));
+    assert!(glsl.contains("camera_uv(camera, _v)"));
+    assert!(glsl.contains("camera_right(camera)"));
+    assert!(glsl.contains("camera_up(camera)"));
+    assert!(!glsl.contains("cross(normalize((camera).forward), (camera).global_up)"));
+    assert!(!glsl.contains("cross(normalize(cross("));
     assert!(!glsl.contains("Hit raytrace(Ray ray)"));
     assert!(glsl.contains("Hit scene_raytrace(Ray _t)"));
     assert!(glsl.contains("float _d = sdf_scene(_p);"));
     assert!(glsl.contains("vec3 _n = grad_sdf_scene(_p);"));
+    assert!(glsl.contains("default_raytrace_config.max_steps"));
+    assert!(glsl.contains("default_raytrace_config.hit_threshold"));
+    assert!(glsl.contains("default_raytrace_config.max_travel"));
     assert!(!glsl.contains("vec3 raycolor(Ray initialRay)"));
     assert!(glsl.contains("vec3 scene_raycolor(Ray _t)"));
+    assert!(glsl.contains("default_raycolor_config.max_bounces"));
+    assert!(glsl.contains("default_raycolor_config.throughput_threshold"));
+    assert!(glsl.contains("default_raycolor_config.ray_bias"));
     assert!(glsl.contains("Material _material = scene_material(_hit.position);"));
     assert!(!glsl.contains("vec4 shade(vec2 fragCoord)"));
-    assert!(glsl.contains("return vec4(scene_raycolor(scene_camera_ray(vec2(_x, _y))), 1.0);"));
+    assert!(glsl.contains("return vec4(scene_raycolor(scene_camera_ray(_v)), 1.0"));
     assert!(glsl.contains("vec4 scene_shade(vec2 _t)"));
     assert!(glsl.contains("void main()"));
     assert!(glsl.contains("outColor = scene_shade(gl_FragCoord.xy);"));
-    assert!(glsl.contains("_radiance += _throughput * (_material.emission + ((1.0 - _reflectiveness) * ambientColor * _material.color));"));
+    assert!(glsl.contains("_radiance += _throughput * (_material.emission"));
     assert!(glsl.contains("_throughput *= _material.color * _reflectiveness;"));
     assert!(glsl.contains("vec3 _dir = reflect(_ray.dir, _hit.normal);"));
 }
 
 #[test]
-fn raw_glsl_unit_templates_emit_shader_main() {
+fn imports_std_module() {
+    let source = "#import std\nprovided R2 uv\nR radius = projection_1(uv) + diagonal3(1).z\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float projection_1(vec2 _t)"));
+    assert!(glsl.contains("return (_v).y;"));
+    assert!(glsl.contains("vec3 diagonal3(float _t)"));
+    assert!(glsl.contains("return vec3(_x, _x, _x);"));
+}
+
+#[test]
+fn raw_glsl_unit_templates_require_main_binding() {
     let dir = unique_temp_dir("module_raw_main");
     fs::create_dir_all(dir.join("modules")).unwrap();
     fs::write(
@@ -862,11 +983,11 @@ fn raw_glsl_unit_templates_emit_shader_main() {
     )
     .unwrap();
 
-    let glsl = compile_program_from_path(&source_path).unwrap();
+    let error = compile_program_from_path(&source_path)
+        .unwrap_err()
+        .to_string();
 
-    assert!(glsl.contains("void main()"));
-    assert!(glsl.contains("outColor = shade(gl_FragCoord.xy);"));
-    assert!(!glsl.contains("void entry()"));
+    assert!(error.contains("shader entry function 'entry' must be named 'main'"));
     fs::remove_dir_all(dir).unwrap();
 }
 
@@ -1047,14 +1168,14 @@ fn lowers_quaternion_field_operations_through_category_helpers() {
 
 #[test]
 fn lowers_e2_group_operations_through_category_helpers() {
-    let source = "provided E2 a\nprovided E2 b\nprovided R2 p\nprovided Hom(R2, R) measure\nE2 product = a * b\nR2 moved = product * p\nR radius = measure(moved)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided Isom2 a\nprovided Isom2 b\nprovided R2 p\nprovided Hom(R2, R) measure\nIsom2 product = a * b\nR2 moved = product * p\nR radius = measure(moved)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("struct E2"));
-    assert!(glsl.contains("E2 mult_E2(E2 a, E2 b)"));
-    assert!(!glsl.contains("E2 div_E2(E2 a, E2 b)"));
-    assert!(glsl.contains("E2 product = mult_E2(a, b);"));
-    assert!(glsl.contains("vec2 moved = act_E2(product, p);"));
+    assert!(glsl.contains("struct Isom2"));
+    assert!(glsl.contains("Isom2 mult_Isom2(Isom2 a, Isom2 b)"));
+    assert!(!glsl.contains("Isom2 div_Isom2(Isom2 a, Isom2 b)"));
+    assert!(glsl.contains("Isom2 product = mult_Isom2(a, b);"));
+    assert!(glsl.contains("vec2 moved = act_Isom2(product, p);"));
 }
 
 #[test]
@@ -1068,12 +1189,13 @@ fn supports_provided_group_category_types() {
 
 #[test]
 fn supports_product_group_types_with_named_fields() {
-    let source = "Grp G = E3 x E2 {m, n}\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "Grp G = Isom3 x Isom2 {m, n}\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("struct G {\n    E3 m;\n    E2 n;\n};"));
-    assert!(glsl
-        .contains("G mult_G(G a, G b) {\n    return G(mult_E3(a.m, b.m), mult_E2(a.n, b.n));\n}"));
+    assert!(glsl.contains("struct G {\n    Isom3 m;\n    Isom2 n;\n};"));
+    assert!(glsl.contains(
+        "G mult_G(G a, G b) {\n    return G(mult_Isom3(a.m, b.m), mult_Isom2(a.n, b.n));\n}"
+    ));
     assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
 }
 
@@ -1090,6 +1212,22 @@ fn supports_product_value_constructors_with_default_fields() {
 }
 
 #[test]
+fn supports_positional_field_aliases_for_default_product_fields() {
+    let source = "Set Four = R x R x R x R\nSet Five = C x R x R x R x R\nFour a = Four(1, 2, 3, 4)\nFive b = Five((5, 6), 7, 8, 9, 10)\nR radius = a.x0 + a.x + a.x3 + a.w + b.x.x + b.x0.x + b.y + b.x1 + b.w + b.x3\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = ((((((((((a).x + (a).x) + (a).w) + (a).w) + ((b).x0).x) + ((b).x0).x) + (b).x1) + (b).x1) + (b).x3) + (b).x3);"));
+}
+
+#[test]
+fn supports_numeric_field_aliases_for_vectors() {
+    let source = "provided R4 v\nR radius = v.x0 + v.x + v.x3 + v.w\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = ((((v).x + (v).x) + (v).w) + (v).w);"));
+}
+
+#[test]
 fn supports_product_set_types_without_operations() {
     let source = "Set Pair = R x R3\nPair p = Pair(1, (0, 0, 0))\nprovided Hom(Pair, R) measure\nR radius = measure(p)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
@@ -1101,17 +1239,17 @@ fn supports_product_set_types_without_operations() {
 
 #[test]
 fn emits_all_product_ops_for_const_product_types() {
-    let source = "const Grp G = E3 x E2\nprovided G a\nprovided Hom(G, R) measure\nR radius = measure(a)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "const Grp G = Isom3 x Isom2\nprovided G a\nprovided Hom(G, R) measure\nR radius = measure(a)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("G e_G = G(E3(mat3(1.0), vec3(0.0)), E2(mat2(1.0), vec2(0.0)));"));
+    assert!(glsl.contains("G e_G = G(Isom3(mat3(1.0), vec3(0.0)), Isom2(mat2(1.0), vec2(0.0)));"));
     assert!(glsl.contains("G mult_G(G a, G b)"));
     assert!(glsl.contains("G inv_G(G value)"));
 }
 
 #[test]
 fn rejects_product_field_count_mismatches() {
-    let source = "Grp G = E3 x E2 {m}\nconst Object output = Ball3D(r=1)\n";
+    let source = "Grp G = Isom3 x Isom2 {m}\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' has 2 component(s) but 1 field name(s)"));
@@ -1119,7 +1257,7 @@ fn rejects_product_field_count_mismatches() {
 
 #[test]
 fn rejects_duplicate_product_field_names() {
-    let source = "Grp G = E3 x E2 {m, m}\nconst Object output = Ball3D(r=1)\n";
+    let source = "Grp G = Isom3 x Isom2 {m, m}\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' has duplicate field name 'm'"));
@@ -1143,7 +1281,7 @@ fn rejects_product_field_types() {
 
 #[test]
 fn rejects_product_components_outside_category() {
-    let source = "Grp G = E3 x R3\nconst Object output = Ball3D(r=1)\n";
+    let source = "Grp G = Isom3 x R3\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' component R3 does not satisfy Grp"));
@@ -1179,12 +1317,12 @@ fn infers_local_value_and_object_binding_types() {
 #[test]
 fn casts_neutral_literals_to_expected_builtin_types() {
     let source =
-        "R3 p = 0\nMat3 m = e\nE3 g = E3(e, 0)\nconst Object output = g * Ball3D(r=1) + p\n";
+        "R3 p = 0\nMat3 m = e\nIsom3 g = Isom3(e, 0)\nconst Object output = g * Ball3D(r=1) + p\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec3 p = vec3(0.0);"));
     assert!(glsl.contains("mat3 m = mat3(1.0);"));
-    assert!(glsl.contains("E3 g = E3(mat3(1.0), vec3(0.0));"));
+    assert!(glsl.contains("Isom3 g = Isom3(mat3(1.0), vec3(0.0));"));
 }
 
 #[test]
@@ -1474,12 +1612,12 @@ fn directive_prec_rejects_invalid_values() {
 
 #[test]
 fn directive_2d_supports_2d_isometry_actions() {
-    let source = "#2D\nE2 g = E2(e, (1, 2))\nconst Object output = g * Box2D(a=2, b=1)\n";
+    let source = "#2D\nIsom2 g = Isom2(e, [1, 2])\nconst Object output = g * Box2D(a=2, b=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("struct E2"));
+    assert!(glsl.contains("struct Isom2"));
     assert!(glsl.contains("float scene_sdf(vec2 p) {"));
-    assert!(glsl.contains("sdf0_Box2D(act_E2(inv_E2(g), p), ParamBox2D(2.0, 1.0))"));
+    assert!(glsl.contains("sdf0_Box2D(act_Isom2(inv_Isom2(g), p), ParamBox2D(2.0, 1.0))"));
 }
 
 #[test]
@@ -1573,14 +1711,14 @@ fn scene_sdf_reuses_generated_object_helpers() {
 
 #[test]
 fn hoists_scene_invariant_value_bindings_to_global_consts() {
-    let source = "provided R time\nR3 axis = (0, 0, 1)\nR3 start = (1, 0, 0)\nE3 r = rot(axis, axis * 0, time)\nR3 p = r * start\nconstruct Object b = Ball3D(r=1) + p\nconst Object output = b\n";
+    let source = "provided R time\nR3 axis = (0, 0, 1)\nR3 start = (1, 0, 0)\nIsom3 r = rot(axis, axis * 0, time)\nR3 p = r * start\nconstruct Object b = Ball3D(r=1) + p\nconst Object output = b\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("const vec3 axis = vec3(0.0, 0.0, 1.0);"));
     assert!(glsl.contains("const vec3 start = vec3(1.0, 0.0, 0.0);"));
     assert!(glsl.contains("float sdf_b(vec3 p_"));
-    assert!(glsl.contains("E3 r = rot(axis, (axis * 0.0), time);"));
-    assert!(glsl.contains("vec3 p = act_E3(r, start);"));
+    assert!(glsl.contains("Isom3 r = rot(axis, (axis * 0.0), time);"));
+    assert!(glsl.contains("vec3 p = act_Isom3(r, start);"));
     assert!(glsl.contains("float scene_sdf(vec3 p_"));
     assert!(glsl.contains("return sdf_b(p_"));
 }
@@ -1988,13 +2126,13 @@ fn emits_builtin_3d_rotation_operator() {
 
 #[test]
 fn emits_value_level_3d_rotation() {
-    let source = "provided R time\nR3 e3 = (0, 0, 1)\nE3 r = rot(e3, e3 * 0, time)\nR3 p = r * (1, 0, 0)\nconst Object output = Ball3D(r=1) + p\n";
+    let source = "provided R time\nR3 e3 = (0, 0, 1)\nIsom3 r = rot(e3, e3 * 0, time)\nR3 p = r * (1, 0, 0)\nconst Object output = Ball3D(r=1) + p\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("struct E3"));
-    assert!(glsl.contains("E3 rot(vec3 binormal, vec3 anchor, float angle)"));
-    assert!(glsl.contains("E3 r = rot(e3, (e3 * 0.0), time);"));
-    assert!(glsl.contains("vec3 p = act_E3(r, vec3(1.0, 0.0, 0.0));"));
+    assert!(glsl.contains("struct Isom3"));
+    assert!(glsl.contains("Isom3 rot(vec3 binormal, vec3 anchor, float angle)"));
+    assert!(glsl.contains("Isom3 r = rot(e3, (e3 * 0.0), time);"));
+    assert!(glsl.contains("vec3 p = act_Isom3(r, vec3(1.0, 0.0, 0.0));"));
     assert!(glsl.contains("sdf0_Ball3D(("));
     assert!(glsl.contains(" - p), ParamBall3D(1.0))"));
 }
@@ -2019,7 +2157,7 @@ fn emits_builtin_rotation_operator_defaults() {
 
 #[test]
 fn emits_builtin_2d_rotation_operator() {
-    let source = "const Object output = rot2D((1, 0), 0.5)(Box2D(a=1, b=.5))\n";
+    let source = "const Object output = rot2D([1, 0], 0.5)(Box2D(a=1, b=.5))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("mat2 _op_rot2D_matrix(float _angle)"));
