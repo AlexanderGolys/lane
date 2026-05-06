@@ -179,6 +179,8 @@ fn raw_glsl_placeholder_ref(
             .unwrap_or(base);
         if matches!(ty, Type::Object | Type::Object2D) {
             refs.object_getters.insert(glsl_ref.to_string());
+        } else if capture.is_none() && !matches!(ty, Type::Func(_, _)) {
+            refs.values.insert(base.to_string());
         }
         return raw_glsl_field_ref(glsl_ref, field, ty, env);
     }
@@ -205,6 +207,8 @@ fn raw_glsl_placeholder_ref(
         }
         if matches!(value, Type::Func(_, _)) {
             refs.funcs.insert(name.to_string());
+        } else {
+            refs.values.insert(name.to_string());
         }
         return Ok(name.to_string());
     }

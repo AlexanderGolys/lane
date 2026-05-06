@@ -166,14 +166,21 @@ R z = projection_1([3, 4])
 
 The `raytracing` module provides the `Ray`, `Hit`, `Material`, `Camera`,
 `RaytraceConfig`, and `RaycolorConfig` product types plus helpers for preview
-shaders. `shade` composes a screen-coordinate ray function with a ray-color
-function; its ray color input is generic, with the preview `R4` output context
-deducing the concrete color type.
+shaders. `raycolor_from_hit_with` contains the raw GLSL reflection loop and is
+generic over the hit shading callbacks. Material lookup and material shape stay
+in Lane: compose a hit projection with any point-to-material function and
+material accessors. The default `Material` type ships with `material_color`,
+`material_emission`, and `material_reflectiveness` accessors. `shade` composes a
+screen-coordinate ray function with a ray-color function; its ray color input is
+generic, with the preview `R4` output context deducing the concrete color type.
 
 ```lane
 #import raytracing
 const Hom(R2, Ray) rays = camera_ray(camera)
-const Hom(Ray, R3) colors = raycolor_with(default_raycolor_config, ambientColor, hit, material)
+const Hom(Hit, R3) color_at = material_color @ material @ hit_position
+const Hom(Hit, R3) emission_at = material_emission @ material @ hit_position
+const Hom(Hit, R) reflectiveness_at = material_reflectiveness @ material @ hit_position
+const Hom(Ray, R3) colors = raycolor_from_hit_with(default_raycolor_config, ambientColor, hit, color_at, emission_at, reflectiveness_at)
 const Hom(R2, R4) pixels = shade(rays, colors)
 const Hom(*, *) main = fragment_main(pixels)
 ```

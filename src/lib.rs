@@ -82,7 +82,10 @@ fn prepare_preview_source(source: &str) -> String {
         out.push_str(
             "\nconst Hom(R2, Ray) preview_camera_ray = camera_ray(Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution))\n\
 const Hom(Ray, Hit) preview_hit = raytrace_with(default_raytrace_config, scene)\n\
-const Hom(Ray, R3) preview_color = raycolor_with(default_raycolor_config, ambientColor, preview_hit, scene_material)\n\
+const Hom(Hit, R3) preview_material_color = hit -> material_color(scene_material(hit.position))\n\
+const Hom(Hit, R3) preview_material_emission = hit -> material_emission(scene_material(hit.position))\n\
+const Hom(Hit, R) preview_material_reflectiveness = hit -> material_reflectiveness(scene_material(hit.position))\n\
+const Hom(Ray, R3) preview_color = raycolor_from_hit_with(default_raycolor_config, ambientColor, preview_hit, preview_material_color, preview_material_emission, preview_material_reflectiveness)\n\
 const Hom(R2, R4) preview_shade = shade(preview_camera_ray, preview_color)\n\
 const Hom(*, *) main = fragment_main(preview_shade)\n",
         );
@@ -2012,6 +2015,7 @@ struct TypedFunc {
 #[derive(Clone, Debug, Default)]
 struct RawGlslRefs {
     funcs: BTreeSet<String>,
+    values: BTreeSet<String>,
     object_getters: BTreeSet<String>,
 }
 

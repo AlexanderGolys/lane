@@ -20,6 +20,10 @@ impl TypedProgram {
             lines.extend(emit_concat_helper(&helper).lines().map(str::to_string));
             lines.push(String::new());
         }
+        for helper in self.conditional_helpers() {
+            lines.extend(emit_conditional_helper(&helper).lines().map(str::to_string));
+            lines.push(String::new());
+        }
 
         let global_value_names = self.global_value_binding_names();
         let emitted_func_names = self.emitted_func_names();
@@ -201,9 +205,12 @@ impl TypedProgram {
     }
 
     fn global_value_binding_names(&self) -> BTreeSet<String> {
+        let raw_refs = self.raw_glsl_value_ref_names();
         let mut names = BTreeSet::new();
         for binding in &self.value_bindings {
-            if (binding.generated || is_global_const_value_expr(&binding.expr, &names))
+            if (binding.generated
+                || raw_refs.contains(&binding.name)
+                || is_global_const_value_expr(&binding.expr, &names))
                 && is_global_const_value_expr(&binding.expr, &names)
                 && !matches!(binding.ty, Type::Array(_))
             {
@@ -211,6 +218,13 @@ impl TypedProgram {
             }
         }
         names
+    }
+
+    fn raw_glsl_value_ref_names(&self) -> BTreeSet<String> {
+        self.funcs
+            .iter()
+            .flat_map(|func| func.raw_glsl_refs.values.iter().cloned())
+            .collect()
     }
 
     fn emitted_func_names(&self) -> BTreeSet<String> {
@@ -266,6 +280,7 @@ impl TypedProgram {
                         TypedFuncBody::RawGlsl(body) => {
                             names.extend(func.raw_glsl_refs.funcs.iter().cloned());
                             collect_raw_glsl_placeholders(body, &mut names);
+                            needed_value_names.extend(func.raw_glsl_refs.values.iter().cloned());
                         }
                         TypedFuncBody::RawGlslTemplate => {}
                     }
@@ -691,6 +706,25 @@ impl TypedProgram {
         }
         if let Some(output) = &self.output {
             collect_object_concat_helpers(output, &mut helpers);
+        }
+        helpers.into_values().collect()
+    }
+
+    fn conditional_helpers(&self) -> Vec<ConditionalHelper> {
+        let mut helpers = BTreeMap::new();
+        for func in &self.funcs {
+            if let TypedFuncBody::Expr(expr) = &func.body {
+                collect_conditional_helpers(expr, &mut helpers);
+            }
+        }
+        for binding in &self.value_bindings {
+            collect_conditional_helpers(&binding.expr, &mut helpers);
+        }
+        for binding in &self.bindings {
+            collect_object_conditional_helpers(&binding.expr, &mut helpers);
+        }
+        if let Some(output) = &self.output {
+            collect_object_conditional_helpers(output, &mut helpers);
         }
         helpers.into_values().collect()
     }
@@ -1512,6 +1546,11 @@ struct ConcatHelper {
 }
 
 #[derive(Clone, Debug)]
+struct ConditionalHelper {
+    ty: Type,
+}
+
+#[derive(Clone, Debug)]
 struct ObjectBinding {
     expr: ObjectExpr,
     generated: bool,
@@ -1531,6 +1570,12 @@ impl ConcatHelper {
             }),
             _ => None,
         }
+    }
+}
+
+impl ConditionalHelper {
+    fn from_type(ty: &Type) -> Option<Self> {
+        matches!(ty, Type::Custom { .. }).then(|| Self { ty: ty.clone() })
     }
 }
 
@@ -1578,6 +1623,17 @@ fn emit_concat_helper(helper: &ConcatHelper) -> String {
     )
 }
 
+fn emit_conditional_helper(helper: &ConditionalHelper) -> String {
+    let ty = &helper.ty;
+    format!(
+        "{} {}(bool condition, {} then_value, {} else_value) {{\n    if (condition) {{\n        return then_value;\n    }}\n    return else_value;\n}}",
+        ty.glsl_name(),
+        conditional_helper_name(helper),
+        ty.glsl_name(),
+        ty.glsl_name()
+    )
+}
+
 fn glsl_sized_array_type(element_ty: &Type, len: usize) -> String {
     format!("{}[{len}]", element_ty.glsl_name())
 }
@@ -1588,6 +1644,13 @@ fn concat_helper_name(helper: &ConcatHelper) -> String {
         sanitize_glsl_identifier(&helper.element_ty.type_name()),
         helper.left_len,
         helper.right_len
+    )
+}
+
+fn conditional_helper_name(helper: &ConditionalHelper) -> String {
+    format!(
+        "conditional_{}",
+        sanitize_glsl_identifier(&helper.ty.type_name())
     )
 }
 
@@ -1642,6 +1705,54 @@ fn collect_object_concat_helpers(expr: &ObjectExpr, helpers: &mut BTreeMap<Strin
             }
             for arg in object_args {
                 collect_object_concat_helpers(arg, helpers);
+            }
+        }
+    }
+}
+
+fn collect_object_conditional_helpers(
+    expr: &ObjectExpr,
+    helpers: &mut BTreeMap<String, ConditionalHelper>,
+) {
+    match expr {
+        ObjectExpr::Var(_) => {}
+        ObjectExpr::Primitive { fields, .. } => {
+            for (_, value) in fields {
+                match value {
+                    PrimitiveArgExpr::Value(value) => {
+                        collect_conditional_helpers(value, helpers);
+                    }
+                    PrimitiveArgExpr::Vec2List(vertices) => {
+                        for vertex in vertices {
+                            collect_conditional_helpers(vertex, helpers);
+                        }
+                    }
+                }
+            }
+        }
+        ObjectExpr::AmbientTransform {
+            object,
+            translation,
+            linear,
+        } => {
+            collect_conditional_helpers(translation, helpers);
+            collect_conditional_helpers(linear, helpers);
+            collect_object_conditional_helpers(object, helpers);
+        }
+        ObjectExpr::IsometryTransform { object, transform } => {
+            collect_conditional_helpers(transform, helpers);
+            collect_object_conditional_helpers(object, helpers);
+        }
+        ObjectExpr::RegisteredOp {
+            value_args,
+            object_args,
+            ..
+        } => {
+            for arg in value_args {
+                collect_conditional_helpers(arg, helpers);
+            }
+            for arg in object_args {
+                collect_object_conditional_helpers(arg, helpers);
             }
         }
     }
@@ -1740,6 +1851,99 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
     }
 }
 
+fn collect_conditional_helpers(
+    expr: &ValueExpr,
+    helpers: &mut BTreeMap<String, ConditionalHelper>,
+) {
+    if let Some(helper) = ConditionalHelper::from_type(&expr.ty()) {
+        if matches!(expr, ValueExpr::Conditional { .. }) {
+            helpers.insert(conditional_helper_name(&helper), helper);
+        }
+    }
+    match expr {
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. }
+        | ValueExpr::Var { .. } => {}
+        ValueExpr::Call { args, .. } => {
+            for arg in args {
+                collect_conditional_helpers(arg, helpers);
+            }
+        }
+        ValueExpr::MonoidPow { exponent, base, .. } => {
+            collect_conditional_helpers(exponent, helpers);
+            collect_conditional_helpers(base, helpers);
+        }
+        ValueExpr::BoolToNumberCast { value, .. } => {
+            collect_conditional_helpers(value, helpers);
+        }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_conditional_helpers(condition, helpers);
+            collect_conditional_helpers(then_branch, helpers);
+            collect_conditional_helpers(else_branch, helpers);
+        }
+        ValueExpr::ObjectGetterCall {
+            point, captures, ..
+        } => {
+            collect_conditional_helpers(point, helpers);
+            for capture in captures {
+                collect_conditional_helpers(capture, helpers);
+            }
+        }
+        ValueExpr::FieldAccess { value, .. } => collect_conditional_helpers(value, helpers),
+        ValueExpr::Array { elements, .. } => {
+            for element in elements {
+                collect_conditional_helpers(element, helpers);
+            }
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_conditional_helpers(array, helpers);
+            collect_conditional_helpers(index, helpers);
+        }
+        ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
+            collect_conditional_helpers(left, helpers);
+            collect_conditional_helpers(right, helpers);
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_conditional_helpers(x, helpers);
+            collect_conditional_helpers(y, helpers);
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_conditional_helpers(x, helpers);
+            collect_conditional_helpers(y, helpers);
+            collect_conditional_helpers(z, helpers);
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_conditional_helpers(x, helpers);
+            collect_conditional_helpers(y, helpers);
+            collect_conditional_helpers(z, helpers);
+            collect_conditional_helpers(w, helpers);
+        }
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_conditional_helpers(row, helpers);
+            }
+        }
+        ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
+        ValueExpr::Derivative { epsilon, at, .. }
+        | ValueExpr::Partial { epsilon, at, .. }
+        | ValueExpr::Gradient { epsilon, at, .. } => {
+            collect_conditional_helpers(epsilon, helpers);
+            collect_conditional_helpers(at, helpers);
+        }
+        ValueExpr::Divergence { epsilon, at, .. } => {
+            collect_conditional_helpers(epsilon, helpers);
+            collect_conditional_helpers(at, helpers);
+        }
+    }
+}
+
 fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> bool {
     match expr {
         ValueExpr::Bool(_)
@@ -1778,6 +1982,15 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
             is_global_const_value_expr(condition, names)
                 && is_global_const_value_expr(then_branch, names)
                 && is_global_const_value_expr(else_branch, names)
+        }
+        ValueExpr::Call { args, ty, .. }
+            if matches!(
+                ty,
+                Type::Custom { .. } | Type::Isom2 | Type::Isom3 | Type::Vec4
+            ) =>
+        {
+            args.iter()
+                .all(|arg| is_global_const_value_expr(arg, names))
         }
         ValueExpr::Array { .. }
         | ValueExpr::Index { .. }
@@ -2368,13 +2581,23 @@ fn emit_value_expr(
             condition,
             then_branch,
             else_branch,
-            ..
-        } => format!(
-            "({} ? {} : {})",
-            emit_value_expr(condition, helper_names, value_names),
-            emit_value_expr(then_branch, helper_names, value_names),
-            emit_value_expr(else_branch, helper_names, value_names)
-        ),
+            ty,
+        } => {
+            let condition = emit_value_expr(condition, helper_names, value_names);
+            let then_branch = emit_value_expr(then_branch, helper_names, value_names);
+            let else_branch = emit_value_expr(else_branch, helper_names, value_names);
+            if let Some(helper) = ConditionalHelper::from_type(ty) {
+                format!(
+                    "{}({}, {}, {})",
+                    conditional_helper_name(&helper),
+                    condition,
+                    then_branch,
+                    else_branch
+                )
+            } else {
+                format!("({condition} ? {then_branch} : {else_branch})")
+            }
+        }
         ValueExpr::ObjectGetterCall {
             object,
             getter,

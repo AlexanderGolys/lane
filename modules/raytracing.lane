@@ -10,6 +10,11 @@ const Set RaycolorConfig = Z x R x R <max_bounces, ray_bias, throughput_threshol
 const RaytraceConfig default_raytrace_config = RaytraceConfig(128, 0.0005, 100)
 const RaycolorConfig default_raycolor_config = RaycolorConfig(6, 0.001, 0.001)
 
+const Hom(Hit, R3) hit_position = hit -> hit.position
+const Hom(Material, R3) material_color = material -> material.color
+const Hom(Material, R3) material_emission = material -> material.emission
+const Hom(Material, R) material_reflectiveness = material -> material.reflectiveness
+
 const Hom(Camera × R2, R2) camera_uv = (camera, v) -> ((v * 2) - camera.resolution) / min(camera.resolution.x, camera.resolution.y)
 
 const Hom(Camera, R3) camera_right = camera -> normalize(cross(camera.forward, camera.global_up))
@@ -38,7 +43,7 @@ vec3 _miss = _origin + _dir * _travel;
 return Hit(_miss, vec3(0.0f, 1.0f, 0.0f), _travel, false);
 "
 
-const Hom(RaycolorConfig × R3 × Hom(Ray, Hit) × Hom(R3, Material), Hom(Ray, R3)) raycolor_with = (config, ambientColor, hit_at, material_at) -> "
+const Hom(RaycolorConfig × R3 × Hom(Ray, Hit) × Hom(Hit, R3) × Hom(Hit, R3) × Hom(Hit, R), Hom(Ray, R3)) raycolor_from_hit_with = (config, ambientColor, hit_at, color_at, emission_at, reflectiveness_at) -> "
 Ray _ray = Ray(_t.origin, normalize(_t.dir));
 vec3 _radiance = vec3(0.0f);
 vec3 _throughput = vec3(1.0f);
@@ -48,10 +53,11 @@ for (int bounce = 0; bounce < ${config}.max_bounces; bounce++) {
         _radiance += _throughput * ${ambientColor};
         break;
     }
-    Material _material = ${material_at}(_hit.position);
-    float _reflectiveness = clamp(_material.reflectiveness, 0.0f, 1.0f);
-    _radiance += _throughput * (_material.emission + ((1.0f - _reflectiveness) * ${ambientColor} * _material.color));
-    _throughput *= _material.color * _reflectiveness;
+    vec3 _surface_color = ${color_at}(_hit);
+    vec3 _surface_emission = ${emission_at}(_hit);
+    float _reflectiveness = clamp(${reflectiveness_at}(_hit), 0.0f, 1.0f);
+    _radiance += _throughput * (_surface_emission + ((1.0f - _reflectiveness) * ${ambientColor} * _surface_color));
+    _throughput *= _surface_color * _reflectiveness;
     if (max(max(_throughput.r, _throughput.g), _throughput.b) < ${config}.throughput_threshold) {
         break;
     }

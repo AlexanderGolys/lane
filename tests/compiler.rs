@@ -921,7 +921,7 @@ fn rejects_module_import_cycles() {
 
 #[test]
 fn imports_raytracing_module() {
-    let source = "#import raytracing\nprovided R3 cameraPosition\nprovided R3 cameraForward\nprovided R3 cameraGlobalUp\nprovided R2 resolution\nprovided R3 ambientColor\nconst Camera camera = Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution)\nconst Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\nconst Hom(R2, Ray) scene_camera_ray = camera_ray(camera)\nconst Hom(Ray, Hit) scene_raytrace = raytrace_with(default_raytrace_config, scene)\nconst Hom(Ray, R3) scene_raycolor = raycolor_with(default_raycolor_config, ambientColor, scene_raytrace, scene_material)\nconst Hom(R2, R4) scene_shade = shade(scene_camera_ray, scene_raycolor)\nconst Hom(*, *) main = fragment_main(scene_shade)\n";
+    let source = "#import raytracing\nprovided R3 cameraPosition\nprovided R3 cameraForward\nprovided R3 cameraGlobalUp\nprovided R2 resolution\nprovided R3 ambientColor\nconst Camera camera = Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution)\nconst Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\nconst Hom(R2, Ray) scene_camera_ray = camera_ray(camera)\nconst Hom(Ray, Hit) scene_raytrace = raytrace_with(default_raytrace_config, scene)\nconst Hom(Hit, R3) scene_material_color = hit -> material_color(scene_material(hit.position))\nconst Hom(Hit, R3) scene_material_emission = hit -> material_emission(scene_material(hit.position))\nconst Hom(Hit, R) scene_material_reflectiveness = hit -> material_reflectiveness(scene_material(hit.position))\nconst Hom(Ray, R3) scene_raycolor = raycolor_from_hit_with(default_raycolor_config, ambientColor, scene_raytrace, scene_material_color, scene_material_emission, scene_material_reflectiveness)\nconst Hom(R2, R4) scene_shade = shade(scene_camera_ray, scene_raycolor)\nconst Hom(*, *) main = fragment_main(scene_shade)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct Ray"));
@@ -956,15 +956,31 @@ fn imports_raytracing_module() {
     assert!(glsl.contains("default_raycolor_config.max_bounces"));
     assert!(glsl.contains("default_raycolor_config.throughput_threshold"));
     assert!(glsl.contains("default_raycolor_config.ray_bias"));
-    assert!(glsl.contains("Material _material = scene_material(_hit.position);"));
+    assert!(glsl.contains("vec3 _surface_color = scene_material_color(_hit);"));
+    assert!(glsl.contains("vec3 _surface_emission = scene_material_emission(_hit);"));
+    assert!(glsl
+        .contains("float _reflectiveness = clamp(scene_material_reflectiveness(_hit), 0.0, 1.0);"));
     assert!(!glsl.contains("vec4 shade(vec2 fragCoord)"));
     assert!(glsl.contains("return vec4(scene_raycolor(scene_camera_ray(_v)), 1.0"));
     assert!(glsl.contains("vec4 scene_shade(vec2 _t)"));
     assert!(glsl.contains("void main()"));
     assert!(glsl.contains("outColor = scene_shade(gl_FragCoord.xy);"));
-    assert!(glsl.contains("_radiance += _throughput * (_material.emission"));
-    assert!(glsl.contains("_throughput *= _material.color * _reflectiveness;"));
+    assert!(glsl.contains("_radiance += _throughput * (_surface_emission"));
+    assert!(glsl.contains("_throughput *= _surface_color * _reflectiveness;"));
     assert!(glsl.contains("vec3 _dir = reflect(_ray.dir, _hit.normal);"));
+}
+
+#[test]
+fn raytracing_raycolor_accepts_custom_material_types() {
+    let source = "#import raytracing\nconst VectR FancyMaterial = R3 x R3 x R x R <albedo, glow, roughness, metallic>\nprovided Hom(Ray, Hit) hit\nprovided Hom(R3, FancyMaterial) material\nprovided R3 ambient\nconst Hom(FancyMaterial, R3) color = m -> m.albedo\nconst Hom(FancyMaterial, R3) emission = m -> m.glow\nconst Hom(FancyMaterial, R) reflectiveness = m -> m.metallic\nconst Hom(Hit, R3) color_at = color @ material @ hit_position\nconst Hom(Hit, R3) emission_at = emission @ material @ hit_position\nconst Hom(Hit, R) reflectiveness_at = reflectiveness @ material @ hit_position\nconst Hom(Ray, R3) color_ray = raycolor_from_hit_with(default_raycolor_config, ambient, hit, color_at, emission_at, reflectiveness_at)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct FancyMaterial"));
+    assert!(glsl.contains("vec3 color_ray(Ray _t)"));
+    assert!(glsl.contains("vec3 _surface_color = color_at(_hit);"));
+    assert!(glsl.contains("vec3 _surface_emission = emission_at(_hit);"));
+    assert!(glsl.contains("float _reflectiveness = clamp(reflectiveness_at(_hit), 0.0, 1.0);"));
+    assert!(!glsl.contains("_material.reflectiveness"));
 }
 
 #[test]
@@ -1370,6 +1386,18 @@ fn supports_conditional_value_expressions() {
     assert!(glsl.contains("float a = (flag ? 2.0 : 3.0);"));
     assert!(glsl.contains("float b = (flag ? 2.0 : 0.0);"));
     assert!(glsl.contains("ParamBall3D((a + b))"));
+}
+
+#[test]
+fn supports_product_conditional_values_without_glsl_ternaries() {
+    let source = "const VectR Swatch = R3 x R <color, weight>\nprovided Bool flag\nconst Swatch warm = Swatch((1, 0, 0), 1)\nconst Swatch cool = Swatch((0, 0, 1), 2)\nconst Swatch selected = if(flag) warm else cool\nconst Object output = Ball3D(r=selected.weight)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains(
+        "Swatch conditional_swatch(bool condition, Swatch then_value, Swatch else_value)"
+    ));
+    assert!(glsl.contains("Swatch selected = conditional_swatch(flag, warm, cool);"));
+    assert!(!glsl.contains("? warm : cool"));
 }
 
 #[test]
