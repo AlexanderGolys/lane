@@ -2,18 +2,20 @@ use ash::vk;
 use std::error::Error;
 use std::ffi::CString;
 use std::mem;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::event::{KeyEvent, WindowEvent};
-use winit::event_loop::EventLoop;
+use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use winit::window::Window;
+use winit::window::{Fullscreen, Window};
 
 pub struct PreviewShaders {
     pub vertex_spv: Vec<u8>,
     pub fragment_spv: Vec<u8>,
 }
+
+const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -54,12 +56,14 @@ pub fn run(shaders: PreviewShaders) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::new()?;
     let window_attributes = Window::default_attributes()
         .with_title("Lane Preview")
-        .with_inner_size(PhysicalSize::new(960, 540));
+        .with_inner_size(PhysicalSize::new(960, 540))
+        .with_fullscreen(Some(Fullscreen::Borderless(None)));
     #[allow(deprecated)]
     let window = event_loop.create_window(window_attributes)?;
     let mut renderer = unsafe { Renderer::new(&event_loop, &window, shaders)? };
 
     let start = Instant::now();
+    let mut next_frame = Instant::now();
     #[allow(deprecated)]
     event_loop.run(move |event, event_loop| match event {
         winit::event::Event::WindowEvent { event, .. } => match event {
@@ -72,27 +76,63 @@ pub fn run(shaders: PreviewShaders) -> Result<(), Box<dyn Error>> {
                     },
                 ..
             } => event_loop.exit(),
-            WindowEvent::RedrawRequested => {
-                if let Err(err) = unsafe { renderer.draw(start.elapsed().as_secs_f32()) } {
-                    eprintln!("preview render error: {err}");
-                    event_loop.exit();
+            WindowEvent::Resized(size) => {
+                if size.width > 0 && size.height > 0 {
+                    renderer.needs_recreate = true;
+                    next_frame = Instant::now();
+                    window.request_redraw();
                 }
-                window.request_redraw();
+            }
+            WindowEvent::RedrawRequested => {
+                if renderer.needs_recreate {
+                    let size = window.inner_size();
+                    if size.width > 0 && size.height > 0 {
+                        if let Err(err) =
+                            unsafe { renderer.recreate_swapchain(size.width, size.height) }
+                        {
+                            eprintln!("preview swapchain recreate error: {err}");
+                            event_loop.exit();
+                            return;
+                        }
+                    }
+                }
+                match unsafe { renderer.draw(start.elapsed().as_secs_f32()) } {
+                    Ok(DrawStatus::Rendered) => {}
+                    Ok(DrawStatus::NeedsRecreate) => {
+                        renderer.needs_recreate = true;
+                        next_frame = Instant::now();
+                        window.request_redraw();
+                    }
+                    Err(err) => {
+                        eprintln!("preview render error: {err}");
+                        event_loop.exit();
+                    }
+                }
+                next_frame = Instant::now() + FRAME_INTERVAL;
             }
             _ => {}
         },
-        winit::event::Event::AboutToWait => window.request_redraw(),
+        winit::event::Event::AboutToWait => {
+            let now = Instant::now();
+            if now >= next_frame {
+                window.request_redraw();
+            }
+            event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame));
+        }
         _ => {}
     })?;
     Ok(())
 }
 
 struct Renderer {
+    _entry: ash::Entry,
     instance: ash::Instance,
     surface_loader: ash::khr::surface::Instance,
     surface: vk::SurfaceKHR,
+    physical_device: vk::PhysicalDevice,
     device: ash::Device,
     swapchain_loader: ash::khr::swapchain::Device,
+    surface_format: vk::SurfaceFormatKHR,
     swapchain: vk::SwapchainKHR,
     queue: vk::Queue,
     extent: vk::Extent2D,
@@ -106,6 +146,24 @@ struct Renderer {
     image_available: vk::Semaphore,
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
+    vertex_spv: Vec<u8>,
+    fragment_spv: Vec<u8>,
+    needs_recreate: bool,
+}
+
+struct SwapchainResources {
+    swapchain: vk::SwapchainKHR,
+    extent: vk::Extent2D,
+    render_pass: vk::RenderPass,
+    pipeline_layout: vk::PipelineLayout,
+    pipeline: vk::Pipeline,
+    framebuffers: Vec<vk::Framebuffer>,
+    image_views: Vec<vk::ImageView>,
+}
+
+enum DrawStatus {
+    Rendered,
+    NeedsRecreate,
 }
 
 impl Renderer {
@@ -155,51 +213,22 @@ impl Renderer {
 
         let surface_format =
             unsafe { choose_surface_format(&surface_loader, physical_device, surface)? };
-        let capabilities = unsafe {
-            surface_loader.get_physical_device_surface_capabilities(physical_device, surface)?
-        };
         let size = window.inner_size();
-        let extent = choose_extent(&capabilities, size.width, size.height);
-        let present_mode =
-            unsafe { choose_present_mode(&surface_loader, physical_device, surface)? };
-        let min_image_count = if capabilities.max_image_count > 0 {
-            (capabilities.min_image_count + 1).min(capabilities.max_image_count)
-        } else {
-            capabilities.min_image_count + 1
-        };
-        let swapchain_info = vk::SwapchainCreateInfoKHR::default()
-            .surface(surface)
-            .min_image_count(min_image_count)
-            .image_format(surface_format.format)
-            .image_color_space(surface_format.color_space)
-            .image_extent(extent)
-            .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .pre_transform(capabilities.current_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(present_mode)
-            .clipped(true);
-        let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_info, None)? };
-        let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
-        let image_views = images
-            .iter()
-            .map(|image| unsafe { create_image_view(&device, *image, surface_format.format) })
-            .collect::<Result<Vec<_>, _>>()?;
-        let render_pass = unsafe { create_render_pass(&device, surface_format.format)? };
-        let (pipeline_layout, pipeline) = unsafe {
-            create_pipeline(
+        let resources = unsafe {
+            create_swapchain_resources(
                 &device,
-                render_pass,
-                extent,
+                &swapchain_loader,
+                &surface_loader,
+                physical_device,
+                surface,
+                surface_format,
+                size.width,
+                size.height,
+                vk::SwapchainKHR::null(),
                 &shaders.vertex_spv,
                 &shaders.fragment_spv,
             )?
         };
-        let framebuffers = image_views
-            .iter()
-            .map(|view| unsafe { create_framebuffer(&device, render_pass, *view, extent) })
-            .collect::<Result<Vec<_>, _>>()?;
         let command_pool_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue_family_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
@@ -216,42 +245,77 @@ impl Renderer {
         let in_flight = unsafe { device.create_fence(&fence_info, None)? };
 
         Ok(Self {
+            _entry: entry,
             instance,
             surface_loader,
             surface,
+            physical_device,
             device,
             swapchain_loader,
-            swapchain,
+            surface_format,
+            swapchain: resources.swapchain,
             queue,
-            extent,
-            render_pass,
-            pipeline_layout,
-            pipeline,
-            framebuffers,
-            image_views,
+            extent: resources.extent,
+            render_pass: resources.render_pass,
+            pipeline_layout: resources.pipeline_layout,
+            pipeline: resources.pipeline,
+            framebuffers: resources.framebuffers,
+            image_views: resources.image_views,
             command_pool,
             command_buffer,
             image_available,
             render_finished,
             in_flight,
+            vertex_spv: shaders.vertex_spv,
+            fragment_spv: shaders.fragment_spv,
+            needs_recreate: false,
         })
     }
 
-    unsafe fn draw(&mut self, time: f32) -> Result<(), Box<dyn Error>> {
+    unsafe fn recreate_swapchain(&mut self, width: u32, height: u32) -> Result<(), Box<dyn Error>> {
+        let resources = unsafe {
+            create_swapchain_resources(
+                &self.device,
+                &self.swapchain_loader,
+                &self.surface_loader,
+                self.physical_device,
+                self.surface,
+                self.surface_format,
+                width,
+                height,
+                self.swapchain,
+                &self.vertex_spv,
+                &self.fragment_spv,
+            )?
+        };
+        unsafe {
+            self.device.device_wait_idle()?;
+            let old_resources = self.replace_swapchain_resources(resources);
+            self.destroy_swapchain_resources(old_resources);
+        }
+        self.needs_recreate = false;
+        Ok(())
+    }
+
+    unsafe fn draw(&mut self, time: f32) -> Result<DrawStatus, Box<dyn Error>> {
         unsafe {
             self.device
                 .wait_for_fences(&[self.in_flight], true, u64::MAX)?;
-            self.device.reset_fences(&[self.in_flight])?;
         }
-        let (image_index, _) = unsafe {
+        let (image_index, suboptimal) = match unsafe {
             self.swapchain_loader.acquire_next_image(
                 self.swapchain,
                 u64::MAX,
                 self.image_available,
                 vk::Fence::null(),
-            )?
+            )
+        } {
+            Ok(result) => result,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(DrawStatus::NeedsRecreate),
+            Err(err) => return Err(err.into()),
         };
         unsafe {
+            self.device.reset_fences(&[self.in_flight])?;
             self.device
                 .reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::empty())?;
             self.record_command_buffer(image_index as usize, time)?;
@@ -276,10 +340,19 @@ impl Renderer {
             .swapchains(&swapchains)
             .image_indices(&image_indices);
         unsafe {
-            self.swapchain_loader
-                .queue_present(self.queue, &present_info)?;
+            match self
+                .swapchain_loader
+                .queue_present(self.queue, &present_info)
+            {
+                Ok(present_suboptimal) if suboptimal || present_suboptimal => {
+                    return Ok(DrawStatus::NeedsRecreate);
+                }
+                Ok(_) => {}
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(DrawStatus::NeedsRecreate),
+                Err(err) => return Err(err.into()),
+            }
         }
-        Ok(())
+        Ok(DrawStatus::Rendered)
     }
 
     unsafe fn record_command_buffer(
@@ -327,6 +400,47 @@ impl Renderer {
         }
         Ok(())
     }
+
+    fn replace_swapchain_resources(&mut self, resources: SwapchainResources) -> SwapchainResources {
+        SwapchainResources {
+            swapchain: mem::replace(&mut self.swapchain, resources.swapchain),
+            extent: mem::replace(&mut self.extent, resources.extent),
+            render_pass: mem::replace(&mut self.render_pass, resources.render_pass),
+            pipeline_layout: mem::replace(&mut self.pipeline_layout, resources.pipeline_layout),
+            pipeline: mem::replace(&mut self.pipeline, resources.pipeline),
+            framebuffers: mem::replace(&mut self.framebuffers, resources.framebuffers),
+            image_views: mem::replace(&mut self.image_views, resources.image_views),
+        }
+    }
+
+    unsafe fn current_swapchain_resources(&mut self) -> SwapchainResources {
+        SwapchainResources {
+            swapchain: mem::replace(&mut self.swapchain, vk::SwapchainKHR::null()),
+            extent: self.extent,
+            render_pass: mem::replace(&mut self.render_pass, vk::RenderPass::null()),
+            pipeline_layout: mem::replace(&mut self.pipeline_layout, vk::PipelineLayout::null()),
+            pipeline: mem::replace(&mut self.pipeline, vk::Pipeline::null()),
+            framebuffers: mem::take(&mut self.framebuffers),
+            image_views: mem::take(&mut self.image_views),
+        }
+    }
+
+    unsafe fn destroy_swapchain_resources(&self, mut resources: SwapchainResources) {
+        unsafe {
+            for framebuffer in resources.framebuffers.drain(..) {
+                self.device.destroy_framebuffer(framebuffer, None);
+            }
+            self.device.destroy_pipeline(resources.pipeline, None);
+            self.device
+                .destroy_pipeline_layout(resources.pipeline_layout, None);
+            self.device.destroy_render_pass(resources.render_pass, None);
+            for view in resources.image_views.drain(..) {
+                self.device.destroy_image_view(view, None);
+            }
+            self.swapchain_loader
+                .destroy_swapchain(resources.swapchain, None);
+        }
+    }
 }
 
 impl Drop for Renderer {
@@ -336,19 +450,9 @@ impl Drop for Renderer {
             self.device.destroy_fence(self.in_flight, None);
             self.device.destroy_semaphore(self.render_finished, None);
             self.device.destroy_semaphore(self.image_available, None);
+            let resources = self.current_swapchain_resources();
+            self.destroy_swapchain_resources(resources);
             self.device.destroy_command_pool(self.command_pool, None);
-            for framebuffer in self.framebuffers.drain(..) {
-                self.device.destroy_framebuffer(framebuffer, None);
-            }
-            self.device.destroy_pipeline(self.pipeline, None);
-            self.device
-                .destroy_pipeline_layout(self.pipeline_layout, None);
-            self.device.destroy_render_pass(self.render_pass, None);
-            for view in self.image_views.drain(..) {
-                self.device.destroy_image_view(view, None);
-            }
-            self.swapchain_loader
-                .destroy_swapchain(self.swapchain, None);
             self.device.destroy_device(None);
             self.surface_loader.destroy_surface(self.surface, None);
             self.instance.destroy_instance(None);
@@ -399,17 +503,73 @@ unsafe fn choose_surface_format(
 }
 
 unsafe fn choose_present_mode(
+    _surface_loader: &ash::khr::surface::Instance,
+    _physical_device: vk::PhysicalDevice,
+    _surface: vk::SurfaceKHR,
+) -> Result<vk::PresentModeKHR, Box<dyn Error>> {
+    Ok(vk::PresentModeKHR::FIFO)
+}
+
+unsafe fn create_swapchain_resources(
+    device: &ash::Device,
+    swapchain_loader: &ash::khr::swapchain::Device,
     surface_loader: &ash::khr::surface::Instance,
     physical_device: vk::PhysicalDevice,
     surface: vk::SurfaceKHR,
-) -> Result<vk::PresentModeKHR, Box<dyn Error>> {
-    let modes = unsafe {
-        surface_loader.get_physical_device_surface_present_modes(physical_device, surface)?
+    surface_format: vk::SurfaceFormatKHR,
+    width: u32,
+    height: u32,
+    old_swapchain: vk::SwapchainKHR,
+    vertex_spv: &[u8],
+    fragment_spv: &[u8],
+) -> Result<SwapchainResources, Box<dyn Error>> {
+    let capabilities = unsafe {
+        surface_loader.get_physical_device_surface_capabilities(physical_device, surface)?
     };
-    Ok(modes
-        .into_iter()
-        .find(|mode| *mode == vk::PresentModeKHR::MAILBOX)
-        .unwrap_or(vk::PresentModeKHR::FIFO))
+    let extent = choose_extent(&capabilities, width.max(1), height.max(1));
+    let present_mode = unsafe { choose_present_mode(surface_loader, physical_device, surface)? };
+    let min_image_count = if capabilities.max_image_count > 0 {
+        (capabilities.min_image_count + 1).min(capabilities.max_image_count)
+    } else {
+        capabilities.min_image_count + 1
+    };
+    let swapchain_info = vk::SwapchainCreateInfoKHR::default()
+        .surface(surface)
+        .min_image_count(min_image_count)
+        .image_format(surface_format.format)
+        .image_color_space(surface_format.color_space)
+        .image_extent(extent)
+        .image_array_layers(1)
+        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+        .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .pre_transform(capabilities.current_transform)
+        .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+        .present_mode(present_mode)
+        .clipped(true)
+        .old_swapchain(old_swapchain);
+    let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_info, None)? };
+    let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+    let image_views = images
+        .iter()
+        .map(|image| unsafe { create_image_view(device, *image, surface_format.format) })
+        .collect::<Result<Vec<_>, _>>()?;
+    let render_pass = unsafe { create_render_pass(device, surface_format.format)? };
+    let (pipeline_layout, pipeline) =
+        unsafe { create_pipeline(device, render_pass, extent, vertex_spv, fragment_spv)? };
+    let framebuffers = image_views
+        .iter()
+        .map(|view| unsafe { create_framebuffer(device, render_pass, *view, extent) })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(SwapchainResources {
+        swapchain,
+        extent,
+        render_pass,
+        pipeline_layout,
+        pipeline,
+        framebuffers,
+        image_views,
+    })
 }
 
 fn choose_extent(
