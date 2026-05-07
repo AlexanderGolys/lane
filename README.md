@@ -43,12 +43,10 @@ Usage:
   lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]
   lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]
   lane preview SOURCE
-  lane -l, --list [NAME]
-  lane -l2, --list2d
-  lane -l3, --list3d
-  lane -lo, --list-objects [NAME]
-  lane list-all
-  lane -la, --list-all
+  lane list [NAME]
+  lane list 2d
+  lane list 3d
+  lane list all
   lane -pc, --print-completion <bash|zsh|fish>
   lane -h, --help
 ```
@@ -64,18 +62,14 @@ Usage:
   through `glslc`; intermediate files are placed under `target/lane-preview`.
 - `lane preview SOURCE` opens the native Vulkan previewer. It uses `glslc`,
   FIFO presentation, and a conservative frame cap.
-- `lane -l` or `lane --list` lists primitive constructors.
-- `lane -l NAME` shows one primitive's fields and generated GLSL support.
-- `lane -l2` and `lane -l3` list only 2D or 3D primitives.
-- `lane -lo` or `lane --list-objects` lists builtin objects, type aliases, and
-  algebraic categories.
-- `lane -lo NAME` shows one builtin object's type and support body.
-- `lane list-all`, `lane -la`, or `lane --list-all` lists every builtin item on
-  one line, including primitive constructors, GLSL functions, type aliases,
-  object operators, and algebraic categories. Repeated scalar/vector overload
-  families are compacted with `Rn`, matrix families use `Mat{n}x{m}`, and
-  algebraic helper operations such as component-wise matrix multiplication are
-  omitted from this broad list.
+- `lane list` lists builtin objects, type aliases, and algebraic categories.
+- `lane list NAME` shows one builtin object's type and support body.
+- `lane list 2d` and `lane list 3d` list only 2D or 3D primitives.
+- `lane list all` lists every builtin item on one line, including primitive
+  constructors, GLSL functions, type aliases, object operators, and algebraic
+  categories. Repeated scalar/vector overload families are compacted with `Rn`,
+  matrix families use `Mat{n}x{m}`, and algebraic helper operations such as
+  component-wise matrix multiplication are omitted from this broad list.
 - `lane -pc SHELL` prints completion code for `bash`, `zsh`, or `fish`.
 - `lane help` is treated as an input path. Use `lane -h` or `lane --help`.
 - CLI failures are printed on stderr with an error type prefix such as
@@ -779,7 +773,7 @@ R x = xs[1]
 Lane pre-registers GLSL math builtins whose signatures fit Lane's current value
 types: `Bool`, `R`, `Z`, `R2`, `R3`, `R4`, and generic matrix families such as
 `Mat{n}x{m}`. Calls emit as direct GLSL calls and do not add support bodies.
-`lane list-all` prints complete scalar/vector families compactly, for example
+`lane list all` prints complete scalar/vector families compactly, for example
 `Hom(Rn, Rn)` for functions available on `R`, `R2`, `R3`, and `R4`, and
 `transpose` as `Hom(Mat{n}x{m}, Mat{m}x{n})`.
 
@@ -1082,9 +1076,9 @@ const Object output = scene
 Use the CLI for authoritative registered GLSL bodies:
 
 ```sh
-lane --list Ball3D
-lane --list-objects revolution
-lane --list-objects Isom3
+lane list 3d
+lane list revolution
+lane list Isom3
 ```
 
 ## Feature Samples

@@ -11,7 +11,7 @@ const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 const COLOR_ERROR: &str = "31";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane preview SOURCE\n  lane -l, --list [NAME]\n  lane -l2, --list2d\n  lane -l3, --list3d\n  lane -lo, --list-objects [NAME]\n  lane list-all\n  lane -la, --list-all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane preview SOURCE\n  lane list [NAME]\n  lane list 2d\n  lane list 3d\n  lane list all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -24,22 +24,17 @@ const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
         return
     fi
 
-    if [[ "$prev" == "--list" || "$prev" == "-l" ]]; then
-        COMPREPLY=( $(compgen -W "__PRIMITIVES__" -- "$cur") )
-        return
-    fi
-
-    if [[ "$prev" == "--list-objects" || "$prev" == "-lo" ]]; then
-        COMPREPLY=( $(compgen -W "__OBJECTS__" -- "$cur") )
+    if [[ "${COMP_WORDS[1]}" == "list" && "$COMP_CWORD" == "2" ]]; then
+        COMPREPLY=( $(compgen -W "all 2d 3d __OBJECTS__" -- "$cur") )
         return
     fi
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--show -s --frag= --vert= --frag-spv= --vert-spv= --version= --target= --list -l --list2d -l2 --list3d -l3 --list-objects -lo --list-all -la --print-completion -pc --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--show -s --frag= --vert= --frag-spv= --vert-spv= --version= --target= --print-completion -pc --help -h" -- "$cur") )
         return
     fi
 
-    COMPREPLY=( $(compgen -W "preview list-all" -- "$cur") )
+    COMPREPLY=( $(compgen -W "preview list" -- "$cur") )
 }
 
 complete -F _lane lane
@@ -50,11 +45,7 @@ const ZSH_COMPLETION_TEMPLATE: &str = r#"#compdef lane
 _lane() {
     _arguments \
         '1:command or file:_files' \
-        '(-l --list)'{-l,--list}'[list known primitives or show one primitive]:name:(__PRIMITIVES__)' \
-        '(-l2 --list2d)'{-l2,--list2d}'[list only 2D primitives]' \
-        '(-l3 --list3d)'{-l3,--list3d}'[list only 3D primitives]' \
-        '(-lo --list-objects)'{-lo,--list-objects}'[list known builtin Lane objects or show one builtin]:name:(__OBJECTS__)' \
-        '(-la --list-all)'{-la,--list-all}'[list every builtin object, function, type, and constructor]' \
+        '2:list target:(all 2d 3d __OBJECTS__)' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-s --show)'{-s,--show}'[print compiled GLSL while also writing TARGET]' \
         '--frag=[write complete preview fragment shader]:file:_files' \
@@ -70,14 +61,11 @@ _lane "$@"
 "#;
 
 const FISH_COMPLETION_TEMPLATE: &str = r#"complete -c lane -f
-complete -c lane -s l -l list -d 'List known primitives'
-complete -c lane -s l -l list -r -a '__PRIMITIVES__' -d 'Show one primitive'
-complete -c lane -o l2 -l list2d -d 'List only 2D primitives'
-complete -c lane -o l3 -l list3d -d 'List only 3D primitives'
-complete -c lane -o lo -l list-objects -d 'List builtin Lane objects'
-complete -c lane -o lo -l list-objects -r -a '__OBJECTS__' -d 'Show one builtin object'
-complete -c lane -o la -l list-all -d 'List every builtin object, function, type, and constructor'
-complete -c lane -f -a 'list-all' -d 'List every builtin object, function, type, and constructor'
+complete -c lane -f -a 'list' -d 'List builtin Lane objects'
+complete -c lane -n '__fish_seen_subcommand_from list' -f -a 'all' -d 'List every builtin object, function, type, and constructor'
+complete -c lane -n '__fish_seen_subcommand_from list' -f -a '2d' -d 'List only 2D primitives'
+complete -c lane -n '__fish_seen_subcommand_from list' -f -a '3d' -d 'List only 3D primitives'
+complete -c lane -n '__fish_seen_subcommand_from list' -f -a '__OBJECTS__' -d 'Show one builtin object'
 complete -c lane -o pc -l print-completion -r -a 'bash zsh fish' -d 'Print a completion script'
 complete -c lane -s s -l show -d 'Print compiled GLSL while also writing TARGET'
 complete -c lane -l frag -r -d 'Write complete preview fragment shader'
@@ -131,6 +119,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print_help();
             Ok(())
         }
+        [command] if command == "list" => {
+            print_known_builtin_objects();
+            Ok(())
+        }
+        [command, target] if command == "list" && target == "2d" => {
+            print_known_primitives_for_dimension(lane::ShapeDimension::D2);
+            Ok(())
+        }
+        [command, target] if command == "list" && target == "3d" => {
+            print_known_primitives_for_dimension(lane::ShapeDimension::D3);
+            Ok(())
+        }
+        [command, target] if command == "list" && target == "all" => {
+            print_all_known_builtin_items();
+            Ok(())
+        }
+        [command, name] if command == "list" => print_known_builtin_object_detail(name),
         [flag] if matches!(flag.as_str(), "--list" | "-l") => {
             print_known_primitives();
             Ok(())

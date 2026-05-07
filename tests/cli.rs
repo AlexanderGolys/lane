@@ -49,7 +49,7 @@ fn lists_known_primitives_from_short_flag() {
 #[test]
 fn lists_only_2d_primitives_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("--list2d")
+        .args(["list", "2d"])
         .output()
         .unwrap();
 
@@ -84,7 +84,7 @@ fn lists_only_2d_primitives_from_short_flag() {
 #[test]
 fn lists_only_3d_primitives_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("--list3d")
+        .args(["list", "3d"])
         .output()
         .unwrap();
 
@@ -167,7 +167,7 @@ fn shows_known_primitive_detail_body_from_cli() {
 #[test]
 fn lists_known_builtin_objects_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("--list-objects")
+        .arg("list")
         .output()
         .unwrap();
 
@@ -230,7 +230,7 @@ fn lists_known_builtin_objects_from_short_flag() {
 #[test]
 fn lists_all_builtin_items_from_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .arg("list-all")
+        .args(["list", "all"])
         .output()
         .unwrap();
 
@@ -284,7 +284,7 @@ fn lists_all_builtin_items_from_short_flag() {
 #[test]
 fn shows_known_builtin_object_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .args(["--list-objects", "revolution"])
+        .args(["list", "revolution"])
         .output()
         .unwrap();
 
@@ -298,7 +298,7 @@ fn shows_known_builtin_object_detail_from_cli() {
 #[test]
 fn shows_builtin_type_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .args(["--list-objects", "H"])
+        .args(["list", "H"])
         .output()
         .unwrap();
 
@@ -313,7 +313,7 @@ fn shows_builtin_type_detail_from_cli() {
 #[test]
 fn shows_builtin_category_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .args(["--list-objects", "DivRing"])
+        .args(["list", "DivRing"])
         .output()
         .unwrap();
 
@@ -326,7 +326,7 @@ fn shows_builtin_category_detail_from_cli() {
 #[test]
 fn shows_differential_builtin_object_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .args(["--list-objects", "gradient"])
+        .args(["list", "gradient"])
         .output()
         .unwrap();
 
@@ -353,12 +353,13 @@ fn prints_bash_completion_from_cli() {
     assert!(!stdout.contains("Complex diff Isom2"));
     assert!(stdout.contains("--print-completion"));
     assert!(stdout.contains("-pc"));
-    assert!(stdout.contains("--list"));
-    assert!(stdout.contains("-l2"));
-    assert!(stdout.contains("--list-objects"));
-    assert!(stdout.contains("--list-all"));
-    assert!(stdout.contains("-la"));
-    assert!(stdout.contains("list-all"));
+    assert!(stdout.contains("preview list"));
+    assert!(stdout.contains("all 2d 3d"));
+    assert!(!stdout.contains("--list"));
+    assert!(!stdout.contains("-l2"));
+    assert!(!stdout.contains("--list-objects"));
+    assert!(!stdout.contains("--list-all"));
+    assert!(!stdout.contains("list-all"));
 }
 
 #[test]
@@ -386,31 +387,30 @@ fn prints_help_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Usage:"));
     assert!(stdout.contains("lane [SOURCE [TARGET]] [--show]"));
-    assert!(stdout.contains("lane -l, --list [NAME]"));
-    assert!(stdout.contains("lane -l2, --list2d"));
-    assert!(stdout.contains("lane -l3, --list3d"));
-    assert!(stdout.contains("lane -lo, --list-objects [NAME]"));
-    assert!(stdout.contains("lane list-all"));
-    assert!(stdout.contains("lane -la, --list-all"));
+    assert!(stdout.contains("lane list [NAME]"));
+    assert!(stdout.contains("lane list 2d"));
+    assert!(stdout.contains("lane list 3d"));
+    assert!(stdout.contains("lane list all"));
     assert!(stdout.contains("lane -pc, --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h, --help"));
     assert!(stdout.contains("When TARGET is present"));
     assert!(stdout.contains("Use --show or -s with SOURCE TARGET"));
-    assert!(!stdout.contains("lane --list [NAME]"));
-    assert!(!stdout.contains("lane -l [NAME]"));
+    assert!(!stdout.contains("lane -l, --list [NAME]"));
+    assert!(!stdout.contains("lane list-all"));
 }
 
 #[test]
-fn treats_old_list_command_as_input_path() {
+fn list_command_lists_builtin_objects() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .arg("list")
         .output()
         .unwrap();
 
-    assert!(!output.status.success());
+    assert!(output.status.success());
 
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("No such file or directory"));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("DivRing: Cat"));
+    assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
 }
 
 #[test]
