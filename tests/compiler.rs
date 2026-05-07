@@ -550,6 +550,29 @@ fn preserves_explicit_scalar_product_function_domains() {
 }
 
 #[test]
+fn supports_power_type_product_domains() {
+    let source = "const Hom(R^3, R) g = v -> v.x + v.x1 + v.z\nprovided R a\nprovided R b\nprovided R c\nconst Object output = Ball3D(r=g(a, b, c))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float g(float _t0, float _t1, float _t2) {"));
+    assert!(glsl.contains("float __lane_product_param_0 = _t0;"));
+    assert!(glsl.contains("float __lane_product_param_1 = _t1;"));
+    assert!(glsl.contains("float __lane_product_param_2 = _t2;"));
+    assert!(glsl.contains("g(a, b, c)"));
+}
+
+#[test]
+fn supports_power_type_product_declarations() {
+    let source = "Set Triple = R^{3}\nTriple p = Triple(1, 2, 3)\nR radius = p.x + p.y + p.z\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct Triple"));
+    assert!(glsl.contains("float x;"));
+    assert!(glsl.contains("float y;"));
+    assert!(glsl.contains("float z;"));
+}
+
+#[test]
 fn supports_single_vector_closure_parameter() {
     let source = "const Hom(R2, R) g = v -> v.x + v.y\nconst Object output = Ball3D(r=g((1, 2)))\n";
     let glsl = compile_program(source).unwrap();

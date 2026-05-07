@@ -467,17 +467,28 @@ fn parse_product_type_decl(
         return Ok(None);
     };
     let (type_source, explicit_field_names) = split_product_type_fields(right.trim())?;
-    let Some(component_sources) = split_top_level_product(type_source) else {
-        return Ok(None);
-    };
-    let mut components = Vec::new();
-    for component_source in component_sources {
-        components.push(parse_type_with_custom_types_for_ambient(
-            component_source,
+    let components = if let Some(component_sources) = split_top_level_product(type_source) {
+        let mut components = Vec::new();
+        for component_source in component_sources {
+            components.push(parse_type_with_custom_types_for_ambient(
+                component_source,
+                custom_types,
+                ambient_dimension,
+            )?);
+        }
+        components
+    } else if split_top_level_power(type_source).is_some() {
+        match parse_type_with_custom_types_for_ambient(
+            type_source,
             custom_types,
             ambient_dimension,
-        )?);
-    }
+        )? {
+            Type::Product(components) => components,
+            _ => return Ok(None),
+        }
+    } else {
+        return Ok(None);
+    };
     let field_names = match explicit_field_names {
         Some(names) => {
             if names.len() != components.len() {
@@ -1213,6 +1224,11 @@ fn parse_type_with_custom_types(
         }
         return Ok(Type::Product(parsed));
     }
+    if let Some((base, exponent)) = split_top_level_power(source) {
+        let count = parse_type_power_exponent(exponent)?;
+        let base = parse_type_with_custom_types(base, custom_types)?;
+        return Ok(power_type(base, count));
+    }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
         return Ok(Type::func(
@@ -1285,6 +1301,11 @@ fn parse_type_with_custom_types_for_ambient(
             )?);
         }
         return Ok(Type::Product(parsed));
+    }
+    if let Some((base, exponent)) = split_top_level_power(source) {
+        let count = parse_type_power_exponent(exponent)?;
+        let base = parse_type_with_custom_types_for_ambient(base, custom_types, ambient_dimension)?;
+        return Ok(power_type(base, count));
     }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
@@ -1368,6 +1389,43 @@ fn split_top_level_product(source: &str) -> Option<Vec<&str>> {
     }
     parts.push(source[start..].trim());
     Some(parts)
+}
+
+fn split_top_level_power(source: &str) -> Option<(&str, &str)> {
+    let mut depth = 0;
+    for (index, ch) in source.char_indices().rev() {
+        match ch {
+            ')' => depth += 1,
+            '(' => depth -= 1,
+            '^' if depth == 0 => {
+                return Some((source[..index].trim(), source[index + 1..].trim()));
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_type_power_exponent(source: &str) -> Result<usize, Error> {
+    let source = source
+        .strip_prefix('{')
+        .and_then(|inner| inner.strip_suffix('}'))
+        .unwrap_or(source)
+        .trim();
+    let count = source.parse::<usize>().map_err(|_| {
+        Error::new(format!(
+            "type power exponent '{}' must be a positive integer",
+            source
+        ))
+    })?;
+    if count == 0 {
+        return Err(Error::new("type power exponent must be greater than zero"));
+    }
+    Ok(count)
+}
+
+fn power_type(base: Type, count: usize) -> Type {
+    Type::Product(std::iter::repeat(base).take(count).collect())
 }
 
 fn split_type_name(source: &str) -> Result<(&str, &str), Error> {

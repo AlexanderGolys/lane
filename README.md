@@ -458,6 +458,14 @@ provided Hom(R3 x R3, R3) cross_ascii
 
 ASCII `x` is a product separator only when surrounded by whitespace.
 
+`A^n` is shorthand for an `n`-fold product `A × A × ... × A` when `n` is a
+positive integer.
+
+```lane
+const Hom(R^3, R) sum3 = v -> v.x + v.y + v.z
+Set Triple = R^{3}
+```
+
 ### Parenthesized Types
 
 Parentheses group types.
