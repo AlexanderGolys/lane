@@ -353,7 +353,7 @@ fn prints_bash_completion_from_cli() {
     assert!(!stdout.contains("Complex diff Isom2"));
     assert!(stdout.contains("--print-completion"));
     assert!(stdout.contains("-pc"));
-    assert!(stdout.contains("preview list"));
+    assert!(stdout.contains("preview repl list"));
     assert!(stdout.contains("all 2d 3d"));
     assert!(!stdout.contains("--list"));
     assert!(!stdout.contains("-l2"));
@@ -387,12 +387,15 @@ fn prints_help_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Usage:"));
     assert!(stdout.contains("lane [SOURCE [TARGET]] [--show]"));
+    assert!(stdout.contains("lane repl"));
     assert!(stdout.contains("lane list [NAME]"));
     assert!(stdout.contains("lane list 2d"));
     assert!(stdout.contains("lane list 3d"));
     assert!(stdout.contains("lane list all"));
     assert!(stdout.contains("lane -pc, --print-completion <bash|zsh|fish>"));
     assert!(stdout.contains("lane -h, --help"));
+    assert!(stdout.contains("opens the interactive shell when stdin is a terminal"));
+    assert!(stdout.contains("`lane repl` opens the same shell explicitly"));
     assert!(stdout.contains("When TARGET is present"));
     assert!(stdout.contains("Use --show or -s with SOURCE TARGET"));
     assert!(!stdout.contains("lane -l, --list [NAME]"));

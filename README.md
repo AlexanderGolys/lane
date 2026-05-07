@@ -42,6 +42,7 @@ Usage:
   lane [SOURCE [TARGET]] [--show]
   lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]
   lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]
+  lane repl
   lane preview SOURCE
   lane list [NAME]
   lane list 2d
@@ -51,8 +52,16 @@ Usage:
   lane -h, --help
 ```
 
-- `lane [SOURCE]` compiles Lane to GLSL on stdout. Without `SOURCE`, Lane reads
-  stdin.
+- `lane [SOURCE]` compiles Lane to GLSL on stdout. Without `SOURCE`, Lane opens
+  the interactive shell when stdin is a terminal and reads source from stdin
+  otherwise.
+- `lane repl` opens the interactive shell explicitly. The shell accumulates
+  valid Lane declarations, rejects `#module`, and emits GLSL when a submitted
+  line is a `const` declaration. Shell commands are recognized only at the start
+  of a line: `\clear` clears the transcript but keeps the session, `\restart`
+  starts from an empty session, and `\exit` leaves the shell. Enter submits the
+  current input, Ctrl-Enter inserts a newline when supported by the terminal, and
+  Ctrl-C exits.
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.

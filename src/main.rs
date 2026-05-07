@@ -4,6 +4,7 @@ use std::io::{self, IsTerminal, Read};
 use std::process::{self, Command};
 
 mod preview;
+mod repl;
 
 const COLOR_FUNCTION: &str = "34";
 const COLOR_TYPE: &str = "33";
@@ -11,7 +12,7 @@ const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 const COLOR_ERROR: &str = "31";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane preview SOURCE\n  lane list [NAME]\n  lane list 2d\n  lane list 3d\n  lane list all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane reads source from stdin. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane repl\n  lane preview SOURCE\n  lane list [NAME]\n  lane list 2d\n  lane list 3d\n  lane list all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane opens the interactive shell when stdin is a terminal and reads source from stdin otherwise. `lane repl` opens the same shell explicitly. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -34,7 +35,7 @@ const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
         return
     fi
 
-    COMPREPLY=( $(compgen -W "preview list" -- "$cur") )
+    COMPREPLY=( $(compgen -W "preview repl list" -- "$cur") )
 }
 
 complete -F _lane lane
@@ -44,7 +45,7 @@ const ZSH_COMPLETION_TEMPLATE: &str = r#"#compdef lane
 
 _lane() {
     _arguments \
-        '1:command or file:_files' \
+        '1:command or file:(preview repl list)' \
         '2:list target:(all 2d 3d __OBJECTS__)' \
         '(-pc --print-completion)'{-pc,--print-completion}'[print a completion script]:shell:(bash zsh fish)' \
         '(-s --show)'{-s,--show}'[print compiled GLSL while also writing TARGET]' \
@@ -61,6 +62,7 @@ _lane "$@"
 "#;
 
 const FISH_COMPLETION_TEMPLATE: &str = r#"complete -c lane -f
+complete -c lane -f -a 'repl' -d 'Open the interactive Lane shell'
 complete -c lane -f -a 'list' -d 'List builtin Lane objects'
 complete -c lane -n '__fish_seen_subcommand_from list' -f -a 'all' -d 'List every builtin object, function, type, and constructor'
 complete -c lane -n '__fish_seen_subcommand_from list' -f -a '2d' -d 'List only 2D primitives'
@@ -114,7 +116,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return write_preview_shaders(&args);
     }
     match args.as_slice() {
+        [] if io::stdin().is_terminal() => repl::run(),
         [] => compile_from_stdin(),
+        [command] if command == "repl" => repl::run(),
         [command] if is_help(command) => {
             print_help();
             Ok(())

@@ -10,4 +10,13 @@ edition = "2021"
 [dependencies]
 ash = "0.38.0"
 ash-window = "0.13.0"
+crossterm = "0.29.0"
+ratatui = "0.30.0"
+tree-sitter = "0.26.8"
+tree-sitter-glsl = "0.2.0"
+tree-sitter-highlight = "0.26.8"
+tree-sitter-language = "0.1.7"
 winit = "0.30.12"
+
+[build-dependencies]
+cc = "1"
