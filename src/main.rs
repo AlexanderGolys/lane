@@ -282,8 +282,8 @@ fn write_spirv_shader(
 }
 
 fn compile_spirv_shader(stage: &str, source: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let source_path = unique_temp_shader_path(stage, "glsl");
-    let target_path = unique_temp_shader_path(stage, "spv");
+    let source_path = unique_preview_shader_path(stage, "glsl")?;
+    let target_path = unique_preview_shader_path(stage, "spv")?;
     fs::write(&source_path, source)?;
     let output = Command::new("glslc")
         .arg(format!("-fshader-stage={stage}"))
@@ -317,18 +317,23 @@ fn run_preview(source_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     })
 }
 
-fn unique_temp_shader_path(stage: &str, extension: &str) -> std::path::PathBuf {
+fn unique_preview_shader_path(
+    stage: &str,
+    extension: &str,
+) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    std::env::temp_dir().join(format!(
+    let dir = std::env::current_dir()?.join("target").join("lane-preview");
+    fs::create_dir_all(&dir)?;
+    Ok(dir.join(format!(
         "lane-preview-{}-{}-{}.{}",
         stage,
         process::id(),
         nanos,
         extension
-    ))
+    )))
 }
 
 fn print_compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {
