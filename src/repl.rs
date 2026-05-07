@@ -27,6 +27,8 @@ const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
 const SELECTED_OUTPUT_BG: Color = Color::Rgb(24, 70, 50);
 const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
 const COMMAND_FG: Color = Color::LightGreen;
+const FEED_X_OFFSET: u16 = 3;
+const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 
 const HIGHLIGHT_NAMES: &[&str] = &[
     "attribute",
@@ -282,8 +284,11 @@ impl App {
                 .collect::<Vec<_>>();
             self.layout
                 .record_bottom_to_top(user_area, user_entries.as_slice(), &self.transcript);
-            self.layout
-                .record_bottom_to_top(split[1], glsl_entries.as_slice(), &self.transcript);
+            self.layout.record_bottom_to_top(
+                transcript_feed_area(split[1]),
+                glsl_entries.as_slice(),
+                &self.transcript,
+            );
             let user_items = user_entries
                 .iter()
                 .map(|index| self.render_entry(&self.transcript[*index].clone()))
@@ -295,7 +300,7 @@ impl App {
             let user_transcript = List::new(user_items).direction(ListDirection::BottomToTop);
             let glsl_transcript = List::new(glsl_items).direction(ListDirection::BottomToTop);
             frame.render_widget(user_transcript, user_area);
-            frame.render_widget(glsl_transcript, split[1]);
+            frame.render_widget(glsl_transcript, transcript_feed_area(split[1]));
             self.render_input(frame, input_area);
         } else {
             let entries = self
@@ -399,6 +404,7 @@ impl App {
                 Text::from(entry.text.clone())
             }
         };
+        let text = padded_feed_text(text);
         ListItem::new(text).style(entry.style(self.selected_group))
     }
 }
@@ -409,20 +415,46 @@ enum ReplAction {
 }
 
 fn transcript_area(area: Rect) -> Rect {
+    transcript_feed_area(Rect {
+        height: area.height.saturating_sub(FEED_ENTRY_MIN_HEIGHT),
+        ..area
+    })
+}
+
+fn transcript_feed_area(area: Rect) -> Rect {
+    let x_offset = FEED_X_OFFSET.min(area.width);
     Rect {
-        height: area.height.saturating_sub(3),
+        x: area.x.saturating_add(x_offset),
+        width: area.width.saturating_sub(x_offset),
         ..area
     }
 }
 
 fn input_area(area: Rect) -> Rect {
-    let x_offset = 3.min(area.width);
+    let x_offset = FEED_X_OFFSET.min(area.width);
     Rect {
         x: area.x.saturating_add(x_offset),
-        y: area.y.saturating_add(area.height.saturating_sub(3)),
+        y: area
+            .y
+            .saturating_add(area.height.saturating_sub(FEED_ENTRY_MIN_HEIGHT)),
         width: area.width.saturating_sub(x_offset),
-        height: area.height.min(3),
+        height: area.height.min(FEED_ENTRY_MIN_HEIGHT),
     }
+}
+
+fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
+    if text.lines.is_empty() {
+        text.lines.push(Line::raw(""));
+    }
+    if text.lines.len() <= 1 {
+        text.lines.insert(0, Line::raw(""));
+        text.lines.push(Line::raw(""));
+    } else {
+        while text.lines.len() < FEED_ENTRY_MIN_HEIGHT as usize {
+            text.lines.insert(0, Line::raw(""));
+        }
+    }
+    text
 }
 
 #[derive(Default)]
@@ -563,7 +595,7 @@ impl TranscriptEntry {
     }
 
     fn line_count(&self) -> u16 {
-        self.text.lines().count().max(1) as u16
+        (self.text.lines().count().max(1) as u16).max(FEED_ENTRY_MIN_HEIGHT)
     }
 
     fn style(&self, selected_group: Option<usize>) -> Style {
@@ -968,10 +1000,30 @@ mod tests {
             TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0)),
         ];
         let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 3), &[2, 1, 0], &entries);
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 9), &[2, 1, 0], &entries);
 
-        assert_eq!(layout.entry_at(0, 2), Some(2));
-        assert_eq!(layout.entry_at(0, 1), Some(1));
-        assert_eq!(layout.entry_at(0, 0), Some(0));
+        assert_eq!(layout.entry_at(0, 8), Some(2));
+        assert_eq!(layout.entry_at(0, 5), Some(1));
+        assert_eq!(layout.entry_at(0, 2), Some(0));
+    }
+
+    #[test]
+    fn transcript_area_matches_input_left_padding() {
+        let frame_area = Rect::new(0, 0, 20, 12);
+
+        assert_eq!(transcript_area(frame_area).x, input_area(frame_area).x);
+        assert_eq!(
+            transcript_area(frame_area).width,
+            input_area(frame_area).width
+        );
+    }
+
+    #[test]
+    fn transcript_entries_reserve_input_height() {
+        let single_line = TranscriptEntry::system("Session restarted.");
+        let multi_line = TranscriptEntry::help("Enter submits.\n\\exit leaves.");
+
+        assert_eq!(single_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
+        assert_eq!(multi_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
     }
 }
