@@ -1,7 +1,10 @@
 use std::io::{self, Stdout};
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+    MouseButton, MouseEvent, MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -20,6 +23,9 @@ use tree_sitter_language::LanguageFn;
 const USER_BG: Color = Color::Rgb(20, 22, 30);
 const OUTPUT_BG: Color = Color::Rgb(14, 32, 24);
 const ERROR_BG: Color = Color::Rgb(36, 18, 18);
+const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
+const SELECTED_OUTPUT_BG: Color = Color::Rgb(24, 70, 50);
+const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
 const COMMAND_FG: Color = Color::LightGreen;
 
 const HIGHLIGHT_NAMES: &[&str] = &[
@@ -78,7 +84,7 @@ impl ReplTerminal {
     fn enter() -> io::Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
         Ok(Self {
@@ -92,7 +98,11 @@ impl ReplTerminal {
             return Ok(());
         }
         disable_raw_mode()?;
-        execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
+        execute!(
+            self.terminal.backend_mut(),
+            DisableMouseCapture,
+            LeaveAlternateScreen
+        )?;
         self.terminal.show_cursor()?;
         self.active = false;
         Ok(())
@@ -103,7 +113,11 @@ impl Drop for ReplTerminal {
     fn drop(&mut self) {
         if self.active {
             let _ = disable_raw_mode();
-            let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
+            let _ = execute!(
+                self.terminal.backend_mut(),
+                DisableMouseCapture,
+                LeaveAlternateScreen
+            );
             let _ = self.terminal.show_cursor();
         }
     }
@@ -115,6 +129,9 @@ struct App {
     transcript: Vec<TranscriptEntry>,
     highlighter: SyntaxHighlighter,
     split_mode: bool,
+    selected_group: Option<usize>,
+    next_group: usize,
+    layout: TranscriptLayout,
 }
 
 impl App {
@@ -123,11 +140,14 @@ impl App {
             session: ReplSession::default(),
             input: String::new(),
             transcript: vec![TranscriptEntry::welcome(format!(
-                "Lane {} started.",
+                "Lane {}",
                 env!("CARGO_PKG_VERSION")
             ))],
             highlighter: SyntaxHighlighter::new(),
             split_mode: false,
+            selected_group: None,
+            next_group: 0,
+            layout: TranscriptLayout::default(),
         }
     }
 
@@ -140,10 +160,14 @@ impl App {
             if !event::poll(Duration::from_millis(80))? {
                 continue;
             }
-            if let Event::Key(key) = event::read()? {
-                if let Some(action) = self.handle_key(key) {
-                    return Ok(action);
+            match event::read()? {
+                Event::Key(key) => {
+                    if let Some(action) = self.handle_key(key) {
+                        return Ok(action);
+                    }
                 }
+                Event::Mouse(mouse) => self.handle_mouse(mouse),
+                _ => {}
             }
         }
     }
@@ -164,25 +188,42 @@ impl App {
         None
     }
 
+    fn handle_mouse(&mut self, mouse: MouseEvent) {
+        if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return;
+        }
+        self.selected_group = self
+            .layout
+            .entry_at(mouse.column, mouse.row)
+            .and_then(|index| self.transcript.get(index))
+            .and_then(|entry| entry.group);
+    }
+
     fn submit_input(&mut self) -> Option<ReplAction> {
         let input = std::mem::take(&mut self.input);
         if input.trim().is_empty() {
             return None;
         }
 
+        let group = (!input.starts_with('\\')).then(|| self.allocate_group());
         self.transcript
-            .push(TranscriptEntry::submitted(input.clone()));
+            .push(TranscriptEntry::submitted(input.clone(), group));
         match self.session.submit(&input) {
             SubmitOutcome::Accepted => {}
             SubmitOutcome::Emitted(glsl) => {
                 if glsl.is_empty() {
                     return None;
                 }
-                self.transcript.push(TranscriptEntry::glsl(glsl));
+                self.transcript.push(TranscriptEntry::glsl(glsl, group));
             }
-            SubmitOutcome::Cleared => self.transcript.clear(),
+            SubmitOutcome::Cleared => {
+                self.transcript.clear();
+                self.selected_group = None;
+            }
             SubmitOutcome::Restarted => {
                 self.transcript.clear();
+                self.selected_group = None;
+                self.next_group = 0;
                 self.transcript
                     .push(TranscriptEntry::system("Session restarted."));
             }
@@ -190,9 +231,17 @@ impl App {
             SubmitOutcome::Show(source) => return Some(ReplAction::Show(source)),
             SubmitOutcome::ToggleSplit => self.toggle_split(),
             SubmitOutcome::Exit => return Some(ReplAction::Exit),
-            SubmitOutcome::Error(error) => self.transcript.push(TranscriptEntry::error(error)),
+            SubmitOutcome::Error(error) => {
+                self.transcript.push(TranscriptEntry::error(error, group))
+            }
         }
         None
+    }
+
+    fn allocate_group(&mut self) -> usize {
+        let group = self.next_group;
+        self.next_group += 1;
+        group
     }
 
     fn toggle_split(&mut self) {
@@ -207,6 +256,7 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut ratatui::Frame) {
+        self.layout = TranscriptLayout::default();
         if self.split_mode {
             let split = Layout::default()
                 .direction(Direction::Horizontal)
@@ -217,22 +267,30 @@ impl App {
             let user_entries = self
                 .transcript
                 .iter()
-                .filter(|entry| !matches!(entry.kind, TranscriptKind::Glsl))
-                .cloned()
+                .enumerate()
+                .rev()
+                .filter(|(_, entry)| !matches!(entry.kind, TranscriptKind::Glsl))
+                .map(|(index, _)| index)
                 .collect::<Vec<_>>();
             let glsl_entries = self
                 .transcript
                 .iter()
-                .filter(|entry| matches!(entry.kind, TranscriptKind::Glsl))
-                .cloned()
+                .enumerate()
+                .rev()
+                .filter(|(_, entry)| matches!(entry.kind, TranscriptKind::Glsl))
+                .map(|(index, _)| index)
                 .collect::<Vec<_>>();
+            self.layout
+                .record_bottom_to_top(user_area, user_entries.as_slice(), &self.transcript);
+            self.layout
+                .record_bottom_to_top(split[1], glsl_entries.as_slice(), &self.transcript);
             let user_items = user_entries
                 .iter()
-                .map(|entry| self.render_entry(entry))
+                .map(|index| self.render_entry(&self.transcript[*index].clone()))
                 .collect::<Vec<_>>();
             let glsl_items = glsl_entries
                 .iter()
-                .map(|entry| self.render_entry(entry))
+                .map(|index| self.render_entry(&self.transcript[*index].clone()))
                 .collect::<Vec<_>>();
             let user_transcript = List::new(user_items).direction(ListDirection::BottomToTop);
             let glsl_transcript = List::new(glsl_items).direction(ListDirection::BottomToTop);
@@ -240,10 +298,21 @@ impl App {
             frame.render_widget(glsl_transcript, split[1]);
             self.render_input(frame, input_area);
         } else {
-            let entries = self.transcript.clone();
+            let entries = self
+                .transcript
+                .iter()
+                .enumerate()
+                .rev()
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            self.layout.record_bottom_to_top(
+                transcript_area(frame.area()),
+                entries.as_slice(),
+                &self.transcript,
+            );
             let items = entries
                 .iter()
-                .map(|entry| self.render_entry(entry))
+                .map(|index| self.render_entry(&self.transcript[*index].clone()))
                 .collect::<Vec<_>>();
             let transcript = List::new(items).direction(ListDirection::BottomToTop);
             frame.render_widget(transcript, transcript_area(frame.area()));
@@ -330,7 +399,7 @@ impl App {
                 Text::from(entry.text.clone())
             }
         };
-        ListItem::new(text).style(entry.style())
+        ListItem::new(text).style(entry.style(self.selected_group))
     }
 }
 
@@ -356,10 +425,69 @@ fn input_area(area: Rect) -> Rect {
     }
 }
 
+#[derive(Default)]
+struct TranscriptLayout {
+    entries: Vec<RenderedEntry>,
+}
+
+impl TranscriptLayout {
+    fn record_bottom_to_top(
+        &mut self,
+        area: Rect,
+        entries: &[usize],
+        transcript: &[TranscriptEntry],
+    ) {
+        let mut next_bottom = area.y.saturating_add(area.height);
+        for index in entries {
+            let Some(entry) = transcript.get(*index) else {
+                continue;
+            };
+            let height = entry.line_count().min(next_bottom.saturating_sub(area.y));
+            if height == 0 {
+                break;
+            }
+            let y = next_bottom.saturating_sub(height);
+            self.entries.push(RenderedEntry {
+                index: *index,
+                area: Rect {
+                    x: area.x,
+                    y,
+                    width: area.width,
+                    height,
+                },
+            });
+            next_bottom = y;
+            if next_bottom <= area.y {
+                break;
+            }
+        }
+    }
+
+    fn entry_at(&self, x: u16, y: u16) -> Option<usize> {
+        self.entries
+            .iter()
+            .find(|entry| contains(entry.area, x, y))
+            .map(|entry| entry.index)
+    }
+}
+
+struct RenderedEntry {
+    index: usize,
+    area: Rect,
+}
+
+fn contains(area: Rect, x: u16, y: u16) -> bool {
+    x >= area.x
+        && x < area.x.saturating_add(area.width)
+        && y >= area.y
+        && y < area.y.saturating_add(area.height)
+}
+
 #[derive(Clone)]
 struct TranscriptEntry {
     kind: TranscriptKind,
     text: String,
+    group: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -374,39 +502,39 @@ enum TranscriptKind {
 }
 
 impl TranscriptEntry {
-    fn lane(text: String) -> Self {
-        Self {
-            kind: TranscriptKind::Lane,
-            text,
-        }
-    }
-
-    fn command(text: String) -> Self {
+    fn command(text: String, group: Option<usize>) -> Self {
         Self {
             kind: TranscriptKind::Command,
             text,
+            group,
         }
     }
 
-    fn submitted(text: String) -> Self {
+    fn submitted(text: String, group: Option<usize>) -> Self {
         if text.starts_with('\\') {
-            Self::command(text)
+            Self::command(text, group)
         } else {
-            Self::lane(text)
+            Self {
+                kind: TranscriptKind::Lane,
+                text,
+                group,
+            }
         }
     }
 
-    fn glsl(text: String) -> Self {
+    fn glsl(text: String, group: Option<usize>) -> Self {
         Self {
             kind: TranscriptKind::Glsl,
             text,
+            group,
         }
     }
 
-    fn error(text: String) -> Self {
+    fn error(text: String, group: Option<usize>) -> Self {
         Self {
             kind: TranscriptKind::Error,
             text,
+            group,
         }
     }
 
@@ -414,6 +542,7 @@ impl TranscriptEntry {
         Self {
             kind: TranscriptKind::System,
             text: text.into(),
+            group: None,
         }
     }
 
@@ -421,6 +550,7 @@ impl TranscriptEntry {
         Self {
             kind: TranscriptKind::Welcome,
             text: text.into(),
+            group: None,
         }
     }
 
@@ -428,10 +558,34 @@ impl TranscriptEntry {
         Self {
             kind: TranscriptKind::Help,
             text: text.into(),
+            group: None,
         }
     }
 
-    fn style(&self) -> Style {
+    fn line_count(&self) -> u16 {
+        self.text.lines().count().max(1) as u16
+    }
+
+    fn style(&self, selected_group: Option<usize>) -> Style {
+        if self.group.is_some() && self.group == selected_group {
+            return match self.kind {
+                TranscriptKind::Lane => Style::default()
+                    .bg(SELECTED_USER_BG)
+                    .add_modifier(Modifier::BOLD),
+                TranscriptKind::Glsl => Style::default()
+                    .bg(SELECTED_OUTPUT_BG)
+                    .add_modifier(Modifier::BOLD),
+                TranscriptKind::Error => Style::default()
+                    .fg(Color::Red)
+                    .bg(SELECTED_ERROR_BG)
+                    .add_modifier(Modifier::BOLD),
+                _ => self.base_style(),
+            };
+        }
+        self.base_style()
+    }
+
+    fn base_style(&self) -> Style {
         match self.kind {
             TranscriptKind::Lane => Style::default().bg(USER_BG),
             TranscriptKind::Command => Style::default().fg(COMMAND_FG),
@@ -804,5 +958,20 @@ mod tests {
             session.submit("\\show"),
             SubmitOutcome::Show("R radius = 1\n".to_string())
         );
+    }
+
+    #[test]
+    fn bottom_to_top_layout_places_first_rendered_entry_at_bottom() {
+        let entries = vec![
+            TranscriptEntry::system("old"),
+            TranscriptEntry::submitted("R radius = 1".to_string(), Some(0)),
+            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0)),
+        ];
+        let mut layout = TranscriptLayout::default();
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 3), &[2, 1, 0], &entries);
+
+        assert_eq!(layout.entry_at(0, 2), Some(2));
+        assert_eq!(layout.entry_at(0, 1), Some(1));
+        assert_eq!(layout.entry_at(0, 0), Some(0));
     }
 }
