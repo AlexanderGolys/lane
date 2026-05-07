@@ -9,7 +9,7 @@ mod registry;
 mod typecheck;
 
 pub fn compile_program(source: &str) -> Result<String, Error> {
-    compile_program_with_base(
+    compile_program_with_base_dir(
         source,
         &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
     )
@@ -19,7 +19,14 @@ pub fn compile_program_from_path(path: impl AsRef<Path>) -> Result<String, Error
     let path = path.as_ref();
     let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    compile_program_with_base(&source, base_dir)
+    compile_program_with_base_dir(&source, base_dir)
+}
+
+pub fn compile_program_with_base_dir(
+    source: &str,
+    base_dir: impl AsRef<Path>,
+) -> Result<String, Error> {
+    compile_program_with_base(source, base_dir.as_ref())
 }
 
 pub fn compile_preview_fragment_from_path(

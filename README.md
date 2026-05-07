@@ -40,6 +40,9 @@ lane compiles lane source files into GLSL.
 
 Usage:
   lane [SOURCE [TARGET]] [--show]
+  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]
+  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]
+  lane preview SOURCE
   lane -l, --list [NAME]
   lane -l2, --list2d
   lane -l3, --list3d
@@ -55,6 +58,12 @@ Usage:
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.
+- `lane SOURCE --frag=PATH --vert=PATH` writes complete preview fragment and
+  vertex shaders. `--target=vulkan` emits Vulkan GLSL.
+- `lane SOURCE --frag-spv=PATH --vert-spv=PATH` writes Vulkan SPIR-V shaders
+  through `glslc`; intermediate files are placed under `target/lane-preview`.
+- `lane preview SOURCE` opens the native Vulkan previewer. It uses `glslc`,
+  FIFO presentation, and a conservative frame cap.
 - `lane -l` or `lane --list` lists primitive constructors.
 - `lane -l NAME` shows one primitive's fields and generated GLSL support.
 - `lane -l2` and `lane -l3` list only 2D or 3D primitives.
@@ -76,7 +85,11 @@ Usage:
 ## LSP
 
 The LSP server provides diagnostics by compiling the whole document after open,
-change, and save events.
+change, and save events. Diagnostics resolve `#import` paths relative to the
+open file, so local modules work the same way in the editor and the CLI. The
+server also provides basic completion and hover entries for Lane keywords,
+built-in modules, primitive constructors, type aliases, categories, and built-in
+functions.
 
 Neovim built-in LSP example:
 
@@ -91,6 +104,11 @@ vim.lsp.config("lane_lsp", {
 
 vim.lsp.enable("lane_lsp")
 ```
+
+When using the bundled `tree-sitter-lane` Neovim plugin, `require("lane").setup()`
+registers the filetype, tree-sitter parser/query, and LSP config. Pass
+`{ lsp = false }` to disable the LSP hookup, or pass `{ lsp = { cmd = { ... } } }`
+to override the server command.
 
 ## Program Structure
 

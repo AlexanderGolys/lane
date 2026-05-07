@@ -149,6 +149,56 @@ local function restart_highlighting()
   end
 end
 
+local function project_root(root)
+  if not root then
+    return nil
+  end
+  return root:gsub("/tree%-sitter%-lane$", "")
+end
+
+local function register_lsp(root, opts)
+  if opts.lsp == false or not vim.lsp then
+    return
+  end
+
+  local lsp_opts = type(opts.lsp) == "table" and opts.lsp or {}
+  local cwd = lsp_opts.cwd or project_root(root)
+  local cmd = lsp_opts.cmd
+  if not cmd and cwd then
+    cmd = { "cargo", "run", "--manifest-path", cwd .. "/Cargo.toml", "-p", "lane-lsp" }
+  elseif not cmd then
+    cmd = { "lane-lsp" }
+  end
+  local config = {
+    cmd = cmd,
+    filetypes = { "lane" },
+    root_dir = cwd,
+    root_markers = { "Cargo.toml", ".git" },
+  }
+
+  if vim.lsp.config and vim.lsp.enable then
+    vim.lsp.config("lane_lsp", vim.tbl_extend("force", config, lsp_opts.config or {}))
+    vim.lsp.enable("lane_lsp")
+    return
+  end
+
+  vim.api.nvim_create_autocmd("FileType", {
+    group = vim.api.nvim_create_augroup("lane_lsp", { clear = true }),
+    pattern = "lane",
+    callback = function(event)
+      local start_config = vim.tbl_extend("force", config, lsp_opts.config or {})
+      local markers = vim.fs.find({ "Cargo.toml", ".git" }, {
+        upward = true,
+        path = vim.api.nvim_buf_get_name(event.buf),
+      })
+      start_config.name = start_config.name or "lane_lsp"
+      start_config.root_dir = start_config.root_dir or (markers[1] and vim.fs.dirname(markers[1]))
+      start_config.bufnr = event.buf
+      vim.lsp.start(start_config)
+    end,
+  })
+end
+
 local function load_highlight_query(root)
   if not root then
     return false
@@ -217,6 +267,8 @@ function M.setup(opts)
       desc = "Reload Lane Tree-sitter parser and highlight query",
     })
   end
+
+  register_lsp(root, opts)
 end
 
 return M

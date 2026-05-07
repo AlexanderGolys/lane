@@ -21,6 +21,8 @@
 ## Editor Tooling
 - When changing Tree-sitter grammar, queries, highlights, or Neovim integration, verify that nvim is not using stale cached parser/query state.
 - After any Tree-sitter-related change, explicitly reload/reinstall the parser or restart nvim as needed, then confirm highlight queries load correctly before considering the work done.
+- The bundled Neovim Lane plugin also registers `lane-lsp` by default; when changing editor integration, keep the LSP README examples and `tree-sitter-lane/lua/lane/init.lua` setup behavior aligned.
+- LSP diagnostics should compile with the opened file's directory as the import base so editor diagnostics match CLI compilation from a file path.
 
 ## Style
 - Keep functions short and explicit.

@@ -94,16 +94,30 @@ Run the corpus tests with:
 npm test
 ```
 
-To use the parser and the new `lane-lsp` binary together in Neovim, register the filetype and built-in LSP config:
+To use the parser and the new `lane-lsp` binary together in Neovim, call the
+plugin setup function:
 
 ```lua
-vim.filetype.add({ extension = { lane = "lane" } })
+require("lane").setup()
+```
 
-vim.lsp.config("lane_lsp", {
-    cmd = { "cargo", "run", "--bin", "lane-lsp" },
-    filetypes = { "lane" },
-    root_markers = { "Cargo.toml", ".git" },
+The setup function registers the `.lane` filetype, loads the highlight query,
+registers the parser with nvim-treesitter, starts tree-sitter highlighting, and
+registers/enables the `lane_lsp` config for Lane buffers. By default the LSP
+command is:
+
+```lua
+{ "cargo", "run", "--manifest-path", "/home/flux/sdf-compiler/Cargo.toml", "-p", "lane-lsp" }
+```
+
+Override it or disable LSP hookup with:
+
+```lua
+require("lane").setup({
+  lsp = {
+    cmd = { "lane-lsp" },
+  },
 })
 
-vim.lsp.enable("lane_lsp")
+require("lane").setup({ lsp = false })
 ```
