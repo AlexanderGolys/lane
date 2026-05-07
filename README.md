@@ -57,11 +57,19 @@ Usage:
   otherwise.
 - `lane repl` opens the interactive shell explicitly. The shell accumulates
   valid Lane declarations, rejects `#module`, and emits GLSL when a submitted
-  line is a `const` declaration. Shell commands are recognized only at the start
-  of a line: `\clear` clears the transcript but keeps the session, `\restart`
-  starts from an empty session, and `\exit` leaves the shell. Enter submits the
-  current input, Ctrl-Enter inserts a newline when supported by the terminal, and
-  Ctrl-C exits.
+  line is a `const` declaration. After the first emission, later `const` lines
+  show only GLSL lines added since the previous emission. The REPL displays
+  submitted Lane code, generated GLSL, and the current input linearly in one
+  bottom-anchored transcript, with different background colors for user code and
+  output code. Shell commands are
+  recognized only at the start of a line: `\help` prints REPL command help,
+  `\show` opens a native Vulkan preview window for the current session,
+  `\split` toggles a split view where submitted Lane code and generated GLSL are
+  rendered in separate panes, `\clear` clears the transcript but keeps the
+  session, `\restart` starts from an empty session, and `\exit` leaves the shell.
+  Toggling `\split` off restores the full linear transcript, including generated
+  GLSL chunks. Enter submits the current input, Ctrl-Enter inserts a newline
+  when supported by the terminal, and Ctrl-C exits.
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.

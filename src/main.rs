@@ -12,7 +12,7 @@ const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 const COLOR_ERROR: &str = "31";
 
-const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane repl\n  lane preview SOURCE\n  lane list [NAME]\n  lane list 2d\n  lane list 3d\n  lane list all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane opens the interactive shell when stdin is a terminal and reads source from stdin otherwise. `lane repl` opens the same shell explicitly. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
+const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane repl\n  lane preview SOURCE\n  lane list [NAME]\n  lane list 2d\n  lane list 3d\n  lane list all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane opens the interactive shell when stdin is a terminal and reads source from stdin otherwise. `lane repl` opens the same shell explicitly. The REPL keeps submitted Lane code and generated GLSL in one colored transcript by default; `\\show` opens a native Vulkan preview window for the current session. `\\split` toggles a split view where generated GLSL is shown only in its separate pane and toggling back restores the linear transcript. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
 
 const BASH_COMPLETION_TEMPLATE: &str = r#"_lane() {
     local cur prev
@@ -317,8 +317,17 @@ fn compile_spirv_shader(stage: &str, source: &str) -> Result<Vec<u8>, Box<dyn st
 
 fn run_preview(source_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let fragment = lane::compile_vulkan_preview_fragment_from_path(source_path)?;
+    run_preview_fragment(&fragment)
+}
+
+fn run_preview_source(source: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let fragment = lane::compile_vulkan_preview_fragment(source)?;
+    run_preview_fragment(&fragment)
+}
+
+fn run_preview_fragment(fragment: &str) -> Result<(), Box<dyn std::error::Error>> {
     let vertex = lane::compile_vulkan_preview_vertex();
-    let fragment_spv = compile_spirv_shader("frag", &fragment)?;
+    let fragment_spv = compile_spirv_shader("frag", fragment)?;
     let vertex_spv = compile_spirv_shader("vert", &vertex)?;
     preview::run(preview::PreviewShaders {
         vertex_spv,

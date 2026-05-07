@@ -46,6 +46,15 @@ pub fn compile_vulkan_preview_fragment_from_path(path: impl AsRef<Path>) -> Resu
     compile_preview_fragment(&source, base_dir, "450", PreviewShaderTarget::Vulkan)
 }
 
+pub fn compile_vulkan_preview_fragment(source: &str) -> Result<String, Error> {
+    compile_preview_fragment(
+        source,
+        &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        "450",
+        PreviewShaderTarget::Vulkan,
+    )
+}
+
 pub fn compile_preview_vertex(version: &str) -> String {
     format!(
         "{}\nprecision highp float;\n\nconst vec2 vertices[3] = vec2[3](\n    vec2(-1.0, -1.0),\n    vec2(3.0, -1.0),\n    vec2(-1.0, 3.0)\n);\n\nvoid main() {{\n    gl_Position = vec4(vertices[gl_VertexID], 0.0, 1.0);\n}}\n",
