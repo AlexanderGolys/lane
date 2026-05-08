@@ -73,8 +73,8 @@ Usage:
   submission: only the
   submitted Lane block for that failed submission is marked red, and the error
   message is shown above that code inside the same red block with aligned left
-  padding. The failing submitted code lines use a ` |` gutter marker instead
-  of source line numbers. Shell commands are
+  padding. Failing submitted code keeps source line numbers in the gutter so
+  message references line up with the shown code. Shell commands are
   recognized only at the start of a line and render as plain one-line messages
   (the initial welcome banner also renders as a plain line without box margins)
   that stay attached to their command response while leaving one blank row

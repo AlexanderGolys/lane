@@ -34,7 +34,6 @@ const COMPLETION_HINT_FG: Color = Color::DarkGray;
 const COMMAND_FG: Color = Color::LightGreen;
 const INPUT_PLACEHOLDER_FG: Color = Color::DarkGray;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
-const ERROR_GUTTER_MARKER: &str = "";
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 const FEED_ENTRY_GAP: u16 = 1;
@@ -997,10 +996,6 @@ fn line_number_gutter_width(line_number: usize) -> u16 {
     line_number.to_string().len().saturating_add(3) as u16
 }
 
-fn error_gutter(width: usize) -> String {
-    format!("{ERROR_GUTTER_MARKER:>width$} | ")
-}
-
 fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &str) -> Text<'static> {
     let source_lines = source_text.lines.len().max(1);
     let line_end = line_start.saturating_add(source_lines.saturating_sub(1));
@@ -1018,10 +1013,11 @@ fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &
         lines.push(Line::from(Span::raw(message_padding)));
     }
 
-    let code_gutter = error_gutter(width);
-    for line in &mut source_text.lines {
+    for (offset, line) in source_text.lines.iter_mut().enumerate() {
+        let line_number = line_start.saturating_add(offset);
+        let gutter = format!("{line_number:>width$} | ");
         line.spans
-            .insert(0, Span::styled(code_gutter.clone(), Style::default().fg(LINE_NUMBER_FG)));
+            .insert(0, Span::styled(gutter, Style::default().fg(LINE_NUMBER_FG)));
     }
     lines.extend(source_text.lines);
     Text::from(lines)
@@ -2341,7 +2337,7 @@ mod tests {
     }
 
     #[test]
-    fn errored_lane_text_prefixes_error_lines_with_icon_gutter() {
+    fn errored_lane_text_preserves_submitted_line_numbers() {
         let text = Text::from("const Object output = Missing3D(r=1)");
         let text = errored_lane_text(text, 7, "unknown object Missing3D");
 
@@ -2350,7 +2346,7 @@ mod tests {
             text.lines[0].spans[1].content.as_ref(),
             "unknown object Missing3D"
         );
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " | ");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), "7 | ");
         assert_eq!(
             text.lines[1].spans[1].content.as_ref(),
             "const Object output = Missing3D(r=1)"
@@ -2358,13 +2354,13 @@ mod tests {
     }
 
     #[test]
-    fn errored_lane_text_replaces_all_submitted_line_numbers_with_error_marker() {
+    fn errored_lane_text_keeps_line_numbers_for_multiline_submissions() {
         let text = Text::from("R a = 1\nR b = 2\nconst Object output = Missing3D(r=a+b)");
         let text = errored_lane_text(text, 12, "unknown object Missing3D");
 
         assert_eq!(text.lines[0].spans[0].content.as_ref(), "     ");
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), "  | ");
-        assert_eq!(text.lines[2].spans[0].content.as_ref(), "  | ");
-        assert_eq!(text.lines[3].spans[0].content.as_ref(), "  | ");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), "12 | ");
+        assert_eq!(text.lines[2].spans[0].content.as_ref(), "13 | ");
+        assert_eq!(text.lines[3].spans[0].content.as_ref(), "14 | ");
     }
 }
