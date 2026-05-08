@@ -132,6 +132,9 @@ impl Drop for ReplTerminal {
 struct App {
     session: ReplSession,
     input: String,
+    input_history: Vec<String>,
+    history_position: Option<usize>,
+    history_draft: String,
     transcript: Vec<TranscriptEntry>,
     highlighter: SyntaxHighlighter,
     split_mode: bool,
@@ -145,6 +148,9 @@ impl App {
         Self {
             session: ReplSession::default(),
             input: String::new(),
+            input_history: Vec::new(),
+            history_position: None,
+            history_draft: String::new(),
             transcript: vec![TranscriptEntry::welcome(format!(
                 "Lane {}",
                 env!("CARGO_PKG_VERSION")
@@ -182,13 +188,20 @@ impl App {
         match (key.code, key.modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Some(ReplAction::Exit),
             (KeyCode::Enter, modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
-                self.input.push('\n')
+                self.clear_history_navigation();
+                self.input.push('\n');
             }
             (KeyCode::Enter, _) => return self.submit_input(),
+            (KeyCode::Up, _) => self.recall_older_input(),
+            (KeyCode::Down, _) => self.recall_newer_input(),
             (KeyCode::Backspace, _) => {
+                self.clear_history_navigation();
                 self.input.pop();
             }
-            (KeyCode::Char(ch), _) => self.input.push(ch),
+            (KeyCode::Char(ch), _) => {
+                self.clear_history_navigation();
+                self.input.push(ch);
+            }
             _ => {}
         }
         None
@@ -206,11 +219,13 @@ impl App {
     }
 
     fn submit_input(&mut self) -> Option<ReplAction> {
+        self.clear_history_navigation();
         let input = std::mem::take(&mut self.input);
         if input.trim().is_empty() {
             return None;
         }
 
+        self.record_input_history(&input);
         let line_start = (!input.starts_with('\\')).then(|| self.session.next_line_number());
         let group = self.push_submitted_input(input.clone(), line_start);
         match self.session.submit(&input) {
@@ -242,6 +257,48 @@ impl App {
             }
         }
         None
+    }
+
+    fn record_input_history(&mut self, input: &str) {
+        if self.input_history.last().is_some_and(|last| last == input) {
+            return;
+        }
+        self.input_history.push(input.to_string());
+    }
+
+    fn recall_older_input(&mut self) {
+        if self.input_history.is_empty() {
+            return;
+        }
+        let position = match self.history_position {
+            Some(0) => 0,
+            Some(position) => position.saturating_sub(1),
+            None => {
+                self.history_draft = self.input.clone();
+                self.input_history.len().saturating_sub(1)
+            }
+        };
+        self.history_position = Some(position);
+        self.input = self.input_history[position].clone();
+    }
+
+    fn recall_newer_input(&mut self) {
+        let Some(position) = self.history_position else {
+            return;
+        };
+        let next_position = position.saturating_add(1);
+        if next_position < self.input_history.len() {
+            self.history_position = Some(next_position);
+            self.input = self.input_history[next_position].clone();
+        } else {
+            self.history_position = None;
+            self.input = std::mem::take(&mut self.history_draft);
+        }
+    }
+
+    fn clear_history_navigation(&mut self) {
+        self.history_position = None;
+        self.history_draft.clear();
     }
 
     fn allocate_group(&mut self) -> usize {
@@ -814,6 +871,7 @@ fn help_text() -> String {
     [
         "Enter submits.",
         "Ctrl-Enter inserts a newline when supported by the terminal.",
+        "Up and Down recall submitted input history.",
         "\\info shows loaded modules, used directives, and provided objects.",
         "\\show opens a native preview window for the current session.",
         "\\split toggles split mode.",
@@ -1177,6 +1235,59 @@ mod tests {
             "R radius = 1\nR diameter = radius * 2"
         );
         assert_eq!(app.transcript[0].line_start, Some(1));
+    }
+
+    #[test]
+    fn up_arrow_recalls_previous_submitted_input() {
+        let mut app = App::new();
+
+        app.input = "R radius = 1".to_string();
+        app.submit_input();
+        app.input = "const R diameter = radius * 2".to_string();
+        app.submit_input();
+
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.input, "const R diameter = radius * 2");
+
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.input, "R radius = 1");
+
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.input, "R radius = 1");
+    }
+
+    #[test]
+    fn down_arrow_moves_forward_and_restores_draft() {
+        let mut app = App::new();
+
+        app.input = "R radius = 1".to_string();
+        app.submit_input();
+        app.input = "const R diameter = radius * 2".to_string();
+        app.submit_input();
+        app.input = "R draft = ".to_string();
+
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.input, "const R diameter = radius * 2");
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.input, "R radius = 1");
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(app.input, "const R diameter = radius * 2");
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(app.input, "R draft = ");
+    }
+
+    #[test]
+    fn editing_recalled_input_starts_a_new_history_navigation() {
+        let mut app = App::new();
+
+        app.input = "R radius = 1".to_string();
+        app.submit_input();
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        app.handle_key(KeyEvent::from(KeyCode::Char('0')));
+
+        assert_eq!(app.input, "R radius = 10");
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(app.input, "R radius = 10");
     }
 
     #[test]

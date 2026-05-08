@@ -77,7 +77,8 @@ Usage:
   Toggling `\split` off restores the full linear transcript, including generated
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
   both parts of that submission. Enter submits the current input, Ctrl-Enter
-  inserts a newline when supported by the terminal, and Ctrl-C exits.
+  inserts a newline when supported by the terminal, Up and Down recall submitted
+  input history, and Ctrl-C exits.
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.
