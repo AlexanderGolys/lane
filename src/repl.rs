@@ -31,6 +31,7 @@ const COMMAND_FG: Color = Color::LightGreen;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
+const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
 
 const HIGHLIGHT_NAMES: &[&str] = &[
     "attribute",
@@ -341,9 +342,10 @@ impl App {
             .lines()
             .last()
             .map_or(0, |line| line.chars().count() as u16);
-        let cursor_x = area
-            .x
-            .saturating_add(last_line_width.min(area.width.saturating_sub(1)));
+        let cursor_column = last_line_width
+            .saturating_add(TEXT_BOX_INNER_LEFT_PADDING)
+            .min(area.width.saturating_sub(1));
+        let cursor_x = area.x.saturating_add(cursor_column);
         let cursor_y = if self.input.contains('\n') {
             area.y.saturating_add(area.height.saturating_sub(1))
         } else {
@@ -374,7 +376,7 @@ impl App {
                     lines.insert(0, Line::raw(""));
                 }
             }
-            return Text::from(lines);
+            return left_padded_text(Text::from(lines));
         }
 
         let source = if visible.len() <= 1 {
@@ -391,7 +393,7 @@ impl App {
                 text.lines.insert(0, Line::raw(""));
             }
         }
-        text
+        left_padded_text(text)
     }
 
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
@@ -418,6 +420,7 @@ impl App {
         } else {
             padded_feed_text(text)
         };
+        let text = left_padded_text(text);
         ListItem::new(text).style(entry.style(self.selected_group))
     }
 }
@@ -479,6 +482,13 @@ fn error_box_text(source: &str) -> Text<'static> {
     }
     lines.push(Line::raw(""));
     Text::from(lines)
+}
+
+fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
+    for line in &mut text.lines {
+        line.spans.insert(0, Span::raw(" "));
+    }
+    text
 }
 
 fn numbered_lane_text(mut text: Text<'static>, line_start: usize) -> Text<'static> {
@@ -1114,6 +1124,16 @@ mod tests {
         assert_eq!(text.lines[1].spans[0].content.as_ref(), "line 1: bad");
         assert_eq!(text.lines[2].spans[0].content.as_ref(), "line 2: worse");
         assert!(text.lines[3].spans.is_empty());
+    }
+
+    #[test]
+    fn left_padded_text_adds_one_inner_column_to_each_line() {
+        let text = left_padded_text(Text::from("first\nsecond"));
+
+        assert_eq!(text.lines[0].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[0].spans[1].content.as_ref(), "first");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), "second");
     }
 
     #[test]

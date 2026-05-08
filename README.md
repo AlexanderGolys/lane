@@ -60,11 +60,12 @@ Usage:
   line is a `const` declaration. After the first emission, later `const` lines
   show only GLSL lines added since the previous emission. The REPL displays
   submitted Lane code, REPL messages, generated GLSL, and the current input
-  linearly in one bottom-anchored, consistently padded transcript, with
-  different background colors for user code and output code. Submitted Lane
-  entries include source line numbers in their transcript gutter, while the
-  current input remains unnumbered. Errors appear as red boxes with one blank
-  row of inner padding above and below the message. Shell commands are
+  linearly in one bottom-anchored, consistently padded transcript, with one
+  character of inner left padding and different background colors for user code
+  and output code. Submitted Lane entries include source line numbers in their
+  transcript gutter, while the current input remains unnumbered. Errors appear
+  as red boxes with one blank row of inner padding above and below the message.
+  Shell commands are
   recognized only at the start of a line: `\help` prints REPL command help,
   `\show` opens a native Vulkan preview window for the current session,
   `\split` toggles a split view where submitted Lane code and generated GLSL are
