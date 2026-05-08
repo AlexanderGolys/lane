@@ -68,11 +68,13 @@ Usage:
   input remains unnumbered and widens its blank gutter to stay aligned to the
   same source column as line numbers grow. Matching completions appear as gray
   inline hint text after the current token without changing the submitted input.
-  Each submitted Lane block renders in its own feed box, and separate boxes have
-  a blank row between them. Errors are decided after submission: only the
+  Adjacent submitted Lane entries render inside one shared feed box, while
+  separate boxes still have a blank row between them. Errors are decided after
+  submission: only the
   submitted Lane block for that failed submission is marked red, and the error
-  message is shown above that code inside the same red block. Error lines use
-  a ` |` gutter marker instead of source line numbers. Shell commands are
+  message is shown above that code inside the same red block with aligned left
+  padding. The failing submitted code lines use a ` |` gutter marker instead
+  of source line numbers. Shell commands are
   recognized only at the start of a line and render as plain one-line messages
   (the initial welcome banner also renders as a plain line without box margins)
   that stay attached to their command response while leaving one blank row

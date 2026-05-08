@@ -379,7 +379,14 @@ impl App {
             self.transcript.push(TranscriptEntry::command(input, None));
             return None;
         }
-        let group = self.allocate_group();
+        let group = self
+            .transcript
+            .last()
+            .and_then(|entry| {
+                (matches!(entry.kind, TranscriptKind::Lane) && !entry.errored).then_some(entry.group)
+            })
+            .flatten()
+            .unwrap_or_else(|| self.allocate_group());
         self.transcript
             .push(TranscriptEntry::submitted(input, Some(group), line_start));
         Some(group)
@@ -839,25 +846,21 @@ fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &
     let width = line_end.to_string().len();
     let mut lines = Vec::new();
 
-    let error_gutter = error_gutter(width);
+    let message_padding = " ".repeat(width.saturating_add(3));
     for line in error.lines() {
         lines.push(Line::from(vec![
-            Span::styled(error_gutter.clone(), Style::default().fg(LINE_NUMBER_FG)),
+            Span::raw(message_padding.clone()),
             Span::raw(line.to_string()),
         ]));
     }
     if error.lines().next().is_none() {
-        lines.push(Line::from(vec![
-            Span::styled(error_gutter, Style::default().fg(LINE_NUMBER_FG)),
-            Span::raw(""),
-        ]));
+        lines.push(Line::from(Span::raw(message_padding)));
     }
 
-    for (offset, line) in source_text.lines.iter_mut().enumerate() {
-        let line_number = line_start.saturating_add(offset);
-        let gutter = format!("{line_number:>width$} | ");
+    let code_gutter = error_gutter(width);
+    for line in &mut source_text.lines {
         line.spans
-            .insert(0, Span::styled(gutter, Style::default().fg(LINE_NUMBER_FG)));
+            .insert(0, Span::styled(code_gutter.clone(), Style::default().fg(LINE_NUMBER_FG)));
     }
     lines.extend(source_text.lines);
     Text::from(lines)
@@ -1523,14 +1526,14 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_lane_submissions_use_separate_feed_boxes() {
+    fn consecutive_lane_submissions_share_one_feed_box() {
         let mut app = App::new();
         app.transcript.clear();
 
         let first_group = app.push_submitted_input("R radius = 1".to_string(), Some(1));
         let second_group = app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2));
 
-        assert_ne!(first_group, second_group);
+        assert_eq!(first_group, second_group);
         assert_eq!(app.transcript.len(), 2);
         assert_eq!(app.transcript[0].text, "R radius = 1");
         assert_eq!(app.transcript[1].text, "R diameter = radius * 2");
@@ -1943,15 +1946,26 @@ mod tests {
         let text = Text::from("const Object output = Missing3D(r=1)");
         let text = errored_lane_text(text, 7, "unknown object Missing3D");
 
-        assert_eq!(text.lines[0].spans[0].content.as_ref(), " | ");
+        assert_eq!(text.lines[0].spans[0].content.as_ref(), "    ");
         assert_eq!(
             text.lines[0].spans[1].content.as_ref(),
             "unknown object Missing3D"
         );
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), "7 | ");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " | ");
         assert_eq!(
             text.lines[1].spans[1].content.as_ref(),
             "const Object output = Missing3D(r=1)"
         );
+    }
+
+    #[test]
+    fn errored_lane_text_replaces_all_submitted_line_numbers_with_error_marker() {
+        let text = Text::from("R a = 1\nR b = 2\nconst Object output = Missing3D(r=a+b)");
+        let text = errored_lane_text(text, 12, "unknown object Missing3D");
+
+        assert_eq!(text.lines[0].spans[0].content.as_ref(), "     ");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), "  | ");
+        assert_eq!(text.lines[2].spans[0].content.as_ref(), "  | ");
+        assert_eq!(text.lines[3].spans[0].content.as_ref(), "  | ");
     }
 }
