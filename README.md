@@ -80,7 +80,8 @@ Usage:
   that stay attached to their command response while leaving one blank row
   before the next submitted code block: `/help` prints REPL command help,
   `/info` shows loaded modules, used directives, and provided objects, `/show`
-  opens a native Vulkan preview window for the current session, `/split` toggles
+  opens a native Vulkan preview window for the current session (preview failures
+  are shown as REPL error blocks without exiting the shell), `/split` toggles
   a split view where submitted Lane code and generated GLSL are rendered in
   separate panes, `/clear` clears the transcript but keeps the session,
   `/restart` starts from an empty session, and `/exit` leaves the shell.

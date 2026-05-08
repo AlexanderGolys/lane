@@ -80,9 +80,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         match action? {
             ReplAction::Exit => return Ok(()),
             ReplAction::Show(source) => {
-                crate::run_preview_source(&source)?;
-                app.transcript
-                    .push(TranscriptEntry::system("Preview closed."));
+                match crate::run_preview_source(&source) {
+                    Ok(()) => app
+                        .transcript
+                        .push(TranscriptEntry::system("Preview closed.")),
+                    Err(err) => app.transcript.push(TranscriptEntry::error(
+                        format!("preview error: {}", err),
+                        None,
+                    )),
+                }
             }
         }
     }
@@ -243,11 +249,20 @@ impl App {
         }
 
         self.record_input_history(&input);
-        let line_start = (!input.starts_with('/')).then(|| self.session.next_line_number());
-        let group = self.push_submitted_input(input.clone(), line_start);
+        let is_command = input.starts_with('/');
+        let line_start = (!is_command).then(|| self.session.next_line_number());
+        if is_command {
+            self.transcript
+                .push(TranscriptEntry::command(input.clone(), None));
+        }
         match self.session.submit(&input) {
-            SubmitOutcome::Accepted => {}
+            SubmitOutcome::Accepted => {
+                if !is_command {
+                    self.push_submitted_input(input.clone(), line_start, true);
+                }
+            }
             SubmitOutcome::Emitted(glsl) => {
+                let group = self.push_submitted_input(input.clone(), line_start, true);
                 if glsl.is_empty() {
                     return None;
                 }
@@ -270,10 +285,15 @@ impl App {
             SubmitOutcome::ToggleSplit => self.toggle_split(),
             SubmitOutcome::Exit => return Some(ReplAction::Exit),
             SubmitOutcome::Error(error) => {
-                if let Some(group) = group {
-                    self.attach_group_error(group, error);
+                if is_command {
+                    self.transcript.push(TranscriptEntry::error(error, None));
                 } else {
-                    self.transcript.push(TranscriptEntry::error(error, group));
+                    let group = self.push_submitted_input(input.clone(), line_start, false);
+                    if let Some(group) = group {
+                        self.attach_group_error(group, error);
+                    } else {
+                        self.transcript.push(TranscriptEntry::error(error, None));
+                    }
                 }
             }
         }
@@ -375,18 +395,24 @@ impl App {
         group
     }
 
-    fn push_submitted_input(&mut self, input: String, line_start: Option<usize>) -> Option<usize> {
+    fn push_submitted_input(
+        &mut self,
+        input: String,
+        line_start: Option<usize>,
+        allow_merge: bool,
+    ) -> Option<usize> {
         if input.starts_with('/') {
-            self.transcript.push(TranscriptEntry::command(input, None));
             return None;
         }
-        if let Some(entry) = self.transcript.last_mut() {
-            if matches!(entry.kind, TranscriptKind::Lane) && !entry.errored {
-                if !entry.text.ends_with('\n') {
-                    entry.text.push('\n');
+        if allow_merge {
+            if let Some(entry) = self.transcript.last_mut() {
+                if matches!(entry.kind, TranscriptKind::Lane) && !entry.errored {
+                    if !entry.text.ends_with('\n') {
+                        entry.text.push('\n');
+                    }
+                    entry.text.push_str(&input);
+                    return entry.group;
                 }
-                entry.text.push_str(&input);
-                return entry.group;
             }
         }
         let group = self.allocate_group();
@@ -1577,8 +1603,9 @@ mod tests {
         let mut app = App::new();
         app.transcript.clear();
 
-        let first_group = app.push_submitted_input("R radius = 1".to_string(), Some(1));
-        let second_group = app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2));
+        let first_group = app.push_submitted_input("R radius = 1".to_string(), Some(1), true);
+        let second_group =
+            app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2), true);
 
         assert_eq!(first_group, second_group);
         assert_eq!(app.transcript.len(), 1);
@@ -1820,10 +1847,10 @@ mod tests {
         let mut app = App::new();
         app.transcript.clear();
 
-        app.push_submitted_input("R radius = 1".to_string(), Some(1));
+        app.push_submitted_input("R radius = 1".to_string(), Some(1), true);
         app.transcript
             .push(TranscriptEntry::system("Session note."));
-        app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2));
+        app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2), true);
 
         assert_eq!(app.transcript.len(), 3);
         assert_eq!(app.transcript[0].text, "R radius = 1");
@@ -1962,24 +1989,39 @@ mod tests {
         app.input = "const Object output = Missing3D(r=1)".to_string();
         app.submit_input();
 
-        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(app.transcript.len(), 2);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert!(app.transcript[0].errored);
-        assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
+        assert!(!app.transcript[0].errored);
+        assert_eq!(app.transcript[0].base_style().bg, Some(USER_BG));
         assert!(
-            app.transcript[0]
+            app.transcript[1]
                 .error
                 .as_deref()
                 .is_some_and(|error| !error.is_empty())
         );
+        assert!(app.transcript[1].errored);
+    }
+
+    #[test]
+    fn consecutive_failed_submissions_do_not_merge() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.input = "const Object output = Missing3D(r=1)".to_string();
+        app.submit_input();
+        app.input = "const Object output = Missing3D(r=2)".to_string();
+        app.submit_input();
+
+        assert_eq!(app.transcript.len(), 2);
+        assert!(app.transcript[0].errored);
+        assert!(app.transcript[1].errored);
     }
 
     #[test]
     fn failed_submission_marks_latest_lane_entry_when_group_is_shared() {
         let mut app = App::new();
         app.transcript.clear();
-        app.push_submitted_input("R radius = 1".to_string(), Some(1));
-        app.push_submitted_input("const Object output = Missing3D(r=1)".to_string(), Some(2));
+        app.push_submitted_input("R radius = 1".to_string(), Some(1), true);
+        app.push_submitted_input("const Object output = Missing3D(r=1)".to_string(), Some(2), true);
 
         assert_eq!(app.transcript.len(), 1);
         let shared_group = app.transcript[0].group.expect("expected lane group");
