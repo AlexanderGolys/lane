@@ -32,6 +32,7 @@ const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
 const COMPLETION_FG: Color = Color::LightCyan;
 const COMPLETION_HINT_FG: Color = Color::DarkGray;
 const COMMAND_FG: Color = Color::LightGreen;
+const KEYMAP_FG: Color = Color::LightBlue;
 const INPUT_PLACEHOLDER_FG: Color = Color::DarkGray;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
 const FEED_X_OFFSET: u16 = 3;
@@ -1339,10 +1340,6 @@ impl ReplSession {
 
 fn help_text() -> String {
     [
-        "Enter submits.",
-        "Shift-Enter inserts a newline when supported by the terminal (Alt-Enter fallback).",
-        "Up and Down recall submitted input history.",
-        "Tab completes to the longest unambiguous prefix with Lane items or REPL commands.",
         "Ctrl-F formats the current input.",
         "/info shows loaded modules, used directives, and provided objects.",
         "/show opens a native preview window for the current session.",
@@ -1375,31 +1372,40 @@ fn highlight_help_text(source: &str) -> Text<'static> {
         .lines()
         .map(|line| {
             let mut spans = Vec::new();
-            let mut rest = line;
-            while let Some(index) = rest.find('/') {
-                let (before, after_before) = rest.split_at(index);
-                if !before.is_empty() {
-                    spans.push(Span::raw(before.to_string()));
+            for part in line.split_inclusive(' ') {
+                let token = part.trim_end_matches(' ');
+                let spacing = &part[token.len()..];
+                if token.starts_with('/') {
+                    spans.push(Span::styled(
+                        token.to_string(),
+                        Style::default().fg(COMMAND_FG).add_modifier(Modifier::BOLD),
+                    ));
+                } else if is_help_keymap_token(token) {
+                    spans.push(Span::styled(
+                        token.to_string(),
+                        Style::default().fg(KEYMAP_FG).add_modifier(Modifier::BOLD),
+                    ));
+                } else if !token.is_empty() {
+                    spans.push(Span::raw(token.to_string()));
                 }
-                let command_len = after_before
-                    .chars()
-                    .take_while(|ch| *ch == '/' || ch.is_ascii_alphabetic())
-                    .map(char::len_utf8)
-                    .sum::<usize>();
-                let (command, after_command) = after_before.split_at(command_len);
-                spans.push(Span::styled(
-                    command.to_string(),
-                    Style::default().fg(COMMAND_FG).add_modifier(Modifier::BOLD),
-                ));
-                rest = after_command;
-            }
-            if !rest.is_empty() {
-                spans.push(Span::raw(rest.to_string()));
+                if !spacing.is_empty() {
+                    spans.push(Span::raw(spacing.to_string()));
+                }
             }
             Line::from(spans)
         })
         .collect::<Vec<_>>();
     Text::from(lines)
+}
+
+fn is_help_keymap_token(token: &str) -> bool {
+    let cleaned = token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-');
+    if cleaned.is_empty() || !cleaned.contains('-') {
+        return false;
+    }
+    cleaned
+        .split('-')
+        .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_alphabetic()))
 }
 
 fn append_line(source: &str, line: &str) -> String {
@@ -1651,6 +1657,23 @@ mod tests {
     fn help_command_ignores_trailing_spaces() {
         let mut session = ReplSession::default();
         assert_eq!(session.submit("/help   "), SubmitOutcome::Help);
+    }
+
+    #[test]
+    fn help_text_omits_redundant_basic_keymap_lines() {
+        let text = help_text();
+        assert!(!text.contains("Enter submits."));
+        assert!(!text.contains("Shift-Enter inserts a newline"));
+        assert!(!text.contains("Up and Down recall submitted input history."));
+        assert!(!text.contains("Tab completes to the longest unambiguous prefix"));
+        assert!(text.contains("Ctrl-F formats the current input."));
+    }
+
+    #[test]
+    fn help_highlighting_marks_key_combinations_in_blue() {
+        let text = highlight_help_text("Ctrl-F formats current input.");
+        assert_eq!(text.lines[0].spans[0].content.as_ref(), "Ctrl-F");
+        assert_eq!(text.lines[0].spans[0].style.fg, Some(KEYMAP_FG));
     }
 
     #[test]
