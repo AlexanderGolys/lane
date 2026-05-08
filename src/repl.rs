@@ -376,11 +376,6 @@ impl App {
             self.transcript.push(TranscriptEntry::command(input, None));
             return None;
         }
-        if let Some(entry) = self.transcript.last_mut() {
-            if let Some(group) = entry.append_lane_input(&input, line_start) {
-                return Some(group);
-            }
-        }
         let group = self.allocate_group();
         self.transcript
             .push(TranscriptEntry::submitted(input, Some(group), line_start));
@@ -986,22 +981,6 @@ impl TranscriptEntry {
         lines.saturating_add(2)
     }
 
-    fn append_lane_input(&mut self, input: &str, line_start: Option<usize>) -> Option<usize> {
-        if !matches!(self.kind, TranscriptKind::Lane) || self.next_line_start() != line_start {
-            return None;
-        }
-        if !self.text.ends_with('\n') {
-            self.text.push('\n');
-        }
-        self.text.push_str(input.trim_end_matches(['\r', '\n']));
-        self.group
-    }
-
-    fn next_line_start(&self) -> Option<usize> {
-        self.line_start
-            .map(|line_start| line_start.saturating_add(self.text.lines().count()))
-    }
-
     fn style(&self, selected_group: Option<usize>) -> Style {
         if self.group.is_some() && self.group == selected_group {
             return match self.kind {
@@ -1475,20 +1454,19 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_lane_submissions_share_one_feed_box() {
+    fn consecutive_lane_submissions_use_separate_feed_boxes() {
         let mut app = App::new();
         app.transcript.clear();
 
         let first_group = app.push_submitted_input("R radius = 1".to_string(), Some(1));
         let second_group = app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2));
 
-        assert_eq!(first_group, second_group);
-        assert_eq!(app.transcript.len(), 1);
-        assert_eq!(
-            app.transcript[0].text,
-            "R radius = 1\nR diameter = radius * 2"
-        );
+        assert_ne!(first_group, second_group);
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0].text, "R radius = 1");
+        assert_eq!(app.transcript[1].text, "R diameter = radius * 2");
         assert_eq!(app.transcript[0].line_start, Some(1));
+        assert_eq!(app.transcript[1].line_start, Some(2));
     }
 
     #[test]
@@ -1806,6 +1784,28 @@ mod tests {
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
         assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
         assert!(matches!(app.transcript[1].kind, TranscriptKind::Error));
+    }
+
+    #[test]
+    fn failed_submission_does_not_mark_previous_successful_lane_block_as_error() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.input = "R radius = 1".to_string();
+        app.submit_input();
+
+        app.input = "const Object output = Missing3D(r=1)".to_string();
+        app.submit_input();
+
+        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
+        assert!(!app.transcript[0].errored);
+        assert_eq!(app.transcript[0].base_style().bg, Some(USER_BG));
+
+        let latest_lane_index = app
+            .transcript
+            .iter()
+            .rposition(|entry| matches!(entry.kind, TranscriptKind::Lane))
+            .expect("expected at least one lane entry");
+        assert!(app.transcript[latest_lane_index].errored);
     }
 
     #[test]

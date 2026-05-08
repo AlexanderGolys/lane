@@ -68,10 +68,9 @@ Usage:
   input remains unnumbered and widens its blank gutter to stay aligned to the
   same source column as line numbers grow. Matching completions appear as gray
   inline hint text after the current token without changing the submitted input.
-  Consecutive
-  submitted Lane lines share one feed box until a REPL message or generated GLSL
-  appears between them, and separate boxes have a blank row between them. Errors
-  are decided after submission: the submitted Lane block is marked red and the
+  Each submitted Lane block renders in its own feed box, and separate boxes have
+  a blank row between them. Errors are decided after submission: only the
+  submitted Lane block for that failed submission is marked red and the
   error message appears as a red box with one blank row of inner padding above
   and below the message. Shell commands are
   recognized only at the start of a line and render as plain one-line messages
