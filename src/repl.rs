@@ -379,14 +379,16 @@ impl App {
             self.transcript.push(TranscriptEntry::command(input, None));
             return None;
         }
-        let group = self
-            .transcript
-            .last()
-            .and_then(|entry| {
-                (matches!(entry.kind, TranscriptKind::Lane) && !entry.errored).then_some(entry.group)
-            })
-            .flatten()
-            .unwrap_or_else(|| self.allocate_group());
+        if let Some(entry) = self.transcript.last_mut() {
+            if matches!(entry.kind, TranscriptKind::Lane) && !entry.errored {
+                if !entry.text.ends_with('\n') {
+                    entry.text.push('\n');
+                }
+                entry.text.push_str(&input);
+                return entry.group;
+            }
+        }
+        let group = self.allocate_group();
         self.transcript
             .push(TranscriptEntry::submitted(input, Some(group), line_start));
         Some(group)
@@ -1534,11 +1536,12 @@ mod tests {
         let second_group = app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2));
 
         assert_eq!(first_group, second_group);
-        assert_eq!(app.transcript.len(), 2);
-        assert_eq!(app.transcript[0].text, "R radius = 1");
-        assert_eq!(app.transcript[1].text, "R diameter = radius * 2");
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(
+            app.transcript[0].text,
+            "R radius = 1\nR diameter = radius * 2"
+        );
         assert_eq!(app.transcript[0].line_start, Some(1));
-        assert_eq!(app.transcript[1].line_start, Some(2));
     }
 
     #[test]
@@ -1885,16 +1888,16 @@ mod tests {
         app.input = "const Object output = Missing3D(r=1)".to_string();
         app.submit_input();
 
+        assert_eq!(app.transcript.len(), 1);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert!(!app.transcript[0].errored);
-        assert_eq!(app.transcript[0].base_style().bg, Some(USER_BG));
-
-        let latest_lane_index = app
-            .transcript
-            .iter()
-            .rposition(|entry| matches!(entry.kind, TranscriptKind::Lane))
-            .expect("expected at least one lane entry");
-        assert!(app.transcript[latest_lane_index].errored);
+        assert!(app.transcript[0].errored);
+        assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
+        assert!(
+            app.transcript[0]
+                .error
+                .as_deref()
+                .is_some_and(|error| !error.is_empty())
+        );
     }
 
     #[test]
@@ -1904,16 +1907,17 @@ mod tests {
         app.push_submitted_input("R radius = 1".to_string(), Some(1));
         app.push_submitted_input("const Object output = Missing3D(r=1)".to_string(), Some(2));
 
-        let shared_group = app.transcript[0]
-            .group
-            .expect("expected lane group for first entry");
+        assert_eq!(app.transcript.len(), 1);
+        let shared_group = app.transcript[0].group.expect("expected lane group");
         app.attach_group_error(shared_group, "unknown object Missing3D".to_string());
-
-        assert!(!app.transcript[0].errored);
-        assert!(app.transcript[1].errored);
         assert_eq!(
-            app.transcript[1].error.as_deref(),
+            app.transcript[0].error.as_deref(),
             Some("unknown object Missing3D")
+        );
+        assert!(app.transcript[0].errored);
+        assert_eq!(
+            app.transcript[0].text,
+            "R radius = 1\nconst Object output = Missing3D(r=1)"
         );
     }
 
