@@ -63,9 +63,11 @@ Usage:
   linearly in one bottom-anchored, consistently padded transcript, with one
   character of inner left padding and different background colors for user code
   and output code. Submitted Lane entries include source line numbers in their
-  transcript gutter, while the current input remains unnumbered. Errors appear
-  as red boxes with one blank row of inner padding above and below the message.
-  Shell commands are
+  transcript gutter, while the current input remains unnumbered. Consecutive
+  submitted Lane lines share one feed box until a REPL message or generated GLSL
+  appears between them, and separate boxes have a blank row between them. Errors
+  appear as red boxes with one blank row of inner padding above and below the
+  message. Shell commands are
   recognized only at the start of a line: `\help` prints REPL command help,
   `\info` shows loaded modules, used directives, and provided objects, `\show`
   opens a native Vulkan preview window for the current session, `\split` toggles

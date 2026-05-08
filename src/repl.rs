@@ -31,6 +31,7 @@ const COMMAND_FG: Color = Color::LightGreen;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
+const FEED_ENTRY_GAP: u16 = 1;
 const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
 
 const HIGHLIGHT_NAMES: &[&str] = &[
@@ -211,9 +212,7 @@ impl App {
         }
 
         let line_start = (!input.starts_with('\\')).then(|| self.session.next_line_number());
-        let group = line_start.map(|_| self.allocate_group());
-        self.transcript
-            .push(TranscriptEntry::submitted(input.clone(), group, line_start));
+        let group = self.push_submitted_input(input.clone(), line_start);
         match self.session.submit(&input) {
             SubmitOutcome::Accepted => {}
             SubmitOutcome::Emitted(glsl) => {
@@ -249,6 +248,22 @@ impl App {
         let group = self.next_group;
         self.next_group += 1;
         group
+    }
+
+    fn push_submitted_input(&mut self, input: String, line_start: Option<usize>) -> Option<usize> {
+        if input.starts_with('\\') {
+            self.transcript.push(TranscriptEntry::command(input, None));
+            return None;
+        }
+        if let Some(entry) = self.transcript.last_mut() {
+            if let Some(group) = entry.append_lane_input(&input, line_start) {
+                return Some(group);
+            }
+        }
+        let group = self.allocate_group();
+        self.transcript
+            .push(TranscriptEntry::submitted(input, Some(group), line_start));
+        Some(group)
     }
 
     fn toggle_split(&mut self) {
@@ -302,8 +317,10 @@ impl App {
                 .iter()
                 .map(|index| self.render_entry(&self.transcript[*index].clone()))
                 .collect::<Vec<_>>();
-            let user_transcript = List::new(user_items).direction(ListDirection::BottomToTop);
-            let glsl_transcript = List::new(glsl_items).direction(ListDirection::BottomToTop);
+            let user_transcript = List::new(spaced_transcript_items(user_items))
+                .direction(ListDirection::BottomToTop);
+            let glsl_transcript = List::new(spaced_transcript_items(glsl_items))
+                .direction(ListDirection::BottomToTop);
             frame.render_widget(user_transcript, user_area);
             frame.render_widget(glsl_transcript, transcript_feed_area(split[1]));
             self.render_input(frame, input_area);
@@ -324,7 +341,8 @@ impl App {
                 .iter()
                 .map(|index| self.render_entry(&self.transcript[*index].clone()))
                 .collect::<Vec<_>>();
-            let transcript = List::new(items).direction(ListDirection::BottomToTop);
+            let transcript =
+                List::new(spaced_transcript_items(items)).direction(ListDirection::BottomToTop);
             frame.render_widget(transcript, transcript_area(frame.area()));
             self.render_input(frame, input_area(frame.area()));
         }
@@ -459,18 +477,23 @@ fn input_area(area: Rect) -> Rect {
     }
 }
 
+fn spaced_transcript_items(items: Vec<ListItem<'static>>) -> Vec<ListItem<'static>> {
+    let mut spaced = Vec::with_capacity(items.len().saturating_mul(2).saturating_sub(1));
+    for (index, item) in items.into_iter().enumerate() {
+        if index > 0 {
+            spaced.push(ListItem::new(Line::raw("")));
+        }
+        spaced.push(item);
+    }
+    spaced
+}
+
 fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
     if text.lines.is_empty() {
         text.lines.push(Line::raw(""));
     }
-    if text.lines.len() <= 1 {
-        text.lines.insert(0, Line::raw(""));
-        text.lines.push(Line::raw(""));
-    } else {
-        while text.lines.len() < FEED_ENTRY_MIN_HEIGHT as usize {
-            text.lines.insert(0, Line::raw(""));
-        }
-    }
+    text.lines.insert(0, Line::raw(""));
+    text.lines.push(Line::raw(""));
     text
 }
 
@@ -537,6 +560,10 @@ impl TranscriptLayout {
                 },
             });
             next_bottom = y;
+            if next_bottom <= area.y {
+                break;
+            }
+            next_bottom = next_bottom.saturating_sub(FEED_ENTRY_GAP);
             if next_bottom <= area.y {
                 break;
             }
@@ -652,11 +679,23 @@ impl TranscriptEntry {
 
     fn line_count(&self) -> u16 {
         let lines = self.text.lines().count().max(1) as u16;
-        if matches!(self.kind, TranscriptKind::Error) {
-            lines.saturating_add(2)
-        } else {
-            lines.max(FEED_ENTRY_MIN_HEIGHT)
+        lines.saturating_add(2)
+    }
+
+    fn append_lane_input(&mut self, input: &str, line_start: Option<usize>) -> Option<usize> {
+        if !matches!(self.kind, TranscriptKind::Lane) || self.next_line_start() != line_start {
+            return None;
         }
+        if !self.text.ends_with('\n') {
+            self.text.push('\n');
+        }
+        self.text.push_str(input.trim_end_matches(['\r', '\n']));
+        self.group
+    }
+
+    fn next_line_start(&self) -> Option<usize> {
+        self.line_start
+            .map(|line_start| line_start.saturating_add(self.text.lines().count()))
     }
 
     fn style(&self, selected_group: Option<usize>) -> Style {
@@ -1124,6 +1163,38 @@ mod tests {
     }
 
     #[test]
+    fn consecutive_lane_submissions_share_one_feed_box() {
+        let mut app = App::new();
+        app.transcript.clear();
+
+        let first_group = app.push_submitted_input("R radius = 1".to_string(), Some(1));
+        let second_group = app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2));
+
+        assert_eq!(first_group, second_group);
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(
+            app.transcript[0].text,
+            "R radius = 1\nR diameter = radius * 2"
+        );
+        assert_eq!(app.transcript[0].line_start, Some(1));
+    }
+
+    #[test]
+    fn lane_submission_after_message_starts_new_feed_box() {
+        let mut app = App::new();
+        app.transcript.clear();
+
+        app.push_submitted_input("R radius = 1".to_string(), Some(1));
+        app.transcript
+            .push(TranscriptEntry::system("Session note."));
+        app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2));
+
+        assert_eq!(app.transcript.len(), 3);
+        assert_eq!(app.transcript[0].text, "R radius = 1");
+        assert_eq!(app.transcript[2].text, "R diameter = radius * 2");
+    }
+
+    #[test]
     fn bottom_to_top_layout_places_first_rendered_entry_at_bottom() {
         let entries = vec![
             TranscriptEntry::system("old"),
@@ -1131,10 +1202,12 @@ mod tests {
             TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0)),
         ];
         let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 9), &[2, 1, 0], &entries);
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 11), &[2, 1, 0], &entries);
 
-        assert_eq!(layout.entry_at(0, 8), Some(2));
-        assert_eq!(layout.entry_at(0, 5), Some(1));
+        assert_eq!(layout.entry_at(0, 10), Some(2));
+        assert_eq!(layout.entry_at(0, 7), None);
+        assert_eq!(layout.entry_at(0, 6), Some(1));
+        assert_eq!(layout.entry_at(0, 3), None);
         assert_eq!(layout.entry_at(0, 2), Some(0));
     }
 
@@ -1155,7 +1228,7 @@ mod tests {
         let multi_line = TranscriptEntry::help("Enter submits.\n\\exit leaves.");
 
         assert_eq!(single_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
-        assert_eq!(multi_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
+        assert_eq!(multi_line.line_count(), 4);
     }
 
     #[test]
