@@ -662,6 +662,7 @@ fn preview_generation_reports_missing_scene_material_requirement() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("preview generation requirements were not met"));
     assert!(stderr.contains("scene_material"));
+    assert!(!stderr.contains("alias"));
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }
@@ -688,6 +689,7 @@ fn preview_generation_reports_missing_scene_requirement() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("preview generation requirements were not met"));
     assert!(stderr.contains("const Object scene"));
+    assert!(!stderr.contains("alias"));
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }

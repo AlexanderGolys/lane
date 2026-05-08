@@ -330,20 +330,19 @@ fn validate_preview_requirements(source: &str) -> Result<(), Error> {
     }
     let mut missing = Vec::new();
     if !has_scene_object_for_preview(source) {
-        missing.push("`const Object scene = ...` (or at least one `const Object ...` declaration so preview can alias it to `scene`)".to_string());
+        missing.push("`const Object scene = ...`".to_string());
     }
     if !has_scene_material_function(source) {
         missing.push(
-            "`const Hom(R3, Material) scene_material = ...` (or `const Func(R3, Material) scene_material = ...`)".to_string(),
+            "`const Hom(R3, Material) scene_material = ...`".to_string(),
         );
     }
     if missing.is_empty() {
         return Ok(());
     }
-    let mut details = String::from(
-        "preview generation requirements were not met. Add an explicit `main`, or define all of:\n",
-    );
-    for item in missing {
+    let mut details =
+        String::from("preview generation requirements were not met. Add an explicit `main`, or define:\n");
+    for item in &missing {
         details.push_str("- ");
         details.push_str(&item);
         details.push('\n');
