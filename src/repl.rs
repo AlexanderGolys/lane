@@ -27,6 +27,7 @@ const ERROR_FG: Color = Color::LightRed;
 const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
 const SELECTED_OUTPUT_BG: Color = Color::Rgb(24, 70, 50);
 const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
+const COMPLETION_FG: Color = Color::LightCyan;
 const COMMAND_FG: Color = Color::LightGreen;
 const INPUT_PLACEHOLDER_FG: Color = Color::DarkGray;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
@@ -137,6 +138,9 @@ struct App {
     input_history: Vec<String>,
     history_position: Option<usize>,
     history_draft: String,
+    input_diagnostic: Option<String>,
+    completion_matches: Vec<lane::LaneCompletionItem>,
+    completion_index: usize,
     transcript: Vec<TranscriptEntry>,
     highlighter: SyntaxHighlighter,
     split_mode: bool,
@@ -153,6 +157,9 @@ impl App {
             input_history: Vec::new(),
             history_position: None,
             history_draft: String::new(),
+            input_diagnostic: None,
+            completion_matches: Vec::new(),
+            completion_index: 0,
             transcript: vec![TranscriptEntry::welcome(format!(
                 "Lane {}",
                 env!("CARGO_PKG_VERSION")
@@ -189,20 +196,28 @@ impl App {
     fn handle_key(&mut self, key: KeyEvent) -> Option<ReplAction> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Some(ReplAction::Exit),
+            (KeyCode::Char('f'), KeyModifiers::CONTROL) => self.format_current_input(),
             (KeyCode::Enter, modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
                 self.clear_history_navigation();
+                self.clear_completion();
                 self.input.push('\n');
+                self.refresh_input_diagnostic();
             }
             (KeyCode::Enter, _) => return self.submit_input(),
+            (KeyCode::Tab, _) => self.apply_completion(),
             (KeyCode::Up, _) => self.recall_older_input(),
             (KeyCode::Down, _) => self.recall_newer_input(),
             (KeyCode::Backspace, _) => {
                 self.clear_history_navigation();
+                self.clear_completion();
                 self.input.pop();
+                self.refresh_input_diagnostic();
             }
             (KeyCode::Char(ch), _) => {
                 self.clear_history_navigation();
+                self.clear_completion();
                 self.input.push(ch);
+                self.refresh_input_diagnostic();
             }
             _ => {}
         }
@@ -222,6 +237,8 @@ impl App {
 
     fn submit_input(&mut self) -> Option<ReplAction> {
         self.clear_history_navigation();
+        self.clear_completion();
+        self.input_diagnostic = None;
         let input = std::mem::take(&mut self.input);
         if input.trim().is_empty() {
             return None;
@@ -261,6 +278,67 @@ impl App {
         None
     }
 
+    fn refresh_input_diagnostic(&mut self) {
+        self.input_diagnostic = None;
+        if self.input.trim().is_empty() || self.input.trim_start().starts_with('\\') {
+            return;
+        }
+        let candidate = append_line(
+            &self.session.source,
+            self.input.trim_end_matches(['\r', '\n']),
+        );
+        self.input_diagnostic = lane::lane_diagnostics_with_base_dir(&candidate, ".")
+            .into_iter()
+            .next()
+            .map(|diagnostic| diagnostic.message);
+    }
+
+    fn format_current_input(&mut self) {
+        if self.input.is_empty() {
+            return;
+        }
+        self.clear_completion();
+        self.input = lane::format_lane_source(&self.input)
+            .trim_end_matches(['\r', '\n'])
+            .to_string();
+        self.refresh_input_diagnostic();
+    }
+
+    fn apply_completion(&mut self) {
+        let Some((start, prefix)) = completion_token(&self.input) else {
+            self.clear_completion();
+            return;
+        };
+        if prefix.is_empty() {
+            self.clear_completion();
+            return;
+        }
+        if self.completion_matches.is_empty()
+            || self
+                .completion_matches
+                .get(self.completion_index)
+                .is_none_or(|item| item.label != prefix)
+        {
+            self.completion_matches = lane::lane_completion_items()
+                .into_iter()
+                .filter(|item| item.label.starts_with(&prefix))
+                .collect();
+            self.completion_index = 0;
+        } else if !self.completion_matches.is_empty() {
+            self.completion_index = (self.completion_index + 1) % self.completion_matches.len();
+        }
+        let Some(item) = self.completion_matches.get(self.completion_index) else {
+            return;
+        };
+        self.input.replace_range(start.., &item.label);
+        self.refresh_input_diagnostic();
+    }
+
+    fn clear_completion(&mut self) {
+        self.completion_matches.clear();
+        self.completion_index = 0;
+    }
+
     fn record_input_history(&mut self, input: &str) {
         if self.input_history.last().is_some_and(|last| last == input) {
             return;
@@ -282,6 +360,8 @@ impl App {
         };
         self.history_position = Some(position);
         self.input = self.input_history[position].clone();
+        self.clear_completion();
+        self.refresh_input_diagnostic();
     }
 
     fn recall_newer_input(&mut self) {
@@ -296,6 +376,8 @@ impl App {
             self.history_position = None;
             self.input = std::mem::take(&mut self.history_draft);
         }
+        self.clear_completion();
+        self.refresh_input_diagnostic();
     }
 
     fn clear_history_navigation(&mut self) {
@@ -452,7 +534,7 @@ impl App {
                 .collect::<Vec<_>>();
             if lines.len() <= 1 {
                 lines.insert(0, Line::raw(""));
-                lines.push(Line::raw(""));
+                lines.push(self.input_status_line());
             } else {
                 while lines.len() < 3 {
                     lines.insert(0, Line::raw(""));
@@ -469,13 +551,36 @@ impl App {
         let mut text = self.highlighter.highlight_lane(&source);
         if visible.len() <= 1 {
             text.lines.insert(0, Line::raw(""));
-            text.lines.push(Line::raw(""));
+            text.lines.push(self.input_status_line());
         } else {
             while text.lines.len() < 3 {
                 text.lines.insert(0, Line::raw(""));
             }
         }
         left_padded_text(text)
+    }
+
+    fn input_status_line(&self) -> Line<'static> {
+        if let Some(diagnostic) = &self.input_diagnostic {
+            return Line::from(Span::styled(
+                diagnostic.clone(),
+                Style::default().fg(ERROR_FG),
+            ));
+        }
+        if self.completion_matches.len() > 1 {
+            let labels = self
+                .completion_matches
+                .iter()
+                .take(5)
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+                .join("  ");
+            return Line::from(Span::styled(
+                format!("Tab: {labels}"),
+                Style::default().fg(COMPLETION_FG),
+            ));
+        }
+        Line::raw("")
     }
 
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
@@ -576,6 +681,22 @@ fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
         line.spans.insert(0, Span::raw(" "));
     }
     text
+}
+
+fn completion_token(input: &str) -> Option<(usize, String)> {
+    let line_start = input.rfind('\n').map_or(0, |index| index + 1);
+    let mut start = input.len();
+    for (index, ch) in input[line_start..].char_indices().rev() {
+        if !is_completion_char(ch) {
+            break;
+        }
+        start = line_start + index;
+    }
+    Some((start, input[start..].to_string()))
+}
+
+fn is_completion_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '#'
 }
 
 fn placeholder_input_text() -> Text<'static> {
@@ -889,6 +1010,8 @@ fn help_text() -> String {
         "Enter submits.",
         "Ctrl-Enter inserts a newline when supported by the terminal.",
         "Up and Down recall submitted input history.",
+        "Tab completes the current word with Lane LSP items.",
+        "Ctrl-F formats the current input.",
         "\\info shows loaded modules, used directives, and provided objects.",
         "\\show opens a native preview window for the current session.",
         "\\split toggles split mode.",
@@ -1334,6 +1457,52 @@ mod tests {
 
         assert!(rendered.contains("R radius = 1"));
         assert!(!rendered.contains(INPUT_PLACEHOLDER));
+    }
+
+    #[test]
+    fn tab_completes_current_input_from_lsp_items() {
+        let mut app = App::new();
+        app.input = "const Object output = Bal".to_string();
+
+        app.handle_key(KeyEvent::from(KeyCode::Tab));
+
+        assert_eq!(app.input, "const Object output = Ball2D");
+        assert!(app
+            .completion_matches
+            .iter()
+            .any(|item| item.label == "Ball3D"));
+    }
+
+    #[test]
+    fn ctrl_f_formats_current_input() {
+        let mut app = App::new();
+        app.input = "R radius = 1   \n\n\nconst R diameter = radius * 2   ".to_string();
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.input, "R radius = 1\n\nconst R diameter = radius * 2");
+    }
+
+    #[test]
+    fn input_text_shows_live_diagnostics() {
+        let mut app = App::new();
+
+        app.input = "const Object output = Missing3D(r=1)".to_string();
+        app.refresh_input_diagnostic();
+
+        let text = app.input_text();
+        let rendered = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+
+        assert!(rendered.contains("unknown primitive"));
+        assert!(text.lines[2]
+            .spans
+            .iter()
+            .any(|span| span.style.fg == Some(ERROR_FG)));
     }
 
     #[test]

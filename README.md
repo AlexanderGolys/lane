@@ -79,7 +79,9 @@ Usage:
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
   both parts of that submission. Enter submits the current input, Ctrl-Enter
   inserts a newline when supported by the terminal, Up and Down recall submitted
-  input history, and Ctrl-C exits.
+  input history, Tab completes the current word using the same language-service
+  catalog as `lane-lsp`, Ctrl-F formats the current input, and Ctrl-C exits.
+  Draft input diagnostics are shown in the input box before submission.
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.
@@ -108,9 +110,10 @@ Usage:
 The LSP server provides diagnostics by compiling the whole document after open,
 change, and save events. Diagnostics resolve `#import` paths relative to the
 open file, so local modules work the same way in the editor and the CLI. The
-server also provides basic completion and hover entries for Lane keywords,
-built-in modules, primitive constructors, type aliases, categories, and built-in
-functions.
+server also provides formatting plus basic completion and hover entries for Lane
+keywords, built-in modules, primitive constructors, type aliases, categories,
+and built-in functions. The REPL uses the same completion, formatting, and
+diagnostic helpers.
 
 Neovim built-in LSP example:
 

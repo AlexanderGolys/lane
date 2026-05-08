@@ -59,6 +59,193 @@ pub fn program_info_with_base_dir(
     })
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LaneDiagnostic {
+    pub line: usize,
+    pub message: String,
+}
+
+pub fn lane_diagnostics_with_base_dir(
+    source: &str,
+    base_dir: impl AsRef<Path>,
+) -> Vec<LaneDiagnostic> {
+    match compile_program_with_base_dir(source, base_dir) {
+        Ok(_) => Vec::new(),
+        Err(error) => vec![LaneDiagnostic {
+            line: error.line().unwrap_or(1),
+            message: error.to_string(),
+        }],
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaneCompletionKind {
+    Keyword,
+    Module,
+    Constructor,
+    Function,
+    Type,
+    Category,
+    Constant,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LaneCompletionItem {
+    pub label: String,
+    pub kind: LaneCompletionKind,
+    pub detail: Option<String>,
+    pub documentation: Option<String>,
+}
+
+impl LaneCompletionItem {
+    fn new(label: impl Into<String>, kind: LaneCompletionKind) -> Self {
+        Self {
+            label: label.into(),
+            kind,
+            detail: None,
+            documentation: None,
+        }
+    }
+
+    fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    fn with_documentation(mut self, documentation: impl Into<String>) -> Self {
+        self.documentation = Some(documentation.into());
+        self
+    }
+}
+
+pub fn lane_completion_items() -> Vec<LaneCompletionItem> {
+    let mut items = Vec::new();
+    for (label, detail) in [
+        (
+            "const",
+            "Emit a Lane binding even when only referenced by generated code",
+        ),
+        ("provided", "Declare a host-provided shader input"),
+        ("Hom", "Function type constructor"),
+        ("Func", "Function type constructor alias"),
+        ("Object", "Current ambient SDF object type"),
+        ("Object2D", "2D SDF object type"),
+        ("Object3D", "3D SDF object type"),
+        ("Type", "Type metatype"),
+        ("Cat", "Category metatype"),
+        ("#import", "Import a Lane module"),
+        ("#prec", "Set default differential precision"),
+        ("#2D", "Switch the program to 2D SDF mode"),
+    ] {
+        items.push(LaneCompletionItem::new(label, LaneCompletionKind::Keyword).with_detail(detail));
+    }
+    for module in ["std", "raytracing"] {
+        items.push(
+            LaneCompletionItem::new(module, LaneCompletionKind::Module)
+                .with_detail("built-in Lane module"),
+        );
+    }
+    for (label, detail, kind) in [
+        (
+            "R{n}",
+            "generic real vector space dimension",
+            LaneCompletionKind::Type,
+        ),
+        (
+            "Mat{n}x{m}",
+            "generic real matrix type",
+            LaneCompletionKind::Type,
+        ),
+        (
+            "E{n}{m}",
+            "generic matrix basis element",
+            LaneCompletionKind::Constant,
+        ),
+    ] {
+        items.push(LaneCompletionItem::new(label, kind).with_detail(detail));
+    }
+    for primitive in known_primitives() {
+        let fields = primitive
+            .fields
+            .iter()
+            .map(|field| format!("{}: {}", field.name, field.domain))
+            .collect::<Vec<_>>()
+            .join(", ");
+        items.push(
+            LaneCompletionItem::new(primitive.name, LaneCompletionKind::Constructor)
+                .with_detail(format!("{}({fields})", primitive.parameter_space))
+                .with_documentation(format!(
+                    "{} primitive constructor",
+                    primitive.dimension.label()
+                )),
+        );
+    }
+    for object in known_builtin_objects() {
+        let kind = match object.kind {
+            KnownBuiltinObjectKind::Function => LaneCompletionKind::Function,
+            KnownBuiltinObjectKind::Type => LaneCompletionKind::Type,
+            KnownBuiltinObjectKind::Category => LaneCompletionKind::Category,
+        };
+        items.push(LaneCompletionItem::new(object.name, kind).with_detail(object.ty));
+    }
+    items
+}
+
+pub fn lane_hover_for_word(word: &str) -> Option<String> {
+    if let Some(primitive) = known_primitive(word) {
+        let fields = primitive
+            .fields
+            .iter()
+            .map(|field| format!("{}: {}", field.name, field.domain))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Some(format!(
+            "{}: {}\n\n{} primitive constructor with fields: {}",
+            primitive.name,
+            primitive.parameter_space,
+            primitive.dimension.label(),
+            fields
+        ));
+    }
+    if let Some(object) = known_builtin_object(word) {
+        return Some(format!("{}: {}", object.name, object.ty));
+    }
+    match word {
+        "const" => Some("const emits a Lane value, function, or object binding.".to_string()),
+        "provided" => Some("provided declares a host-provided shader input.".to_string()),
+        "Hom" | "Func" => Some(format!("{word}(A, B) is a function type from A to B.")),
+        "Object" => Some("Object is the current ambient SDF object type.".to_string()),
+        "Object2D" => Some("Object2D is a 2D SDF object type.".to_string()),
+        "Object3D" => Some("Object3D is a 3D SDF object type.".to_string()),
+        "R" => {
+            Some("R is the real scalar type; R{n} denotes generic real vector spaces.".to_string())
+        }
+        "Mat" => Some("Mat{n}x{m} denotes generic real matrix types.".to_string()),
+        "E" => Some("E{n}{m} denotes generic matrix basis elements.".to_string()),
+        _ => None,
+    }
+}
+
+pub fn format_lane_source(source: &str) -> String {
+    let mut lines = Vec::new();
+    let mut previous_blank = false;
+    for line in source.lines() {
+        let line = line.trim_end();
+        let blank = line.trim().is_empty();
+        if blank && previous_blank {
+            continue;
+        }
+        lines.push(line.to_string());
+        previous_blank = blank;
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut formatted = lines.join("\n");
+    formatted.push('\n');
+    formatted
+}
+
 pub fn compile_preview_fragment_from_path(
     path: impl AsRef<Path>,
     version: &str,

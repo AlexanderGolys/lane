@@ -5,10 +5,11 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, MarkedString,
-    MessageType, Position, Range, ServerCapabilities, TextDocumentContentChangeEvent,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities,
+    TextDocumentContentChangeEvent, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+    Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -41,18 +42,18 @@ impl Backend {
     }
 
     async fn publish_diagnostics(&self, uri: Url, text: String) {
-        let diagnostics = match lane::compile_program_with_base_dir(&text, Self::base_dir(&uri)) {
-            Ok(_) => Vec::new(),
-            Err(error) => {
-                let line = error.line().unwrap_or(1).saturating_sub(1) as u32;
-                vec![Diagnostic {
+        let diagnostics = lane::lane_diagnostics_with_base_dir(&text, Self::base_dir(&uri))
+            .into_iter()
+            .map(|diagnostic| {
+                let line = diagnostic.line.saturating_sub(1) as u32;
+                Diagnostic {
                     range: Range::new(Position::new(line, 0), Position::new(line, 1)),
                     severity: Some(DiagnosticSeverity::ERROR),
-                    message: error.to_string(),
+                    message: diagnostic.message,
                     ..Diagnostic::default()
-                }]
-            }
-        };
+                }
+            })
+            .collect();
         self.client
             .publish_diagnostics(uri, diagnostics, None)
             .await;
@@ -63,129 +64,22 @@ impl Backend {
     }
 
     fn completion_items() -> Vec<CompletionItem> {
-        let mut items = Vec::new();
-        for (label, detail) in [
-            (
-                "const",
-                "Emit a Lane binding even when only referenced by generated code",
-            ),
-            ("provided", "Declare a host-provided shader input"),
-            ("Hom", "Function type constructor"),
-            ("Func", "Function type constructor alias"),
-            ("Object", "Current ambient SDF object type"),
-            ("Object2D", "2D SDF object type"),
-            ("Object3D", "3D SDF object type"),
-            ("Type", "Type metatype"),
-            ("Cat", "Category metatype"),
-            ("#import", "Import a Lane module"),
-            ("#prec", "Set default differential precision"),
-            ("#2D", "Switch the program to 2D SDF mode"),
-        ] {
-            items.push(CompletionItem {
-                label: label.to_string(),
-                kind: Some(CompletionItemKind::KEYWORD),
-                detail: Some(detail.to_string()),
+        lane::lane_completion_items()
+            .into_iter()
+            .map(|item| CompletionItem {
+                label: item.label,
+                kind: Some(completion_kind(item.kind)),
+                detail: item.detail,
+                documentation: item
+                    .documentation
+                    .map(tower_lsp::lsp_types::Documentation::String),
                 ..CompletionItem::default()
-            });
-        }
-        for module in ["std", "raytracing"] {
-            items.push(CompletionItem {
-                label: module.to_string(),
-                kind: Some(CompletionItemKind::MODULE),
-                detail: Some("built-in Lane module".to_string()),
-                ..CompletionItem::default()
-            });
-        }
-        for (label, detail, kind) in [
-            (
-                "R{n}",
-                "generic real vector space dimension",
-                CompletionItemKind::CLASS,
-            ),
-            (
-                "Mat{n}x{m}",
-                "generic real matrix type",
-                CompletionItemKind::CLASS,
-            ),
-            (
-                "E{n}{m}",
-                "generic matrix basis element",
-                CompletionItemKind::CONSTANT,
-            ),
-        ] {
-            items.push(CompletionItem {
-                label: label.to_string(),
-                kind: Some(kind),
-                detail: Some(detail.to_string()),
-                ..CompletionItem::default()
-            });
-        }
-        for primitive in lane::known_primitives() {
-            let fields = primitive
-                .fields
-                .iter()
-                .map(|field| format!("{}: {}", field.name, field.domain))
-                .collect::<Vec<_>>()
-                .join(", ");
-            items.push(CompletionItem {
-                label: primitive.name,
-                kind: Some(CompletionItemKind::CONSTRUCTOR),
-                detail: Some(format!("{}({fields})", primitive.parameter_space)),
-                documentation: Some(tower_lsp::lsp_types::Documentation::String(format!(
-                    "{} primitive constructor",
-                    primitive.dimension.label()
-                ))),
-                ..CompletionItem::default()
-            });
-        }
-        for object in lane::known_builtin_objects() {
-            items.push(CompletionItem {
-                label: object.name,
-                kind: Some(match object.kind {
-                    lane::KnownBuiltinObjectKind::Function => CompletionItemKind::FUNCTION,
-                    lane::KnownBuiltinObjectKind::Type => CompletionItemKind::CLASS,
-                    lane::KnownBuiltinObjectKind::Category => CompletionItemKind::INTERFACE,
-                }),
-                detail: Some(object.ty),
-                ..CompletionItem::default()
-            });
-        }
-        items
+            })
+            .collect()
     }
 
     fn hover_for_word(word: &str) -> Option<String> {
-        if let Some(primitive) = lane::known_primitive(word) {
-            let fields = primitive
-                .fields
-                .iter()
-                .map(|field| format!("{}: {}", field.name, field.domain))
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Some(format!(
-                "{}: {}\n\n{} primitive constructor with fields: {}",
-                primitive.name,
-                primitive.parameter_space,
-                primitive.dimension.label(),
-                fields
-            ));
-        }
-        if let Some(object) = lane::known_builtin_object(word) {
-            return Some(format!("{}: {}", object.name, object.ty));
-        }
-        match word {
-            "const" => Some("const emits a Lane value, function, or object binding.".to_string()),
-            "provided" => Some("provided declares a host-provided shader input.".to_string()),
-            "Hom" | "Func" => Some(format!("{word}(A, B) is a function type from A to B.")),
-            "Object" => Some("Object is the current ambient SDF object type.".to_string()),
-            "Object2D" => Some("Object2D is a 2D SDF object type.".to_string()),
-            "Object3D" => Some("Object3D is a 3D SDF object type.".to_string()),
-            "R" => Some(
-                "R is the real scalar type; R{n} denotes generic real vector spaces.".to_string(),
-            ),
-            "Mat" => Some("Mat{n}x{m} denotes generic real matrix types.".to_string()),
-            "E" => Some("E{n}{m} denotes generic matrix basis elements.".to_string()),
-            _ => None,
-        }
+        lane::lane_hover_for_word(word)
     }
 
     fn word_at_position(text: &str, position: Position) -> Option<String> {
@@ -233,6 +127,7 @@ impl LanguageServer for Backend {
                     ..CompletionOptions::default()
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -312,6 +207,41 @@ impl LanguageServer for Backend {
             range: None,
         }))
     }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+        let Some(text) = self.documents.get(&uri).await else {
+            return Ok(None);
+        };
+        let formatted = lane::format_lane_source(&text);
+        if formatted == text {
+            return Ok(Some(Vec::new()));
+        }
+        Ok(Some(vec![TextEdit {
+            range: whole_document_range(&text),
+            new_text: formatted,
+        }]))
+    }
+}
+
+fn completion_kind(kind: lane::LaneCompletionKind) -> CompletionItemKind {
+    match kind {
+        lane::LaneCompletionKind::Keyword => CompletionItemKind::KEYWORD,
+        lane::LaneCompletionKind::Module => CompletionItemKind::MODULE,
+        lane::LaneCompletionKind::Constructor => CompletionItemKind::CONSTRUCTOR,
+        lane::LaneCompletionKind::Function => CompletionItemKind::FUNCTION,
+        lane::LaneCompletionKind::Type => CompletionItemKind::CLASS,
+        lane::LaneCompletionKind::Category => CompletionItemKind::INTERFACE,
+        lane::LaneCompletionKind::Constant => CompletionItemKind::CONSTANT,
+    }
+}
+
+fn whole_document_range(text: &str) -> Range {
+    let line_count = text.lines().count() as u32;
+    Range::new(
+        Position::new(0, 0),
+        Position::new(line_count.saturating_add(1), 0),
+    )
 }
 
 #[tokio::main]
@@ -359,5 +289,13 @@ mod tests {
         assert!(labels.iter().any(|label| label == "raytracing"));
         assert!(labels.iter().any(|label| label == "Ball3D"));
         assert!(labels.iter().any(|label| label == "Mat{n}x{m}"));
+    }
+
+    #[test]
+    fn formats_whole_document_range() {
+        let range = whole_document_range("R radius = 1\nconst R diameter = 2\n");
+
+        assert_eq!(range.start, Position::new(0, 0));
+        assert_eq!(range.end.line, 3);
     }
 }
