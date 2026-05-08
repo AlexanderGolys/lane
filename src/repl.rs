@@ -623,7 +623,10 @@ impl App {
             TranscriptKind::Error => error_box_text(&entry.text),
             TranscriptKind::System | TranscriptKind::Welcome => Text::from(entry.text.clone()),
         };
-        let text = if matches!(entry.kind, TranscriptKind::Error | TranscriptKind::Command) {
+        let text = if matches!(
+            entry.kind,
+            TranscriptKind::Error | TranscriptKind::Command | TranscriptKind::Welcome
+        ) {
             text
         } else {
             padded_feed_text(text)
@@ -975,7 +978,7 @@ impl TranscriptEntry {
 
     fn line_count(&self) -> u16 {
         let lines = self.text.lines().count().max(1) as u16;
-        if matches!(self.kind, TranscriptKind::Command) {
+        if matches!(self.kind, TranscriptKind::Command | TranscriptKind::Welcome) {
             return lines;
         }
         lines.saturating_add(2)
@@ -1743,6 +1746,15 @@ mod tests {
 
         assert_eq!(command.line_count(), 1);
         assert_eq!(app.render_entry(&command).height(), 1);
+    }
+
+    #[test]
+    fn welcome_entry_renders_as_plain_text_without_box_margins() {
+        let welcome = TranscriptEntry::welcome("Lane 0.1.0");
+        let mut app = App::new();
+
+        assert_eq!(welcome.line_count(), 1);
+        assert_eq!(app.render_entry(&welcome).height(), 1);
     }
 
     #[test]
