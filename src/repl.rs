@@ -23,6 +23,7 @@ use tree_sitter_language::LanguageFn;
 const USER_BG: Color = Color::Rgb(20, 22, 30);
 const OUTPUT_BG: Color = Color::Rgb(14, 32, 24);
 const ERROR_BG: Color = Color::Rgb(36, 18, 18);
+const ERROR_FG: Color = Color::LightRed;
 const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
 const SELECTED_OUTPUT_BG: Color = Color::Rgb(24, 70, 50);
 const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
@@ -400,11 +401,14 @@ impl App {
             ))),
             TranscriptKind::Glsl => self.highlighter.highlight_glsl(&entry.text),
             TranscriptKind::Help => highlight_help_text(&entry.text),
-            TranscriptKind::Error | TranscriptKind::System | TranscriptKind::Welcome => {
-                Text::from(entry.text.clone())
-            }
+            TranscriptKind::Error => error_box_text(&entry.text),
+            TranscriptKind::System | TranscriptKind::Welcome => Text::from(entry.text.clone()),
         };
-        let text = padded_feed_text(text);
+        let text = if matches!(entry.kind, TranscriptKind::Error) {
+            text
+        } else {
+            padded_feed_text(text)
+        };
         ListItem::new(text).style(entry.style(self.selected_group))
     }
 }
@@ -455,6 +459,17 @@ fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
         }
     }
     text
+}
+
+fn error_box_text(source: &str) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(Line::raw(""));
+    lines.extend(source.lines().map(|line| Line::from(line.to_string())));
+    if lines.len() == 1 {
+        lines.push(Line::raw(""));
+    }
+    lines.push(Line::raw(""));
+    Text::from(lines)
 }
 
 #[derive(Default)]
@@ -595,7 +610,12 @@ impl TranscriptEntry {
     }
 
     fn line_count(&self) -> u16 {
-        (self.text.lines().count().max(1) as u16).max(FEED_ENTRY_MIN_HEIGHT)
+        let lines = self.text.lines().count().max(1) as u16;
+        if matches!(self.kind, TranscriptKind::Error) {
+            lines.saturating_add(2)
+        } else {
+            lines.max(FEED_ENTRY_MIN_HEIGHT)
+        }
     }
 
     fn style(&self, selected_group: Option<usize>) -> Style {
@@ -608,7 +628,7 @@ impl TranscriptEntry {
                     .bg(SELECTED_OUTPUT_BG)
                     .add_modifier(Modifier::BOLD),
                 TranscriptKind::Error => Style::default()
-                    .fg(Color::Red)
+                    .fg(ERROR_FG)
                     .bg(SELECTED_ERROR_BG)
                     .add_modifier(Modifier::BOLD),
                 _ => self.base_style(),
@@ -622,7 +642,7 @@ impl TranscriptEntry {
             TranscriptKind::Lane => Style::default().bg(USER_BG),
             TranscriptKind::Command => Style::default().fg(COMMAND_FG),
             TranscriptKind::Glsl => Style::default().bg(OUTPUT_BG),
-            TranscriptKind::Error => Style::default().fg(Color::Red).bg(ERROR_BG),
+            TranscriptKind::Error => Style::default().fg(ERROR_FG).bg(ERROR_BG),
             TranscriptKind::Help => Style::default(),
             TranscriptKind::System => Style::default(),
             TranscriptKind::Welcome => Style::default()
@@ -1025,5 +1045,25 @@ mod tests {
 
         assert_eq!(single_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
         assert_eq!(multi_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
+    }
+
+    #[test]
+    fn error_entries_reserve_vertical_box_padding() {
+        let single_line = TranscriptEntry::error("unknown shell command '\\wat'".to_string(), None);
+        let multi_line = TranscriptEntry::error("line 1: bad\nline 2: worse".to_string(), None);
+
+        assert_eq!(single_line.line_count(), 3);
+        assert_eq!(multi_line.line_count(), 4);
+    }
+
+    #[test]
+    fn error_box_text_has_blank_rows_above_and_below() {
+        let text = error_box_text("line 1: bad\nline 2: worse");
+
+        assert_eq!(text.lines.len(), 4);
+        assert!(text.lines[0].spans.is_empty());
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), "line 1: bad");
+        assert_eq!(text.lines[2].spans[0].content.as_ref(), "line 2: worse");
+        assert!(text.lines[3].spans.is_empty());
     }
 }
