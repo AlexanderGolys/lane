@@ -78,7 +78,9 @@ Usage:
   recognized only at the start of a line and render as plain one-line messages
   (the initial welcome banner also renders as a plain line without box margins)
   that stay attached to their command response while leaving one blank row
-  before the next submitted code block: `/help` prints REPL command help,
+  before the next submitted code block. REPL commands ignore trailing spaces:
+  `/help`, `/help   `, and similar forms behave the same.
+  `/help` prints REPL command help,
   `/info` shows loaded modules, used directives, and provided objects, `/show`
   opens a native Vulkan preview window for the current session (preview failures
   are shown as REPL error blocks without exiting the shell), `/split` toggles

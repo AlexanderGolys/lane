@@ -1285,6 +1285,7 @@ impl ReplSession {
     }
 
     fn run_command(&mut self, command: &str) -> SubmitOutcome {
+        let command = command.trim_end();
         match command {
             "/clear" => SubmitOutcome::Cleared,
             "/help" => SubmitOutcome::Help,
@@ -1613,6 +1614,21 @@ mod tests {
     fn help_command_prints_help() {
         let mut session = ReplSession::default();
         assert_eq!(session.submit("/help"), SubmitOutcome::Help);
+    }
+
+    #[test]
+    fn help_command_ignores_trailing_spaces() {
+        let mut session = ReplSession::default();
+        assert_eq!(session.submit("/help   "), SubmitOutcome::Help);
+    }
+
+    #[test]
+    fn unknown_command_ignores_trailing_spaces() {
+        let mut session = ReplSession::default();
+        assert_eq!(
+            session.submit("/wat   "),
+            SubmitOutcome::Error("unknown shell command '/wat'".to_string())
+        );
     }
 
     #[test]
