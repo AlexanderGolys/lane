@@ -217,7 +217,10 @@ impl App {
         match (key.code, key.modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Some(ReplAction::Exit),
             (KeyCode::Char('f'), KeyModifiers::CONTROL) => self.format_current_input(),
-            (KeyCode::Enter, modifiers) if modifiers.contains(KeyModifiers::SHIFT) => {
+            (KeyCode::Enter, modifiers)
+                if modifiers.contains(KeyModifiers::SHIFT)
+                    || modifiers.contains(KeyModifiers::ALT) =>
+            {
                 self.clear_history_navigation();
                 self.clear_completion();
                 self.input.push('\n');
@@ -1332,7 +1335,7 @@ impl ReplSession {
 fn help_text() -> String {
     [
         "Enter submits.",
-        "Shift-Enter inserts a newline when supported by the terminal.",
+        "Shift-Enter inserts a newline when supported by the terminal (Alt-Enter fallback).",
         "Up and Down recall submitted input history.",
         "Tab completes to the longest unambiguous prefix with Lane items or REPL commands.",
         "Ctrl-F formats the current input.",
@@ -2023,6 +2026,18 @@ mod tests {
         app.input = "R radius = 1".to_string();
 
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+
+        assert_eq!(app.input, "R radius = 1\n");
+        assert!(app.transcript.is_empty());
+    }
+
+    #[test]
+    fn alt_enter_inserts_newline_without_submitting() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.input = "R radius = 1".to_string();
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
 
         assert_eq!(app.input, "R radius = 1\n");
         assert!(app.transcript.is_empty());
