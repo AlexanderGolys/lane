@@ -251,10 +251,6 @@ impl App {
         self.record_input_history(&input);
         let is_command = input.starts_with('/');
         let line_start = (!is_command).then(|| self.session.next_line_number());
-        if is_command {
-            self.transcript
-                .push(TranscriptEntry::command(input.clone(), None));
-        }
         match self.session.submit(&input) {
             SubmitOutcome::Accepted => {
                 if !is_command {
@@ -269,21 +265,41 @@ impl App {
                 self.transcript.push(TranscriptEntry::glsl(glsl, group));
             }
             SubmitOutcome::Cleared => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
                 self.transcript.clear();
                 self.selected_group = None;
             }
             SubmitOutcome::Restarted => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
                 self.transcript.clear();
                 self.selected_group = None;
                 self.next_group = 0;
                 self.transcript
                     .push(TranscriptEntry::system("Session restarted."));
             }
-            SubmitOutcome::Help => self.transcript.push(TranscriptEntry::help(help_text())),
-            SubmitOutcome::Info(info) => self.transcript.push(TranscriptEntry::system(info)),
+            SubmitOutcome::Help => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
+                self.transcript.push(TranscriptEntry::help(help_text()));
+            }
+            SubmitOutcome::Info(info) => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
+                self.transcript.push(TranscriptEntry::system(info));
+            }
             SubmitOutcome::Show(source) => return Some(ReplAction::Show(source)),
-            SubmitOutcome::ToggleSplit => self.toggle_split(),
-            SubmitOutcome::Exit => return Some(ReplAction::Exit),
+            SubmitOutcome::ToggleSplit => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
+                self.toggle_split();
+            }
+            SubmitOutcome::Exit => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
+                return Some(ReplAction::Exit);
+            }
             SubmitOutcome::Error(error) => {
                 if is_command {
                     self.transcript.push(TranscriptEntry::error(error, None));
@@ -1962,6 +1978,19 @@ mod tests {
             (app.render_entry(&command), command.kind),
         ]);
         assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn invalid_commands_render_only_as_errors_not_green_commands() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.input = "/wat".to_string();
+
+        app.submit_input();
+
+        assert_eq!(app.transcript.len(), 1);
+        assert!(matches!(app.transcript[0].kind, TranscriptKind::Error));
+        assert!(app.transcript[0].text.contains("unknown shell command '/wat'"));
     }
 
     #[test]
