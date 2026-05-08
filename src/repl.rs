@@ -42,6 +42,7 @@ const INPUT_TOP_GAP: u16 = 1;
 const INPUT_BOTTOM_GAP: u16 = 1;
 const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
 const INPUT_PLACEHOLDER: &str = "Type Lane code...";
+const ERROR_LINE_MARKER: &str = "";
 
 const HIGHLIGHT_NAMES: &[&str] = &[
     "attribute",
@@ -701,8 +702,13 @@ impl App {
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
         let text = match entry.kind {
             TranscriptKind::Lane => {
-                if let (Some(line_start), Some(error)) = (entry.line_start, entry.error.as_deref()) {
-                    errored_lane_text(self.highlighter.highlight_lane(&entry.text), line_start, error)
+                if let (Some(line_start), Some(error)) = (entry.line_start, entry.error.as_deref())
+                {
+                    errored_lane_text(
+                        self.highlighter.highlight_lane(&entry.text),
+                        line_start,
+                        error,
+                    )
                 } else if let Some(line_start) = entry.line_start {
                     numbered_lane_text(self.highlighter.highlight_lane(&entry.text), line_start)
                 } else {
@@ -997,7 +1003,11 @@ fn line_number_gutter_width(line_number: usize) -> u16 {
     line_number.to_string().len().saturating_add(3) as u16
 }
 
-fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &str) -> Text<'static> {
+fn errored_lane_text(
+    mut source_text: Text<'static>,
+    line_start: usize,
+    error: &str,
+) -> Text<'static> {
     let source_lines = source_text.lines.len().max(1);
     let line_end = line_start.saturating_add(source_lines.saturating_sub(1));
     let width = line_end.to_string().len();
@@ -1005,15 +1015,13 @@ fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &
 
     let message_padding = " ".repeat(width.saturating_add(3));
     for line in error.lines() {
+        let line = strip_error_line_reference(line);
         lines.push(Line::from(vec![
             Span::styled(
                 message_padding.clone(),
                 Style::default().fg(ERROR_FG).bg(ERROR_BG),
             ),
-            Span::styled(
-                line.to_string(),
-                Style::default().fg(ERROR_FG).bg(ERROR_BG),
-            ),
+            Span::styled(line.to_string(), Style::default().fg(ERROR_FG).bg(ERROR_BG)),
         ]));
     }
     if error.lines().next().is_none() {
@@ -1023,14 +1031,21 @@ fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &
         )));
     }
 
-    for (offset, line) in source_text.lines.iter_mut().enumerate() {
-        let line_number = line_start.saturating_add(offset);
-        let gutter = format!("{line_number:>width$} | ");
+    for line in source_text.lines.iter_mut() {
+        let gutter = format!("{ERROR_LINE_MARKER:>width$} | ");
         line.spans
             .insert(0, Span::styled(gutter, Style::default().fg(LINE_NUMBER_FG)));
     }
     lines.extend(source_text.lines);
     Text::from(lines)
+}
+
+fn strip_error_line_reference(line: &str) -> String {
+    let mut words = line.split_whitespace();
+    match (words.next(), words.next()) {
+        (Some(_), Some(_)) if line.starts_with("line ") => words.collect::<Vec<_>>().join(" "),
+        _ => line.to_string(),
+    }
 }
 
 #[derive(Default)]
@@ -2369,7 +2384,7 @@ mod tests {
     }
 
     #[test]
-    fn errored_lane_text_preserves_submitted_line_numbers() {
+    fn errored_lane_text_marks_submitted_source_with_error_symbol() {
         let text = Text::from("const Object output = Missing3D(r=1)");
         let text = errored_lane_text(text, 7, "unknown object Missing3D");
 
@@ -2378,7 +2393,7 @@ mod tests {
             text.lines[0].spans[1].content.as_ref(),
             "unknown object Missing3D"
         );
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), "7 | ");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " | ");
         assert_eq!(
             text.lines[1].spans[1].content.as_ref(),
             "const Object output = Missing3D(r=1)"
@@ -2388,13 +2403,33 @@ mod tests {
     }
 
     #[test]
-    fn errored_lane_text_keeps_line_numbers_for_multiline_submissions() {
+    fn errored_lane_text_marks_multiline_submissions_with_error_symbol() {
         let text = Text::from("R a = 1\nR b = 2\nconst Object output = Missing3D(r=a+b)");
         let text = errored_lane_text(text, 12, "unknown object Missing3D");
 
         assert_eq!(text.lines[0].spans[0].content.as_ref(), "     ");
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), "12 | ");
-        assert_eq!(text.lines[2].spans[0].content.as_ref(), "13 | ");
-        assert_eq!(text.lines[3].spans[0].content.as_ref(), "14 | ");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), "  | ");
+        assert_eq!(text.lines[2].spans[0].content.as_ref(), "  | ");
+        assert_eq!(text.lines[3].spans[0].content.as_ref(), "  | ");
+    }
+
+    #[test]
+    fn errored_lane_text_strips_error_line_references() {
+        let text = Text::from("const Object output = Missing3D(r=1)");
+        let text = errored_lane_text(
+            text,
+            7,
+            "line 7: unknown object Missing3D\nline 8: expected declaration",
+        );
+
+        assert_eq!(
+            text.lines[0].spans[1].content.as_ref(),
+            "unknown object Missing3D"
+        );
+        assert_eq!(
+            text.lines[1].spans[1].content.as_ref(),
+            "expected declaration"
+        );
+        assert_eq!(text.lines[2].spans[0].content.as_ref(), " | ");
     }
 }
