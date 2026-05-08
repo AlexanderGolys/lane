@@ -1996,6 +1996,24 @@ mod tests {
     }
 
     #[test]
+    fn selecting_one_submission_group_does_not_highlight_other_groups() {
+        let lane_a = TranscriptEntry::submitted("const R a = 1".to_string(), Some(0), Some(1));
+        let glsl_a = TranscriptEntry::glsl("float a = 1.0;".to_string(), Some(0));
+        let lane_b = TranscriptEntry::submitted("const R b = 2".to_string(), Some(1), Some(2));
+        let glsl_b = TranscriptEntry::glsl("float b = 2.0;".to_string(), Some(1));
+
+        let lane_a_style = lane_a.style(Some(0));
+        let glsl_a_style = glsl_a.style(Some(0));
+        let lane_b_style = lane_b.style(Some(0));
+        let glsl_b_style = glsl_b.style(Some(0));
+
+        assert_eq!(lane_a_style.bg, Some(SELECTED_USER_BG));
+        assert_eq!(glsl_a_style.bg, Some(SELECTED_OUTPUT_BG));
+        assert_eq!(lane_b_style.bg, Some(USER_BG));
+        assert_eq!(glsl_b_style.bg, Some(OUTPUT_BG));
+    }
+
+    #[test]
     fn error_entries_reserve_vertical_box_padding() {
         let single_line = TranscriptEntry::error("unknown shell command '/wat'".to_string(), None);
         let multi_line = TranscriptEntry::error("line 1: bad\nline 2: worse".to_string(), None);
