@@ -34,6 +34,7 @@ const LINE_NUMBER_FG: Color = Color::DarkGray;
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 const FEED_ENTRY_GAP: u16 = 1;
+const INPUT_BOTTOM_GAP: u16 = 1;
 const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
 const CURRENT_INPUT_GUTTER: &str = "    ";
 const CURRENT_INPUT_GUTTER_WIDTH: u16 = 4;
@@ -617,7 +618,7 @@ enum ReplAction {
 
 fn transcript_area(area: Rect) -> Rect {
     transcript_feed_area(Rect {
-        height: area.height.saturating_sub(FEED_ENTRY_MIN_HEIGHT),
+        height: area.height.saturating_sub(input_reserved_height(area)),
         ..area
     })
 }
@@ -633,14 +634,31 @@ fn transcript_feed_area(area: Rect) -> Rect {
 
 fn input_area(area: Rect) -> Rect {
     let x_offset = FEED_X_OFFSET.min(area.width);
+    let height = input_height(area);
+    let y = area
+        .y
+        .saturating_add(area.height.saturating_sub(INPUT_BOTTOM_GAP))
+        .saturating_sub(height);
     Rect {
         x: area.x.saturating_add(x_offset),
-        y: area
-            .y
-            .saturating_add(area.height.saturating_sub(FEED_ENTRY_MIN_HEIGHT)),
+        y,
         width: area.width.saturating_sub(x_offset),
-        height: area.height.min(FEED_ENTRY_MIN_HEIGHT),
+        height,
     }
+}
+
+fn input_reserved_height(area: Rect) -> u16 {
+    input_height(area).saturating_add(input_bottom_gap(area))
+}
+
+fn input_height(area: Rect) -> u16 {
+    area.height
+        .saturating_sub(input_bottom_gap(area))
+        .min(FEED_ENTRY_MIN_HEIGHT)
+}
+
+fn input_bottom_gap(area: Rect) -> u16 {
+    INPUT_BOTTOM_GAP.min(area.height.saturating_sub(FEED_ENTRY_MIN_HEIGHT))
 }
 
 fn spaced_transcript_items(
@@ -1594,6 +1612,24 @@ mod tests {
             transcript_area(frame_area).width,
             input_area(frame_area).width
         );
+    }
+
+    #[test]
+    fn input_area_leaves_one_blank_row_below_the_input_block() {
+        let frame_area = Rect::new(0, 0, 20, 12);
+
+        assert_eq!(input_area(frame_area).y, 8);
+        assert_eq!(input_area(frame_area).height, FEED_ENTRY_MIN_HEIGHT);
+        assert_eq!(
+            input_area(frame_area)
+                .y
+                .saturating_add(input_area(frame_area).height),
+            frame_area
+                .y
+                .saturating_add(frame_area.height)
+                .saturating_sub(INPUT_BOTTOM_GAP)
+        );
+        assert_eq!(transcript_area(frame_area).height, 8);
     }
 
     #[test]
