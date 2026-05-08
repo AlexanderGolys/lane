@@ -64,11 +64,13 @@ Usage:
   character of inner left padding and different background colors for user code
   and output code. Empty input shows gray placeholder text. Submitted Lane
   entries include source line numbers in their transcript gutter, while the
-  current input remains unnumbered. Consecutive
+  current input remains unnumbered but aligned to the same source column.
+  Consecutive
   submitted Lane lines share one feed box until a REPL message or generated GLSL
   appears between them, and separate boxes have a blank row between them. Errors
-  appear as red boxes with one blank row of inner padding above and below the
-  message. Shell commands are
+  are decided after submission: the submitted Lane block is marked red and the
+  error message appears as a red box with one blank row of inner padding above
+  and below the message. Shell commands are
   recognized only at the start of a line: `\help` prints REPL command help,
   `\info` shows loaded modules, used directives, and provided objects, `\show`
   opens a native Vulkan preview window for the current session, `\split` toggles
@@ -81,7 +83,6 @@ Usage:
   inserts a newline when supported by the terminal, Up and Down recall submitted
   input history, Tab completes the current word using the same language-service
   catalog as `lane-lsp`, Ctrl-F formats the current input, and Ctrl-C exits.
-  Draft input diagnostics are shown in the input box before submission.
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.
@@ -113,7 +114,7 @@ open file, so local modules work the same way in the editor and the CLI. The
 server also provides formatting plus basic completion and hover entries for Lane
 keywords, built-in modules, primitive constructors, type aliases, categories,
 and built-in functions. The REPL uses the same completion, formatting, and
-diagnostic helpers.
+submitted-error handling.
 
 Neovim built-in LSP example:
 

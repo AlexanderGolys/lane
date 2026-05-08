@@ -35,6 +35,8 @@ const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 const FEED_ENTRY_GAP: u16 = 1;
 const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
+const CURRENT_INPUT_GUTTER: &str = "    ";
+const CURRENT_INPUT_GUTTER_WIDTH: u16 = 4;
 const INPUT_PLACEHOLDER: &str = "Type Lane code...";
 
 const HIGHLIGHT_NAMES: &[&str] = &[
@@ -138,7 +140,6 @@ struct App {
     input_history: Vec<String>,
     history_position: Option<usize>,
     history_draft: String,
-    input_diagnostic: Option<String>,
     completion_matches: Vec<lane::LaneCompletionItem>,
     completion_index: usize,
     transcript: Vec<TranscriptEntry>,
@@ -157,7 +158,6 @@ impl App {
             input_history: Vec::new(),
             history_position: None,
             history_draft: String::new(),
-            input_diagnostic: None,
             completion_matches: Vec::new(),
             completion_index: 0,
             transcript: vec![TranscriptEntry::welcome(format!(
@@ -201,7 +201,6 @@ impl App {
                 self.clear_history_navigation();
                 self.clear_completion();
                 self.input.push('\n');
-                self.refresh_input_diagnostic();
             }
             (KeyCode::Enter, _) => return self.submit_input(),
             (KeyCode::Tab, _) => self.apply_completion(),
@@ -211,13 +210,11 @@ impl App {
                 self.clear_history_navigation();
                 self.clear_completion();
                 self.input.pop();
-                self.refresh_input_diagnostic();
             }
             (KeyCode::Char(ch), _) => {
                 self.clear_history_navigation();
                 self.clear_completion();
                 self.input.push(ch);
-                self.refresh_input_diagnostic();
             }
             _ => {}
         }
@@ -238,7 +235,6 @@ impl App {
     fn submit_input(&mut self) -> Option<ReplAction> {
         self.clear_history_navigation();
         self.clear_completion();
-        self.input_diagnostic = None;
         let input = std::mem::take(&mut self.input);
         if input.trim().is_empty() {
             return None;
@@ -272,25 +268,13 @@ impl App {
             SubmitOutcome::ToggleSplit => self.toggle_split(),
             SubmitOutcome::Exit => return Some(ReplAction::Exit),
             SubmitOutcome::Error(error) => {
+                if let Some(group) = group {
+                    self.mark_group_error(group);
+                }
                 self.transcript.push(TranscriptEntry::error(error, group))
             }
         }
         None
-    }
-
-    fn refresh_input_diagnostic(&mut self) {
-        self.input_diagnostic = None;
-        if self.input.trim().is_empty() || self.input.trim_start().starts_with('\\') {
-            return;
-        }
-        let candidate = append_line(
-            &self.session.source,
-            self.input.trim_end_matches(['\r', '\n']),
-        );
-        self.input_diagnostic = lane::lane_diagnostics_with_base_dir(&candidate, ".")
-            .into_iter()
-            .next()
-            .map(|diagnostic| diagnostic.message);
     }
 
     fn format_current_input(&mut self) {
@@ -301,7 +285,6 @@ impl App {
         self.input = lane::format_lane_source(&self.input)
             .trim_end_matches(['\r', '\n'])
             .to_string();
-        self.refresh_input_diagnostic();
     }
 
     fn apply_completion(&mut self) {
@@ -331,7 +314,6 @@ impl App {
             return;
         };
         self.input.replace_range(start.., &item.label);
-        self.refresh_input_diagnostic();
     }
 
     fn clear_completion(&mut self) {
@@ -361,7 +343,6 @@ impl App {
         self.history_position = Some(position);
         self.input = self.input_history[position].clone();
         self.clear_completion();
-        self.refresh_input_diagnostic();
     }
 
     fn recall_newer_input(&mut self) {
@@ -377,7 +358,6 @@ impl App {
             self.input = std::mem::take(&mut self.history_draft);
         }
         self.clear_completion();
-        self.refresh_input_diagnostic();
     }
 
     fn clear_history_navigation(&mut self) {
@@ -405,6 +385,14 @@ impl App {
         self.transcript
             .push(TranscriptEntry::submitted(input, Some(group), line_start));
         Some(group)
+    }
+
+    fn mark_group_error(&mut self, group: usize) {
+        for entry in &mut self.transcript {
+            if entry.group == Some(group) && matches!(entry.kind, TranscriptKind::Lane) {
+                entry.errored = true;
+            }
+        }
     }
 
     fn toggle_split(&mut self) {
@@ -452,11 +440,21 @@ impl App {
             );
             let user_items = user_entries
                 .iter()
-                .map(|index| self.render_entry(&self.transcript[*index].clone()))
+                .map(|index| {
+                    (
+                        self.render_entry(&self.transcript[*index].clone()),
+                        self.transcript[*index].kind,
+                    )
+                })
                 .collect::<Vec<_>>();
             let glsl_items = glsl_entries
                 .iter()
-                .map(|index| self.render_entry(&self.transcript[*index].clone()))
+                .map(|index| {
+                    (
+                        self.render_entry(&self.transcript[*index].clone()),
+                        self.transcript[*index].kind,
+                    )
+                })
                 .collect::<Vec<_>>();
             let user_transcript = List::new(spaced_transcript_items(user_items))
                 .direction(ListDirection::BottomToTop);
@@ -480,7 +478,12 @@ impl App {
             );
             let items = entries
                 .iter()
-                .map(|index| self.render_entry(&self.transcript[*index].clone()))
+                .map(|index| {
+                    (
+                        self.render_entry(&self.transcript[*index].clone()),
+                        self.transcript[*index].kind,
+                    )
+                })
                 .collect::<Vec<_>>();
             let transcript =
                 List::new(spaced_transcript_items(items)).direction(ListDirection::BottomToTop);
@@ -504,6 +507,7 @@ impl App {
             .map_or(0, |line| line.chars().count() as u16);
         let cursor_column = last_line_width
             .saturating_add(TEXT_BOX_INNER_LEFT_PADDING)
+            .saturating_add(CURRENT_INPUT_GUTTER_WIDTH)
             .min(area.width.saturating_sub(1));
         let cursor_x = area.x.saturating_add(cursor_column);
         let cursor_y = if self.input.contains('\n') {
@@ -540,7 +544,7 @@ impl App {
                     lines.insert(0, Line::raw(""));
                 }
             }
-            return left_padded_text(Text::from(lines));
+            return current_input_text(Text::from(lines));
         }
 
         let source = if visible.len() <= 1 {
@@ -557,16 +561,10 @@ impl App {
                 text.lines.insert(0, Line::raw(""));
             }
         }
-        left_padded_text(text)
+        current_input_text(text)
     }
 
     fn input_status_line(&self) -> Line<'static> {
-        if let Some(diagnostic) = &self.input_diagnostic {
-            return Line::from(Span::styled(
-                diagnostic.clone(),
-                Style::default().fg(ERROR_FG),
-            ));
-        }
         if self.completion_matches.len() > 1 {
             let labels = self
                 .completion_matches
@@ -602,7 +600,7 @@ impl App {
             TranscriptKind::Error => error_box_text(&entry.text),
             TranscriptKind::System | TranscriptKind::Welcome => Text::from(entry.text.clone()),
         };
-        let text = if matches!(entry.kind, TranscriptKind::Error) {
+        let text = if matches!(entry.kind, TranscriptKind::Error | TranscriptKind::Command) {
             text
         } else {
             padded_feed_text(text)
@@ -645,15 +643,23 @@ fn input_area(area: Rect) -> Rect {
     }
 }
 
-fn spaced_transcript_items(items: Vec<ListItem<'static>>) -> Vec<ListItem<'static>> {
+fn spaced_transcript_items(
+    items: Vec<(ListItem<'static>, TranscriptKind)>,
+) -> Vec<ListItem<'static>> {
     let mut spaced = Vec::with_capacity(items.len().saturating_mul(2).saturating_sub(1));
-    for (index, item) in items.into_iter().enumerate() {
-        if index > 0 {
+    let mut previous_kind = None;
+    for (item, kind) in items {
+        if previous_kind.is_some_and(|previous| !adjacent_without_feed_gap(previous, kind)) {
             spaced.push(ListItem::new(Line::raw("")));
         }
         spaced.push(item);
+        previous_kind = Some(kind);
     }
     spaced
+}
+
+fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) -> bool {
+    matches!(previous, TranscriptKind::Command) || matches!(current, TranscriptKind::Command)
 }
 
 fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
@@ -683,6 +689,14 @@ fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
     text
 }
 
+fn current_input_text(mut text: Text<'static>) -> Text<'static> {
+    for line in &mut text.lines {
+        line.spans.insert(0, Span::raw(CURRENT_INPUT_GUTTER));
+        line.spans.insert(0, Span::raw(" "));
+    }
+    text
+}
+
 fn completion_token(input: &str) -> Option<(usize, String)> {
     let line_start = input.rfind('\n').map_or(0, |index| index + 1);
     let mut start = input.len();
@@ -700,7 +714,7 @@ fn is_completion_char(ch: char) -> bool {
 }
 
 fn placeholder_input_text() -> Text<'static> {
-    left_padded_text(Text::from(vec![
+    current_input_text(Text::from(vec![
         Line::raw(""),
         Line::from(Span::styled(
             INPUT_PLACEHOLDER,
@@ -736,7 +750,7 @@ impl TranscriptLayout {
         transcript: &[TranscriptEntry],
     ) {
         let mut next_bottom = area.y.saturating_add(area.height);
-        for index in entries {
+        for (position, index) in entries.iter().enumerate() {
             let Some(entry) = transcript.get(*index) else {
                 continue;
             };
@@ -758,7 +772,13 @@ impl TranscriptLayout {
             if next_bottom <= area.y {
                 break;
             }
-            next_bottom = next_bottom.saturating_sub(FEED_ENTRY_GAP);
+            let next_kind = entries
+                .get(position + 1)
+                .and_then(|next_index| transcript.get(*next_index))
+                .map(|entry| entry.kind);
+            if !next_kind.is_some_and(|kind| adjacent_without_feed_gap(entry.kind, kind)) {
+                next_bottom = next_bottom.saturating_sub(FEED_ENTRY_GAP);
+            }
             if next_bottom <= area.y {
                 break;
             }
@@ -791,6 +811,7 @@ struct TranscriptEntry {
     text: String,
     group: Option<usize>,
     line_start: Option<usize>,
+    errored: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -811,6 +832,7 @@ impl TranscriptEntry {
             text,
             group,
             line_start: None,
+            errored: false,
         }
     }
 
@@ -823,6 +845,7 @@ impl TranscriptEntry {
                 text,
                 group,
                 line_start,
+                errored: false,
             }
         }
     }
@@ -833,6 +856,7 @@ impl TranscriptEntry {
             text,
             group,
             line_start: None,
+            errored: false,
         }
     }
 
@@ -842,6 +866,7 @@ impl TranscriptEntry {
             text,
             group,
             line_start: None,
+            errored: false,
         }
     }
 
@@ -851,6 +876,7 @@ impl TranscriptEntry {
             text: text.into(),
             group: None,
             line_start: None,
+            errored: false,
         }
     }
 
@@ -860,6 +886,7 @@ impl TranscriptEntry {
             text: text.into(),
             group: None,
             line_start: None,
+            errored: false,
         }
     }
 
@@ -869,11 +896,15 @@ impl TranscriptEntry {
             text: text.into(),
             group: None,
             line_start: None,
+            errored: false,
         }
     }
 
     fn line_count(&self) -> u16 {
         let lines = self.text.lines().count().max(1) as u16;
+        if matches!(self.kind, TranscriptKind::Command) {
+            return lines;
+        }
         lines.saturating_add(2)
     }
 
@@ -896,6 +927,10 @@ impl TranscriptEntry {
     fn style(&self, selected_group: Option<usize>) -> Style {
         if self.group.is_some() && self.group == selected_group {
             return match self.kind {
+                TranscriptKind::Lane if self.errored => Style::default()
+                    .fg(ERROR_FG)
+                    .bg(SELECTED_ERROR_BG)
+                    .add_modifier(Modifier::BOLD),
                 TranscriptKind::Lane => Style::default()
                     .bg(SELECTED_USER_BG)
                     .add_modifier(Modifier::BOLD),
@@ -914,6 +949,7 @@ impl TranscriptEntry {
 
     fn base_style(&self) -> Style {
         match self.kind {
+            TranscriptKind::Lane if self.errored => Style::default().fg(ERROR_FG).bg(ERROR_BG),
             TranscriptKind::Lane => Style::default().bg(USER_BG),
             TranscriptKind::Command => Style::default().fg(COMMAND_FG),
             TranscriptKind::Glsl => Style::default().bg(OUTPUT_BG),
@@ -1438,8 +1474,12 @@ mod tests {
 
         assert_eq!(text.lines.len(), 3);
         assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[1].spans[1].content.as_ref(), INPUT_PLACEHOLDER);
-        assert_eq!(text.lines[1].spans[1].style.fg, Some(INPUT_PLACEHOLDER_FG));
+        assert_eq!(
+            text.lines[1].spans[1].content.as_ref(),
+            CURRENT_INPUT_GUTTER
+        );
+        assert_eq!(text.lines[1].spans[2].content.as_ref(), INPUT_PLACEHOLDER);
+        assert_eq!(text.lines[1].spans[2].style.fg, Some(INPUT_PLACEHOLDER_FG));
     }
 
     #[test]
@@ -1457,6 +1497,21 @@ mod tests {
 
         assert!(rendered.contains("R radius = 1"));
         assert!(!rendered.contains(INPUT_PLACEHOLDER));
+    }
+
+    #[test]
+    fn current_input_uses_blank_gutter_to_align_with_numbered_lane_source() {
+        let mut app = App::new();
+        app.input = "R radius = 1".to_string();
+
+        let text = app.input_text();
+
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
+        assert_eq!(
+            text.lines[1].spans[1].content.as_ref(),
+            CURRENT_INPUT_GUTTER
+        );
+        assert_eq!(CURRENT_INPUT_GUTTER.chars().count() as u16, 4);
     }
 
     #[test]
@@ -1481,28 +1536,6 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
 
         assert_eq!(app.input, "R radius = 1\n\nconst R diameter = radius * 2");
-    }
-
-    #[test]
-    fn input_text_shows_live_diagnostics() {
-        let mut app = App::new();
-
-        app.input = "const Object output = Missing3D(r=1)".to_string();
-        app.refresh_input_diagnostic();
-
-        let text = app.input_text();
-        let rendered = text
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .map(|span| span.content.as_ref())
-            .collect::<String>();
-
-        assert!(rendered.contains("unknown primitive"));
-        assert!(text.lines[2]
-            .spans
-            .iter()
-            .any(|span| span.style.fg == Some(ERROR_FG)));
     }
 
     #[test]
@@ -1555,6 +1588,36 @@ mod tests {
 
         assert_eq!(single_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
         assert_eq!(multi_line.line_count(), 4);
+    }
+
+    #[test]
+    fn command_entries_render_as_plain_text_without_box_margins() {
+        let command = TranscriptEntry::command("\\info".to_string(), None);
+        let lane = TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1));
+        let mut app = App::new();
+
+        assert_eq!(command.line_count(), 1);
+        assert_eq!(app.render_entry(&command).height(), 1);
+
+        let items = spaced_transcript_items(vec![
+            (app.render_entry(&lane), lane.kind),
+            (app.render_entry(&command), command.kind),
+        ]);
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn failed_submission_marks_submitted_lane_block_as_error() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.input = "const Object output = Missing3D(r=1)".to_string();
+
+        app.submit_input();
+
+        assert!(app.transcript[0].errored);
+        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
+        assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
+        assert!(matches!(app.transcript[1].kind, TranscriptKind::Error));
     }
 
     #[test]
