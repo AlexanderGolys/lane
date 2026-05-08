@@ -393,7 +393,7 @@ impl App {
     }
 
     fn attach_group_error(&mut self, group: usize, error: String) {
-        for entry in &mut self.transcript {
+        for entry in self.transcript.iter_mut().rev() {
             if entry.group == Some(group) && matches!(entry.kind, TranscriptKind::Lane) {
                 entry.errored = true;
                 entry.error = Some(error.clone());
@@ -1895,6 +1895,26 @@ mod tests {
             .rposition(|entry| matches!(entry.kind, TranscriptKind::Lane))
             .expect("expected at least one lane entry");
         assert!(app.transcript[latest_lane_index].errored);
+    }
+
+    #[test]
+    fn failed_submission_marks_latest_lane_entry_when_group_is_shared() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.push_submitted_input("R radius = 1".to_string(), Some(1));
+        app.push_submitted_input("const Object output = Missing3D(r=1)".to_string(), Some(2));
+
+        let shared_group = app.transcript[0]
+            .group
+            .expect("expected lane group for first entry");
+        app.attach_group_error(shared_group, "unknown object Missing3D".to_string());
+
+        assert!(!app.transcript[0].errored);
+        assert!(app.transcript[1].errored);
+        assert_eq!(
+            app.transcript[1].error.as_deref(),
+            Some("unknown object Missing3D")
+        );
     }
 
     #[test]
