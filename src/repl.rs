@@ -1005,12 +1005,21 @@ fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &
     let message_padding = " ".repeat(width.saturating_add(3));
     for line in error.lines() {
         lines.push(Line::from(vec![
-            Span::raw(message_padding.clone()),
-            Span::raw(line.to_string()),
+            Span::styled(
+                message_padding.clone(),
+                Style::default().fg(ERROR_FG).bg(ERROR_BG),
+            ),
+            Span::styled(
+                line.to_string(),
+                Style::default().fg(ERROR_FG).bg(ERROR_BG),
+            ),
         ]));
     }
     if error.lines().next().is_none() {
-        lines.push(Line::from(Span::raw(message_padding)));
+        lines.push(Line::from(Span::styled(
+            message_padding,
+            Style::default().fg(ERROR_FG).bg(ERROR_BG),
+        )));
     }
 
     for (offset, line) in source_text.lines.iter_mut().enumerate() {
@@ -1235,7 +1244,7 @@ impl TranscriptEntry {
 
     fn base_style(&self) -> Style {
         match self.kind {
-            TranscriptKind::Lane if self.errored => Style::default().fg(ERROR_FG).bg(ERROR_BG),
+            TranscriptKind::Lane if self.errored => Style::default().bg(USER_BG),
             TranscriptKind::Lane => Style::default().bg(USER_BG),
             TranscriptKind::Command => Style::default().fg(COMMAND_FG),
             TranscriptKind::Glsl => Style::default().bg(OUTPUT_BG),
@@ -2211,7 +2220,7 @@ mod tests {
 
         assert!(app.transcript[0].errored);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
+        assert_eq!(app.transcript[0].base_style().bg, Some(USER_BG));
         assert!(app.transcript[0].error.is_some());
         assert_eq!(app.transcript.len(), 1);
     }
@@ -2351,6 +2360,8 @@ mod tests {
             text.lines[1].spans[1].content.as_ref(),
             "const Object output = Missing3D(r=1)"
         );
+        assert_eq!(text.lines[0].spans[1].style.fg, Some(ERROR_FG));
+        assert_eq!(text.lines[0].spans[1].style.bg, Some(ERROR_BG));
     }
 
     #[test]

@@ -71,9 +71,8 @@ Usage:
   Adjacent submitted Lane entries render inside one shared feed box, while
   separate boxes still have a blank row between them. Errors are decided after
   submission: only the
-  submitted Lane block for that failed submission is marked red, and the error
-  message is shown above that code inside the same red block with aligned left
-  padding. Failing submitted code keeps source line numbers in the gutter so
+  error message is shown as red above the failed code with aligned left
+  padding, while the submitted code keeps normal Lane highlighting. Failing submitted code keeps source line numbers in the gutter so
   message references line up with the shown code. Shell commands are
   recognized only at the start of a line and render as plain one-line messages
   (the initial welcome banner also renders as a plain line without box margins)
