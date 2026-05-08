@@ -28,11 +28,13 @@ const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
 const SELECTED_OUTPUT_BG: Color = Color::Rgb(24, 70, 50);
 const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
 const COMMAND_FG: Color = Color::LightGreen;
+const INPUT_PLACEHOLDER_FG: Color = Color::DarkGray;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 const FEED_ENTRY_GAP: u16 = 1;
 const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
+const INPUT_PLACEHOLDER: &str = "Type Lane code...";
 
 const HIGHLIGHT_NAMES: &[&str] = &[
     "attribute",
@@ -431,6 +433,10 @@ impl App {
     }
 
     fn input_text(&mut self) -> Text<'static> {
+        if self.input.is_empty() {
+            return placeholder_input_text();
+        }
+
         let mut visible = self.input.lines().rev().take(3).collect::<Vec<_>>();
         visible.reverse();
 
@@ -570,6 +576,17 @@ fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
         line.spans.insert(0, Span::raw(" "));
     }
     text
+}
+
+fn placeholder_input_text() -> Text<'static> {
+    left_padded_text(Text::from(vec![
+        Line::raw(""),
+        Line::from(Span::styled(
+            INPUT_PLACEHOLDER,
+            Style::default().fg(INPUT_PLACEHOLDER_FG),
+        )),
+        Line::raw(""),
+    ]))
 }
 
 fn numbered_lane_text(mut text: Text<'static>, line_start: usize) -> Text<'static> {
@@ -1288,6 +1305,35 @@ mod tests {
         assert_eq!(app.input, "R radius = 10");
         app.handle_key(KeyEvent::from(KeyCode::Down));
         assert_eq!(app.input, "R radius = 10");
+    }
+
+    #[test]
+    fn empty_input_shows_gray_placeholder_text() {
+        let mut app = App::new();
+
+        let text = app.input_text();
+
+        assert_eq!(text.lines.len(), 3);
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), INPUT_PLACEHOLDER);
+        assert_eq!(text.lines[1].spans[1].style.fg, Some(INPUT_PLACEHOLDER_FG));
+    }
+
+    #[test]
+    fn typed_input_replaces_placeholder_text() {
+        let mut app = App::new();
+        app.input = "R radius = 1".to_string();
+
+        let text = app.input_text();
+        let rendered = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+
+        assert!(rendered.contains("R radius = 1"));
+        assert!(!rendered.contains(INPUT_PLACEHOLDER));
     }
 
     #[test]

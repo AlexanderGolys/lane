@@ -62,8 +62,9 @@ Usage:
   submitted Lane code, REPL messages, generated GLSL, and the current input
   linearly in one bottom-anchored, consistently padded transcript, with one
   character of inner left padding and different background colors for user code
-  and output code. Submitted Lane entries include source line numbers in their
-  transcript gutter, while the current input remains unnumbered. Consecutive
+  and output code. Empty input shows gray placeholder text. Submitted Lane
+  entries include source line numbers in their transcript gutter, while the
+  current input remains unnumbered. Consecutive
   submitted Lane lines share one feed box until a REPL message or generated GLSL
   appears between them, and separate boxes have a blank row between them. Errors
   appear as red boxes with one blank row of inner padding above and below the
