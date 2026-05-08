@@ -70,9 +70,9 @@ Usage:
   inline hint text after the current token without changing the submitted input.
   Each submitted Lane block renders in its own feed box, and separate boxes have
   a blank row between them. Errors are decided after submission: only the
-  submitted Lane block for that failed submission is marked red and the
-  error message appears as a red box with one blank row of inner padding above
-  and below the message. Shell commands are
+  submitted Lane block for that failed submission is marked red, and the error
+  message is shown above that code inside the same red block. Error lines use
+  a ` |` gutter marker instead of source line numbers. Shell commands are
   recognized only at the start of a line and render as plain one-line messages
   (the initial welcome banner also renders as a plain line without box margins)
   that stay attached to their command response while leaving one blank row

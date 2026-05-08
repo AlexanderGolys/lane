@@ -32,6 +32,7 @@ const COMPLETION_HINT_FG: Color = Color::DarkGray;
 const COMMAND_FG: Color = Color::LightGreen;
 const INPUT_PLACEHOLDER_FG: Color = Color::DarkGray;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
+const ERROR_GUTTER_MARKER: &str = "";
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 const FEED_ENTRY_GAP: u16 = 1;
@@ -270,9 +271,10 @@ impl App {
             SubmitOutcome::Exit => return Some(ReplAction::Exit),
             SubmitOutcome::Error(error) => {
                 if let Some(group) = group {
-                    self.mark_group_error(group);
+                    self.attach_group_error(group, error);
+                } else {
+                    self.transcript.push(TranscriptEntry::error(error, group));
                 }
-                self.transcript.push(TranscriptEntry::error(error, group))
             }
         }
         None
@@ -383,10 +385,12 @@ impl App {
         Some(group)
     }
 
-    fn mark_group_error(&mut self, group: usize) {
+    fn attach_group_error(&mut self, group: usize, error: String) {
         for entry in &mut self.transcript {
             if entry.group == Some(group) && matches!(entry.kind, TranscriptKind::Lane) {
                 entry.errored = true;
+                entry.error = Some(error.clone());
+                break;
             }
         }
     }
@@ -608,11 +612,12 @@ impl App {
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
         let text = match entry.kind {
             TranscriptKind::Lane => {
-                let text = self.highlighter.highlight_lane(&entry.text);
-                if let Some(line_start) = entry.line_start {
-                    numbered_lane_text(text, line_start)
+                if let (Some(line_start), Some(error)) = (entry.line_start, entry.error.as_deref()) {
+                    errored_lane_text(self.highlighter.highlight_lane(&entry.text), line_start, error)
+                } else if let Some(line_start) = entry.line_start {
+                    numbered_lane_text(self.highlighter.highlight_lane(&entry.text), line_start)
                 } else {
-                    text
+                    self.highlighter.highlight_lane(&entry.text)
                 }
             }
             TranscriptKind::Command => Text::from(Line::from(Span::styled(
@@ -824,6 +829,40 @@ fn line_number_gutter_width(line_number: usize) -> u16 {
     line_number.to_string().len().saturating_add(3) as u16
 }
 
+fn error_gutter(width: usize) -> String {
+    format!("{ERROR_GUTTER_MARKER:>width$} | ")
+}
+
+fn errored_lane_text(mut source_text: Text<'static>, line_start: usize, error: &str) -> Text<'static> {
+    let source_lines = source_text.lines.len().max(1);
+    let line_end = line_start.saturating_add(source_lines.saturating_sub(1));
+    let width = line_end.to_string().len();
+    let mut lines = Vec::new();
+
+    let error_gutter = error_gutter(width);
+    for line in error.lines() {
+        lines.push(Line::from(vec![
+            Span::styled(error_gutter.clone(), Style::default().fg(LINE_NUMBER_FG)),
+            Span::raw(line.to_string()),
+        ]));
+    }
+    if error.lines().next().is_none() {
+        lines.push(Line::from(vec![
+            Span::styled(error_gutter, Style::default().fg(LINE_NUMBER_FG)),
+            Span::raw(""),
+        ]));
+    }
+
+    for (offset, line) in source_text.lines.iter_mut().enumerate() {
+        let line_number = line_start.saturating_add(offset);
+        let gutter = format!("{line_number:>width$} | ");
+        line.spans
+            .insert(0, Span::styled(gutter, Style::default().fg(LINE_NUMBER_FG)));
+    }
+    lines.extend(source_text.lines);
+    Text::from(lines)
+}
+
 #[derive(Default)]
 struct TranscriptLayout {
     entries: Vec<RenderedEntry>,
@@ -899,6 +938,7 @@ struct TranscriptEntry {
     group: Option<usize>,
     line_start: Option<usize>,
     errored: bool,
+    error: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -920,6 +960,7 @@ impl TranscriptEntry {
             group,
             line_start: None,
             errored: false,
+            error: None,
         }
     }
 
@@ -933,6 +974,7 @@ impl TranscriptEntry {
                 group,
                 line_start,
                 errored: false,
+                error: None,
             }
         }
     }
@@ -944,6 +986,7 @@ impl TranscriptEntry {
             group,
             line_start: None,
             errored: false,
+            error: None,
         }
     }
 
@@ -954,6 +997,7 @@ impl TranscriptEntry {
             group,
             line_start: None,
             errored: false,
+            error: None,
         }
     }
 
@@ -964,6 +1008,7 @@ impl TranscriptEntry {
             group: None,
             line_start: None,
             errored: false,
+            error: None,
         }
     }
 
@@ -974,6 +1019,7 @@ impl TranscriptEntry {
             group: None,
             line_start: None,
             errored: false,
+            error: None,
         }
     }
 
@@ -984,11 +1030,20 @@ impl TranscriptEntry {
             group: None,
             line_start: None,
             errored: false,
+            error: None,
         }
     }
 
     fn line_count(&self) -> u16 {
-        let lines = self.text.lines().count().max(1) as u16;
+        let lines = if matches!(self.kind, TranscriptKind::Lane) && self.error.is_some() {
+            self.error
+                .as_deref()
+                .map(|error| error.lines().count().max(1))
+                .unwrap_or(1)
+                .saturating_add(self.text.lines().count().max(1)) as u16
+        } else {
+            self.text.lines().count().max(1) as u16
+        };
         if matches!(self.kind, TranscriptKind::Command | TranscriptKind::Welcome) {
             return lines;
         }
@@ -1813,7 +1868,8 @@ mod tests {
         assert!(app.transcript[0].errored);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
         assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
-        assert!(matches!(app.transcript[1].kind, TranscriptKind::Error));
+        assert!(app.transcript[0].error.is_some());
+        assert_eq!(app.transcript.len(), 1);
     }
 
     #[test]
@@ -1879,6 +1935,23 @@ mod tests {
         assert_eq!(
             text.lines[1].spans[1].content.as_ref(),
             "const R diameter = 2"
+        );
+    }
+
+    #[test]
+    fn errored_lane_text_prefixes_error_lines_with_icon_gutter() {
+        let text = Text::from("const Object output = Missing3D(r=1)");
+        let text = errored_lane_text(text, 7, "unknown object Missing3D");
+
+        assert_eq!(text.lines[0].spans[0].content.as_ref(), " | ");
+        assert_eq!(
+            text.lines[0].spans[1].content.as_ref(),
+            "unknown object Missing3D"
+        );
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), "7 | ");
+        assert_eq!(
+            text.lines[1].spans[1].content.as_ref(),
+            "const Object output = Missing3D(r=1)"
         );
     }
 }
