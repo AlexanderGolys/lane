@@ -1,4 +1,6 @@
+use std::fs;
 use std::io::{self, Stdout};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crossterm::event::{
@@ -146,6 +148,7 @@ struct App {
     session: ReplSession,
     input: String,
     input_history: Vec<String>,
+    history_file: Option<PathBuf>,
     history_position: Option<usize>,
     history_draft: String,
     completion_matches: Vec<lane::LaneCompletionItem>,
@@ -160,10 +163,19 @@ struct App {
 
 impl App {
     fn new() -> Self {
+        Self::new_with_history_file(default_history_file())
+    }
+
+    fn new_with_history_file(history_file: Option<PathBuf>) -> Self {
+        let input_history = history_file
+            .as_ref()
+            .map(|path| load_repl_history(path))
+            .unwrap_or_default();
         Self {
             session: ReplSession::default(),
             input: String::new(),
-            input_history: Vec::new(),
+            input_history,
+            history_file,
             history_position: None,
             history_draft: String::new(),
             completion_matches: Vec::new(),
@@ -366,6 +378,23 @@ impl App {
             return;
         }
         self.input_history.push(input.to_string());
+        self.persist_input_history();
+    }
+
+    fn persist_input_history(&self) {
+        let Some(path) = self.history_file.as_ref() else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            if fs::create_dir_all(parent).is_err() {
+                return;
+            }
+        }
+        let mut serialized = self.input_history.join("\n");
+        if !serialized.is_empty() {
+            serialized.push('\n');
+        }
+        let _ = fs::write(path, serialized);
     }
 
     fn recall_older_input(&mut self) {
@@ -706,6 +735,33 @@ impl App {
         let text = left_padded_text(text);
         ListItem::new(text).style(entry.style(self.selected_group))
     }
+}
+
+fn default_history_file() -> Option<PathBuf> {
+    if cfg!(test) {
+        return None;
+    }
+    if let Some(path) = std::env::var_os("LANE_REPL_HISTORY") {
+        if !path.is_empty() {
+            return Some(PathBuf::from(path));
+        }
+    }
+    let state_base = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))?;
+    Some(state_base.join("lane/repl_history"))
+}
+
+fn load_repl_history(path: &PathBuf) -> Vec<String> {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 enum ReplAction {
@@ -1474,6 +1530,15 @@ fn highlight_style(index: usize) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_history_file() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("lane-repl-history-test-{unique}.txt"))
+    }
 
     #[test]
     fn accepts_setup_and_emits_after_const() {
@@ -1630,6 +1695,42 @@ mod tests {
             "R radius = 1\nR diameter = radius * 2"
         );
         assert_eq!(app.transcript[0].line_start, Some(1));
+    }
+
+    #[test]
+    fn app_loads_persisted_input_history() {
+        let history_file = temp_history_file();
+        fs::write(
+            &history_file,
+            "R radius = 1\n\nconst Object output = Ball3D(r=radius)\n",
+        )
+        .unwrap();
+
+        let app = App::new_with_history_file(Some(history_file.clone()));
+
+        assert_eq!(
+            app.input_history,
+            vec![
+                "R radius = 1".to_string(),
+                "const Object output = Ball3D(r=radius)".to_string()
+            ]
+        );
+        let _ = fs::remove_file(history_file);
+    }
+
+    #[test]
+    fn submitting_input_persists_history_to_disk() {
+        let history_file = temp_history_file();
+        let mut app = App::new_with_history_file(Some(history_file.clone()));
+
+        app.input = "R radius = 1".to_string();
+        app.submit_input();
+        app.input = "const R radius2 = 2".to_string();
+        app.submit_input();
+
+        let stored = fs::read_to_string(&history_file).unwrap();
+        assert_eq!(stored, "R radius = 1\nconst R radius2 = 2\n");
+        let _ = fs::remove_file(history_file);
     }
 
     #[test]
