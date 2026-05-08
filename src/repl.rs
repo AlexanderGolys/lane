@@ -35,6 +35,7 @@ const LINE_NUMBER_FG: Color = Color::DarkGray;
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 const FEED_ENTRY_GAP: u16 = 1;
+const INPUT_TOP_GAP: u16 = 1;
 const INPUT_BOTTOM_GAP: u16 = 1;
 const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
 const INPUT_PLACEHOLDER: &str = "Type Lane code...";
@@ -673,7 +674,9 @@ fn input_area(area: Rect) -> Rect {
 }
 
 fn input_reserved_height(area: Rect) -> u16 {
-    input_height(area).saturating_add(input_bottom_gap(area))
+    input_height(area)
+        .saturating_add(input_top_gap(area))
+        .saturating_add(input_bottom_gap(area))
 }
 
 fn input_height(area: Rect) -> u16 {
@@ -684,6 +687,14 @@ fn input_height(area: Rect) -> u16 {
 
 fn input_bottom_gap(area: Rect) -> u16 {
     INPUT_BOTTOM_GAP.min(area.height.saturating_sub(FEED_ENTRY_MIN_HEIGHT))
+}
+
+fn input_top_gap(area: Rect) -> u16 {
+    INPUT_TOP_GAP.min(
+        area.height
+            .saturating_sub(FEED_ENTRY_MIN_HEIGHT)
+            .saturating_sub(input_bottom_gap(area)),
+    )
 }
 
 fn spaced_transcript_items(
@@ -1713,11 +1724,12 @@ mod tests {
     }
 
     #[test]
-    fn input_area_leaves_one_blank_row_below_the_input_block() {
+    fn input_area_leaves_one_blank_row_above_and_below_the_input_block() {
         let frame_area = Rect::new(0, 0, 20, 12);
 
         assert_eq!(input_area(frame_area).y, 8);
         assert_eq!(input_area(frame_area).height, FEED_ENTRY_MIN_HEIGHT);
+        assert_eq!(input_top_gap(frame_area), 1);
         assert_eq!(
             input_area(frame_area)
                 .y
@@ -1727,7 +1739,13 @@ mod tests {
                 .saturating_add(frame_area.height)
                 .saturating_sub(INPUT_BOTTOM_GAP)
         );
-        assert_eq!(transcript_area(frame_area).height, 8);
+        assert_eq!(
+            transcript_area(frame_area).height,
+            input_area(frame_area)
+                .y
+                .saturating_sub(frame_area.y)
+                .saturating_sub(INPUT_TOP_GAP)
+        );
     }
 
     #[test]

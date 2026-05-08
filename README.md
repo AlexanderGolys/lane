@@ -62,8 +62,8 @@ Usage:
   submitted Lane code, REPL messages, generated GLSL, and the current input
   linearly in one bottom-anchored, consistently padded transcript, with one
   character of inner left padding and different background colors for user code
-  and output code. The current input block leaves one blank terminal row below
-  it, and empty input shows gray placeholder text. Submitted Lane entries
+  and output code. The current input block leaves one blank terminal row above
+  and below it, and empty input shows gray placeholder text. Submitted Lane entries
   include source line numbers in their transcript gutter, while the current
   input remains unnumbered and widens its blank gutter to stay aligned to the
   same source column as line numbers grow. Matching completions appear as gray
