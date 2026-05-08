@@ -347,25 +347,16 @@ impl App {
             self.clear_completion();
             return;
         }
-        if self.completion_matches.is_empty()
-            || self
-                .completion_matches
-                .get(self.completion_index)
-                .is_none_or(|item| item.label != prefix)
-        {
-            self.completion_matches = self
-                .active_completion_items()
-                .into_iter()
-                .filter(|item| item.label.starts_with(&prefix))
-                .collect();
-            self.completion_index = 0;
-        } else if !self.completion_matches.is_empty() {
-            self.completion_index = (self.completion_index + 1) % self.completion_matches.len();
-        }
-        let Some(item) = self.completion_matches.get(self.completion_index) else {
+        self.completion_matches = self
+            .active_completion_items()
+            .into_iter()
+            .filter(|item| item.label.starts_with(&prefix))
+            .collect();
+        self.completion_index = 0;
+        let Some(completed) = completion_target(&prefix, &self.completion_matches) else {
             return;
         };
-        self.input.replace_range(start.., &item.label);
+        self.input.replace_range(start.., &completed);
     }
 
     fn clear_completion(&mut self) {
@@ -915,6 +906,39 @@ fn completion_token(input: &str) -> Option<(usize, String)> {
     Some((start, input[start..].to_string()))
 }
 
+fn completion_target(prefix: &str, matches: &[lane::LaneCompletionItem]) -> Option<String> {
+    match matches {
+        [] => None,
+        [item] => Some(item.label.clone()),
+        _ => Some(longest_common_prefix(
+            matches
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ))
+        .filter(|common| common.len() > prefix.len())
+        .or_else(|| Some(prefix.to_string())),
+    }
+}
+
+fn longest_common_prefix(labels: &[&str]) -> String {
+    let Some(first) = labels.first().copied() else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for (index, ch) in first.char_indices() {
+        let next_index = index + ch.len_utf8();
+        let prefix = &first[..next_index];
+        if labels.iter().all(|label| label.starts_with(prefix)) {
+            out.push(ch);
+        } else {
+            break;
+        }
+    }
+    out
+}
+
 fn is_completion_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '#' || ch == '/'
 }
@@ -1310,7 +1334,7 @@ fn help_text() -> String {
         "Enter submits.",
         "Shift-Enter inserts a newline when supported by the terminal.",
         "Up and Down recall submitted input history.",
-        "Tab completes the current word with Lane items or REPL commands.",
+        "Tab completes to the longest unambiguous prefix with Lane items or REPL commands.",
         "Ctrl-F formats the current input.",
         "/info shows loaded modules, used directives, and provided objects.",
         "/show opens a native preview window for the current session.",
@@ -1888,7 +1912,7 @@ mod tests {
 
         app.handle_key(KeyEvent::from(KeyCode::Tab));
 
-        assert_eq!(app.input, "const Object output = Ball2D");
+        assert_eq!(app.input, "const Object output = Ball");
         assert!(app
             .completion_matches
             .iter()
@@ -1907,6 +1931,24 @@ mod tests {
             .completion_matches
             .iter()
             .any(|item| item.label == "/help"));
+    }
+
+    #[test]
+    fn tab_does_not_extend_beyond_ambiguous_command_prefix() {
+        let mut app = App::new();
+        app.input = "/s".to_string();
+
+        app.handle_key(KeyEvent::from(KeyCode::Tab));
+
+        assert_eq!(app.input, "/s");
+        assert!(app
+            .completion_matches
+            .iter()
+            .any(|item| item.label == "/show"));
+        assert!(app
+            .completion_matches
+            .iter()
+            .any(|item| item.label == "/split"));
     }
 
     #[test]
