@@ -243,7 +243,7 @@ impl App {
         }
 
         self.record_input_history(&input);
-        let line_start = (!input.starts_with('\\')).then(|| self.session.next_line_number());
+        let line_start = (!input.starts_with('/')).then(|| self.session.next_line_number());
         let group = self.push_submitted_input(input.clone(), line_start);
         match self.session.submit(&input) {
             SubmitOutcome::Accepted => {}
@@ -375,7 +375,7 @@ impl App {
     }
 
     fn push_submitted_input(&mut self, input: String, line_start: Option<usize>) -> Option<usize> {
-        if input.starts_with('\\') {
+        if input.starts_with('/') {
             self.transcript.push(TranscriptEntry::command(input, None));
             return None;
         }
@@ -535,7 +535,7 @@ impl App {
         let mut visible = self.input.lines().rev().take(3).collect::<Vec<_>>();
         visible.reverse();
 
-        if self.input.starts_with('\\') {
+        if self.input.starts_with('/') {
             let mut lines = visible
                 .iter()
                 .map(|line| {
@@ -970,7 +970,7 @@ impl TranscriptEntry {
     }
 
     fn submitted(text: String, group: Option<usize>, line_start: Option<usize>) -> Self {
-        if text.starts_with('\\') {
+        if text.starts_with('/') {
             Self::command(text, group)
         } else {
             Self {
@@ -1124,7 +1124,7 @@ impl ReplSession {
         if line.is_empty() {
             return SubmitOutcome::Accepted;
         }
-        if line.starts_with('\\') {
+        if line.starts_with('/') {
             return self.run_command(line);
         }
         if is_module_directive(line) {
@@ -1153,20 +1153,20 @@ impl ReplSession {
 
     fn run_command(&mut self, command: &str) -> SubmitOutcome {
         match command {
-            "\\clear" => SubmitOutcome::Cleared,
-            "\\help" => SubmitOutcome::Help,
-            "\\info" => match lane::program_info(&self.source) {
+            "/clear" => SubmitOutcome::Cleared,
+            "/help" => SubmitOutcome::Help,
+            "/info" => match lane::program_info(&self.source) {
                 Ok(info) => SubmitOutcome::Info(format_program_info(&info)),
                 Err(err) => SubmitOutcome::Error(err.to_string()),
             },
-            "\\show" => SubmitOutcome::Show(self.source.clone()),
-            "\\split" => SubmitOutcome::ToggleSplit,
-            "\\restart" => {
+            "/show" => SubmitOutcome::Show(self.source.clone()),
+            "/split" => SubmitOutcome::ToggleSplit,
+            "/restart" => {
                 self.source.clear();
                 self.emitted_glsl_lines = 0;
                 SubmitOutcome::Restarted
             }
-            "\\exit" => SubmitOutcome::Exit,
+            "/exit" => SubmitOutcome::Exit,
             _ => SubmitOutcome::Error(format!("unknown shell command '{command}'")),
         }
     }
@@ -1179,12 +1179,12 @@ fn help_text() -> String {
         "Up and Down recall submitted input history.",
         "Tab completes the current word with Lane LSP items.",
         "Ctrl-F formats the current input.",
-        "\\info shows loaded modules, used directives, and provided objects.",
-        "\\show opens a native preview window for the current session.",
-        "\\split toggles split mode.",
-        "\\clear clears the transcript but keeps the session.",
-        "\\restart starts from an empty session.",
-        "\\exit leaves.",
+        "/info shows loaded modules, used directives, and provided objects.",
+        "/show opens a native preview window for the current session.",
+        "/split toggles split mode.",
+        "/clear clears the transcript but keeps the session.",
+        "/restart starts from an empty session.",
+        "/exit leaves.",
     ]
     .join("\n")
 }
@@ -1211,14 +1211,14 @@ fn highlight_help_text(source: &str) -> Text<'static> {
         .map(|line| {
             let mut spans = Vec::new();
             let mut rest = line;
-            while let Some(index) = rest.find('\\') {
+            while let Some(index) = rest.find('/') {
                 let (before, after_before) = rest.split_at(index);
                 if !before.is_empty() {
                     spans.push(Span::raw(before.to_string()));
                 }
                 let command_len = after_before
                     .chars()
-                    .take_while(|ch| *ch == '\\' || ch.is_ascii_alphabetic())
+                    .take_while(|ch| *ch == '/' || ch.is_ascii_alphabetic())
                     .map(char::len_utf8)
                     .sum::<usize>();
                 let (command, after_command) = after_before.split_at(command_len);
@@ -1456,7 +1456,7 @@ mod tests {
     fn restart_clears_accumulated_source() {
         let mut session = ReplSession::default();
         assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-        assert_eq!(session.submit("\\restart"), SubmitOutcome::Restarted);
+        assert_eq!(session.submit("/restart"), SubmitOutcome::Restarted);
         let outcome = session.submit("const Object output = Ball3D(r=radius)");
         assert!(matches!(outcome, SubmitOutcome::Error(_)));
     }
@@ -1464,13 +1464,13 @@ mod tests {
     #[test]
     fn split_command_toggles_split_mode() {
         let mut session = ReplSession::default();
-        assert_eq!(session.submit("\\split"), SubmitOutcome::ToggleSplit);
+        assert_eq!(session.submit("/split"), SubmitOutcome::ToggleSplit);
     }
 
     #[test]
     fn help_command_prints_help() {
         let mut session = ReplSession::default();
-        assert_eq!(session.submit("\\help"), SubmitOutcome::Help);
+        assert_eq!(session.submit("/help"), SubmitOutcome::Help);
     }
 
     #[test]
@@ -1481,7 +1481,7 @@ mod tests {
         assert_eq!(session.submit("#prec 0.002"), SubmitOutcome::Accepted);
         assert_eq!(session.submit("provided R time"), SubmitOutcome::Accepted);
 
-        let SubmitOutcome::Info(info) = session.submit("\\info") else {
+        let SubmitOutcome::Info(info) = session.submit("/info") else {
             panic!("expected info output");
         };
         assert!(info.contains("Loaded modules:\n  std"));
@@ -1494,7 +1494,7 @@ mod tests {
         let mut session = ReplSession::default();
 
         assert_eq!(
-            session.submit("\\info"),
+            session.submit("/info"),
             SubmitOutcome::Info(
                 "Loaded modules:\n  (none)\nUsed directives:\n  (none)\nProvided objects:\n  (none)"
                     .to_string()
@@ -1507,9 +1507,19 @@ mod tests {
         let mut session = ReplSession::default();
         assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
         assert_eq!(
-            session.submit("\\show"),
+            session.submit("/show"),
             SubmitOutcome::Show("R radius = 1\n".to_string())
         );
+    }
+
+    #[test]
+    fn slash_command_only_works_when_it_starts_the_input_block() {
+        let mut session = ReplSession::default();
+        assert_eq!(session.submit("/help\nR radius = 1"), SubmitOutcome::Error("unknown shell command '/help\nR radius = 1'".to_string()));
+        assert!(matches!(
+            session.submit("R radius = 1\n/help"),
+            SubmitOutcome::Error(_)
+        ));
     }
 
     #[test]
@@ -1812,7 +1822,7 @@ mod tests {
     #[test]
     fn transcript_entries_reserve_input_height() {
         let single_line = TranscriptEntry::system("Session restarted.");
-        let multi_line = TranscriptEntry::help("Enter submits.\n\\exit leaves.");
+        let multi_line = TranscriptEntry::help("Enter submits.\n/exit leaves.");
 
         assert_eq!(single_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
         assert_eq!(multi_line.line_count(), 4);
@@ -1820,7 +1830,7 @@ mod tests {
 
     #[test]
     fn command_entries_render_as_plain_text_without_box_margins() {
-        let command = TranscriptEntry::command("\\info".to_string(), None);
+        let command = TranscriptEntry::command("/info".to_string(), None);
         let mut app = App::new();
 
         assert_eq!(command.line_count(), 1);
@@ -1838,7 +1848,7 @@ mod tests {
 
     #[test]
     fn command_entries_leave_one_blank_row_before_user_code_blocks() {
-        let command = TranscriptEntry::command("\\info".to_string(), None);
+        let command = TranscriptEntry::command("/info".to_string(), None);
         let lane = TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1));
         let mut app = App::new();
 
@@ -1852,7 +1862,7 @@ mod tests {
 
     #[test]
     fn command_entries_stay_attached_to_command_responses() {
-        let command = TranscriptEntry::command("\\info".to_string(), None);
+        let command = TranscriptEntry::command("/info".to_string(), None);
         let response = TranscriptEntry::system("Loaded modules:\n  std");
         let mut app = App::new();
 
@@ -1923,7 +1933,7 @@ mod tests {
 
     #[test]
     fn error_entries_reserve_vertical_box_padding() {
-        let single_line = TranscriptEntry::error("unknown shell command '\\wat'".to_string(), None);
+        let single_line = TranscriptEntry::error("unknown shell command '/wat'".to_string(), None);
         let multi_line = TranscriptEntry::error("line 1: bad\nline 2: worse".to_string(), None);
 
         assert_eq!(single_line.line_count(), 3);

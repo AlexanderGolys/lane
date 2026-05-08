@@ -78,13 +78,13 @@ Usage:
   recognized only at the start of a line and render as plain one-line messages
   (the initial welcome banner also renders as a plain line without box margins)
   that stay attached to their command response while leaving one blank row
-  before the next submitted code block: `\help` prints REPL command help,
-  `\info` shows loaded modules, used directives, and provided objects, `\show`
-  opens a native Vulkan preview window for the current session, `\split` toggles
+  before the next submitted code block: `/help` prints REPL command help,
+  `/info` shows loaded modules, used directives, and provided objects, `/show`
+  opens a native Vulkan preview window for the current session, `/split` toggles
   a split view where submitted Lane code and generated GLSL are rendered in
-  separate panes, `\clear` clears the transcript but keeps the session,
-  `\restart` starts from an empty session, and `\exit` leaves the shell.
-  Toggling `\split` off restores the full linear transcript, including generated
+  separate panes, `/clear` clears the transcript but keeps the session,
+  `/restart` starts from an empty session, and `/exit` leaves the shell.
+  Toggling `/split` off restores the full linear transcript, including generated
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
   both parts of that submission. Enter submits the current input, Ctrl-Enter
   inserts a newline when supported by the terminal, Up and Down recall submitted
