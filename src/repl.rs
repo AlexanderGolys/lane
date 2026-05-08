@@ -659,7 +659,22 @@ fn spaced_transcript_items(
 }
 
 fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) -> bool {
-    matches!(previous, TranscriptKind::Command) || matches!(current, TranscriptKind::Command)
+    if matches!(previous, TranscriptKind::Command) {
+        return matches!(
+            current,
+            TranscriptKind::Command
+                | TranscriptKind::Error
+                | TranscriptKind::Help
+                | TranscriptKind::System
+        );
+    }
+    matches!(
+        (previous, current),
+        (
+            TranscriptKind::Error | TranscriptKind::Help | TranscriptKind::System,
+            TranscriptKind::Command
+        )
+    )
 }
 
 fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
@@ -1593,14 +1608,34 @@ mod tests {
     #[test]
     fn command_entries_render_as_plain_text_without_box_margins() {
         let command = TranscriptEntry::command("\\info".to_string(), None);
-        let lane = TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1));
         let mut app = App::new();
 
         assert_eq!(command.line_count(), 1);
         assert_eq!(app.render_entry(&command).height(), 1);
+    }
+
+    #[test]
+    fn command_entries_leave_one_blank_row_before_user_code_blocks() {
+        let command = TranscriptEntry::command("\\info".to_string(), None);
+        let lane = TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1));
+        let mut app = App::new();
 
         let items = spaced_transcript_items(vec![
             (app.render_entry(&lane), lane.kind),
+            (app.render_entry(&command), command.kind),
+        ]);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[1].height(), 1);
+    }
+
+    #[test]
+    fn command_entries_stay_attached_to_command_responses() {
+        let command = TranscriptEntry::command("\\info".to_string(), None);
+        let response = TranscriptEntry::system("Loaded modules:\n  std");
+        let mut app = App::new();
+
+        let items = spaced_transcript_items(vec![
+            (app.render_entry(&response), response.kind),
             (app.render_entry(&command), command.kind),
         ]);
         assert_eq!(items.len(), 2);

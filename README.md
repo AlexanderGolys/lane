@@ -71,7 +71,9 @@ Usage:
   are decided after submission: the submitted Lane block is marked red and the
   error message appears as a red box with one blank row of inner padding above
   and below the message. Shell commands are
-  recognized only at the start of a line: `\help` prints REPL command help,
+  recognized only at the start of a line and render as plain one-line messages
+  that stay attached to their command response while leaving one blank row
+  before the next submitted code block: `\help` prints REPL command help,
   `\info` shows loaded modules, used directives, and provided objects, `\show`
   opens a native Vulkan preview window for the current session, `\split` toggles
   a split view where submitted Lane code and generated GLSL are rendered in
