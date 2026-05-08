@@ -28,6 +28,7 @@ const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
 const SELECTED_OUTPUT_BG: Color = Color::Rgb(24, 70, 50);
 const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
 const COMMAND_FG: Color = Color::LightGreen;
+const LINE_NUMBER_FG: Color = Color::DarkGray;
 const FEED_X_OFFSET: u16 = 3;
 const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 
@@ -208,9 +209,10 @@ impl App {
             return None;
         }
 
-        let group = (!input.starts_with('\\')).then(|| self.allocate_group());
+        let line_start = (!input.starts_with('\\')).then(|| self.session.next_line_number());
+        let group = line_start.map(|_| self.allocate_group());
         self.transcript
-            .push(TranscriptEntry::submitted(input.clone(), group));
+            .push(TranscriptEntry::submitted(input.clone(), group, line_start));
         match self.session.submit(&input) {
             SubmitOutcome::Accepted => {}
             SubmitOutcome::Emitted(glsl) => {
@@ -394,7 +396,14 @@ impl App {
 
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
         let text = match entry.kind {
-            TranscriptKind::Lane => self.highlighter.highlight_lane(&entry.text),
+            TranscriptKind::Lane => {
+                let text = self.highlighter.highlight_lane(&entry.text);
+                if let Some(line_start) = entry.line_start {
+                    numbered_lane_text(text, line_start)
+                } else {
+                    text
+                }
+            }
             TranscriptKind::Command => Text::from(Line::from(Span::styled(
                 entry.text.clone(),
                 Style::default().fg(COMMAND_FG).add_modifier(Modifier::BOLD),
@@ -472,6 +481,19 @@ fn error_box_text(source: &str) -> Text<'static> {
     Text::from(lines)
 }
 
+fn numbered_lane_text(mut text: Text<'static>, line_start: usize) -> Text<'static> {
+    let line_count = text.lines.len().max(1);
+    let line_end = line_start.saturating_add(line_count.saturating_sub(1));
+    let width = line_end.to_string().len();
+    for (offset, line) in text.lines.iter_mut().enumerate() {
+        let line_number = line_start.saturating_add(offset);
+        let gutter = format!("{line_number:>width$} | ");
+        line.spans
+            .insert(0, Span::styled(gutter, Style::default().fg(LINE_NUMBER_FG)));
+    }
+    text
+}
+
 #[derive(Default)]
 struct TranscriptLayout {
     entries: Vec<RenderedEntry>,
@@ -535,6 +557,7 @@ struct TranscriptEntry {
     kind: TranscriptKind,
     text: String,
     group: Option<usize>,
+    line_start: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -554,10 +577,11 @@ impl TranscriptEntry {
             kind: TranscriptKind::Command,
             text,
             group,
+            line_start: None,
         }
     }
 
-    fn submitted(text: String, group: Option<usize>) -> Self {
+    fn submitted(text: String, group: Option<usize>, line_start: Option<usize>) -> Self {
         if text.starts_with('\\') {
             Self::command(text, group)
         } else {
@@ -565,6 +589,7 @@ impl TranscriptEntry {
                 kind: TranscriptKind::Lane,
                 text,
                 group,
+                line_start,
             }
         }
     }
@@ -574,6 +599,7 @@ impl TranscriptEntry {
             kind: TranscriptKind::Glsl,
             text,
             group,
+            line_start: None,
         }
     }
 
@@ -582,6 +608,7 @@ impl TranscriptEntry {
             kind: TranscriptKind::Error,
             text,
             group,
+            line_start: None,
         }
     }
 
@@ -590,6 +617,7 @@ impl TranscriptEntry {
             kind: TranscriptKind::System,
             text: text.into(),
             group: None,
+            line_start: None,
         }
     }
 
@@ -598,6 +626,7 @@ impl TranscriptEntry {
             kind: TranscriptKind::Welcome,
             text: text.into(),
             group: None,
+            line_start: None,
         }
     }
 
@@ -606,6 +635,7 @@ impl TranscriptEntry {
             kind: TranscriptKind::Help,
             text: text.into(),
             group: None,
+            line_start: None,
         }
     }
 
@@ -672,6 +702,10 @@ pub(crate) enum SubmitOutcome {
 }
 
 impl ReplSession {
+    fn next_line_number(&self) -> usize {
+        self.source.lines().count().saturating_add(1)
+    }
+
     pub(crate) fn submit(&mut self, input: &str) -> SubmitOutcome {
         let line = input.trim_end_matches(['\r', '\n']);
         if line.is_empty() {
@@ -1013,10 +1047,25 @@ mod tests {
     }
 
     #[test]
+    fn session_tracks_next_source_line_number() {
+        let mut session = ReplSession::default();
+        assert_eq!(session.next_line_number(), 1);
+
+        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
+        assert_eq!(session.next_line_number(), 2);
+
+        assert!(matches!(
+            session.submit("const Object broken = Missing("),
+            SubmitOutcome::Error(_)
+        ));
+        assert_eq!(session.next_line_number(), 2);
+    }
+
+    #[test]
     fn bottom_to_top_layout_places_first_rendered_entry_at_bottom() {
         let entries = vec![
             TranscriptEntry::system("old"),
-            TranscriptEntry::submitted("R radius = 1".to_string(), Some(0)),
+            TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1)),
             TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0)),
         ];
         let mut layout = TranscriptLayout::default();
@@ -1065,5 +1114,19 @@ mod tests {
         assert_eq!(text.lines[1].spans[0].content.as_ref(), "line 1: bad");
         assert_eq!(text.lines[2].spans[0].content.as_ref(), "line 2: worse");
         assert!(text.lines[3].spans.is_empty());
+    }
+
+    #[test]
+    fn numbered_lane_text_prefixes_each_source_line() {
+        let text = Text::from("R radius = 1\nconst R diameter = 2");
+        let text = numbered_lane_text(text, 9);
+
+        assert_eq!(text.lines[0].spans[0].content.as_ref(), " 9 | ");
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), "10 | ");
+        assert_eq!(text.lines[0].spans[1].content.as_ref(), "R radius = 1");
+        assert_eq!(
+            text.lines[1].spans[1].content.as_ref(),
+            "const R diameter = 2"
+        );
     }
 }
