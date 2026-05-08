@@ -28,6 +28,7 @@ const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
 const SELECTED_OUTPUT_BG: Color = Color::Rgb(24, 70, 50);
 const SELECTED_ERROR_BG: Color = Color::Rgb(70, 30, 30);
 const COMPLETION_FG: Color = Color::LightCyan;
+const COMPLETION_HINT_FG: Color = Color::DarkGray;
 const COMMAND_FG: Color = Color::LightGreen;
 const INPUT_PLACEHOLDER_FG: Color = Color::DarkGray;
 const LINE_NUMBER_FG: Color = Color::DarkGray;
@@ -546,12 +547,14 @@ impl App {
             return current_input_text(Text::from(lines), self.current_input_gutter_width());
         }
 
+        let completion_hint = self.completion_hint_suffix();
         let source = if visible.len() <= 1 {
             self.input.clone()
         } else {
             visible.join("\n")
         };
         let mut text = self.highlighter.highlight_lane(&source);
+        append_completion_hint(&mut text, completion_hint);
         if visible.len() <= 1 {
             text.lines.insert(0, Line::raw(""));
             text.lines.push(self.input_status_line());
@@ -582,6 +585,28 @@ impl App {
             ));
         }
         Line::raw("")
+    }
+
+    fn completion_hint_suffix(&self) -> Option<String> {
+        let (_, prefix) = completion_token(&self.input)?;
+        if prefix.is_empty() {
+            return None;
+        }
+        self.selected_completion_label(&prefix)
+            .and_then(|label| label.strip_prefix(&prefix).map(str::to_string))
+            .filter(|suffix| !suffix.is_empty())
+    }
+
+    fn selected_completion_label(&self, prefix: &str) -> Option<String> {
+        if let Some(item) = self.completion_matches.get(self.completion_index) {
+            if item.label.starts_with(prefix) {
+                return Some(item.label.clone());
+            }
+        }
+        lane::lane_completion_items()
+            .into_iter()
+            .find(|item| item.label.starts_with(prefix))
+            .map(|item| item.label)
     }
 
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
@@ -722,6 +747,16 @@ fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
         line.spans.insert(0, Span::raw(" "));
     }
     text
+}
+
+fn append_completion_hint(text: &mut Text<'static>, hint: Option<String>) {
+    let Some(hint) = hint else {
+        return;
+    };
+    if let Some(line) = text.lines.last_mut() {
+        line.spans
+            .push(Span::styled(hint, Style::default().fg(COMPLETION_HINT_FG)));
+    }
 }
 
 fn current_input_text(mut text: Text<'static>, gutter_width: u16) -> Text<'static> {
@@ -1601,6 +1636,46 @@ mod tests {
             .completion_matches
             .iter()
             .any(|item| item.label == "Ball3D"));
+    }
+
+    #[test]
+    fn input_shows_gray_completion_hint_without_inserting_it() {
+        let mut app = App::new();
+        app.input = "const Object output = Bal".to_string();
+
+        let text = app.input_text();
+        let hint = text.lines[1]
+            .spans
+            .last()
+            .expect("expected completion hint");
+
+        assert_eq!(app.input, "const Object output = Bal");
+        assert_eq!(hint.content.as_ref(), "l2D");
+        assert_eq!(hint.style.fg, Some(COMPLETION_HINT_FG));
+    }
+
+    #[test]
+    fn completion_hint_uses_selected_tab_completion_candidate() {
+        let mut app = App::new();
+        app.input = "const Object output = Bal".to_string();
+        app.completion_matches = lane::lane_completion_items()
+            .into_iter()
+            .filter(|item| matches!(item.label.as_str(), "Ball2D" | "Ball3D"))
+            .collect();
+        app.completion_index = app
+            .completion_matches
+            .iter()
+            .position(|item| item.label == "Ball3D")
+            .expect("expected Ball3D completion");
+
+        let text = app.input_text();
+        let hint = text.lines[1]
+            .spans
+            .last()
+            .expect("expected completion hint");
+
+        assert_eq!(hint.content.as_ref(), "l3D");
+        assert_eq!(hint.style.fg, Some(COMPLETION_HINT_FG));
     }
 
     #[test]
