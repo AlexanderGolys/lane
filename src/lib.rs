@@ -298,6 +298,7 @@ fn compile_preview_fragment(
     version: &str,
     target: PreviewShaderTarget,
 ) -> Result<String, Error> {
+    validate_preview_requirements(source)?;
     let source = prepare_preview_source(source);
     let registry = Registry::default();
     let program = ModuleLoader::new(base_dir).load_main(&source)?;
@@ -321,6 +322,33 @@ fn compile_preview_fragment(
         uniforms,
         body
     ))
+}
+
+fn validate_preview_requirements(source: &str) -> Result<(), Error> {
+    if has_const_main(source) {
+        return Ok(());
+    }
+    let mut missing = Vec::new();
+    if !has_scene_object_for_preview(source) {
+        missing.push("`const Object scene = ...` (or at least one `const Object ...` declaration so preview can alias it to `scene`)".to_string());
+    }
+    if !has_scene_material_function(source) {
+        missing.push(
+            "`const Hom(R3, Material) scene_material = ...` (or `const Func(R3, Material) scene_material = ...`)".to_string(),
+        );
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let mut details = String::from(
+        "preview generation requirements were not met. Add an explicit `main`, or define all of:\n",
+    );
+    for item in missing {
+        details.push_str("- ");
+        details.push_str(&item);
+        details.push('\n');
+    }
+    Err(Error::new(details.trim_end().to_string()))
 }
 
 fn prepare_preview_source(source: &str) -> String {
@@ -417,6 +445,10 @@ fn has_const_object(source: &str, object_name: &str) -> bool {
     })
 }
 
+fn has_scene_object_for_preview(source: &str) -> bool {
+    has_const_object(source, "scene") || last_const_object_name(source).is_some()
+}
+
 fn last_const_object_name(source: &str) -> Option<String> {
     source
         .lines()
@@ -446,6 +478,22 @@ fn has_const_main(source: &str) -> bool {
                 || line.starts_with("const Hom(*,*) main")
                 || line.starts_with("const Func(*, *) main")
                 || line.starts_with("const Func(*,*) main")
+        })
+}
+
+fn has_scene_material_function(source: &str) -> bool {
+    source
+        .lines()
+        .map(|line| {
+            line.split_once("//")
+                .map_or(line, |(before, _)| before)
+                .trim()
+        })
+        .any(|line| {
+            line.starts_with("const Hom(R3, Material) scene_material")
+                || line.starts_with("const Hom(R3,Material) scene_material")
+                || line.starts_with("const Func(R3, Material) scene_material")
+                || line.starts_with("const Func(R3,Material) scene_material")
         })
 }
 
@@ -531,6 +579,7 @@ impl ModuleLoader {
             return Err(Error::new("#module is only valid in imported module files"));
         }
         let mut merged = self.expand_program(parsed, false, "main", &mut stack)?;
+        expand_generic_name_templates(&mut merged)?;
         reject_duplicate_product_types(&merged)?;
         merged.imports.clear();
         Ok(merged)
@@ -684,6 +733,701 @@ fn reject_duplicate_product_types(program: &Program) -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum GenericNamePart {
+    Literal(String),
+    Placeholder(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GenericNameUse {
+    name: String,
+    arg_types: Option<Vec<Type>>,
+}
+
+impl GenericNameUse {
+    fn named(name: String) -> Self {
+        Self {
+            name,
+            arg_types: None,
+        }
+    }
+
+    fn call(name: String, arg_types: Vec<Type>) -> Self {
+        Self {
+            name,
+            arg_types: Some(arg_types),
+        }
+    }
+}
+
+fn expand_generic_name_templates(program: &mut Program) -> Result<(), Error> {
+    let uses = generic_name_uses(program);
+    expand_func_name_templates(&uses, &mut program.funcs)?;
+    expand_value_binding_name_templates(&uses, &mut program.value_bindings)?;
+    expand_binding_name_templates(&uses, &mut program.bindings)?;
+    expand_inferred_binding_name_templates(&uses, &mut program.inferred_bindings)?;
+    Ok(())
+}
+
+fn expand_func_name_templates(
+    uses: &[GenericNameUse],
+    decls: &mut Vec<FuncDecl>,
+) -> Result<(), Error> {
+    let mut expanded = Vec::new();
+    for decl in decls.iter() {
+        let Some(pattern) = parse_generic_name_pattern(&decl.name)? else {
+            expanded.push(decl.clone());
+            continue;
+        };
+        for use_site in uses {
+            let Some(mut captures) = match_generic_name_pattern(&pattern, &use_site.name) else {
+                continue;
+            };
+            if let Some(arg_types) = &use_site.arg_types {
+                capture_call_type_generics(&decl.ty, arg_types, &mut captures);
+            }
+            if type_has_uncaptured_template_vars(&decl.ty, &captures) {
+                continue;
+            }
+            let mut concrete = decl.clone();
+            concrete.name = use_site.name.clone();
+            instantiate_type_template(&mut concrete.ty, &captures)?;
+            instantiate_func_body_template(&mut concrete.body, &captures);
+            expanded.push(concrete);
+        }
+    }
+    *decls = expanded;
+    Ok(())
+}
+
+fn expand_value_binding_name_templates(
+    uses: &[GenericNameUse],
+    decls: &mut Vec<ValueBindingDecl>,
+) -> Result<(), Error> {
+    let mut expanded = Vec::new();
+    for decl in decls.iter() {
+        let Some(pattern) = parse_generic_name_pattern(&decl.name)? else {
+            expanded.push(decl.clone());
+            continue;
+        };
+        for use_site in uses {
+            let Some(captures) = match_generic_name_pattern(&pattern, &use_site.name) else {
+                continue;
+            };
+            if type_has_uncaptured_template_vars(&decl.ty, &captures) {
+                continue;
+            }
+            let mut concrete = decl.clone();
+            concrete.name = use_site.name.clone();
+            instantiate_type_template(&mut concrete.ty, &captures)?;
+            instantiate_expr_template(&mut concrete.expr, &captures);
+            expanded.push(concrete);
+        }
+    }
+    *decls = expanded;
+    Ok(())
+}
+
+fn expand_binding_name_templates(
+    uses: &[GenericNameUse],
+    decls: &mut Vec<BindingDecl>,
+) -> Result<(), Error> {
+    let mut expanded = Vec::new();
+    for decl in decls.iter() {
+        let Some(pattern) = parse_generic_name_pattern(&decl.name)? else {
+            expanded.push(decl.clone());
+            continue;
+        };
+        for use_site in uses {
+            let Some(captures) = match_generic_name_pattern(&pattern, &use_site.name) else {
+                continue;
+            };
+            if type_has_uncaptured_template_vars(&decl.ty, &captures) {
+                continue;
+            }
+            let mut concrete = decl.clone();
+            concrete.name = use_site.name.clone();
+            instantiate_type_template(&mut concrete.ty, &captures)?;
+            instantiate_expr_template(&mut concrete.expr, &captures);
+            expanded.push(concrete);
+        }
+    }
+    *decls = expanded;
+    Ok(())
+}
+
+fn expand_inferred_binding_name_templates(
+    uses: &[GenericNameUse],
+    decls: &mut Vec<InferredBindingDecl>,
+) -> Result<(), Error> {
+    let mut expanded = Vec::new();
+    for decl in decls.iter() {
+        let Some(pattern) = parse_generic_name_pattern(&decl.name)? else {
+            expanded.push(decl.clone());
+            continue;
+        };
+        for use_site in uses {
+            let Some(captures) = match_generic_name_pattern(&pattern, &use_site.name) else {
+                continue;
+            };
+            let mut concrete = decl.clone();
+            concrete.name = use_site.name.clone();
+            instantiate_expr_template(&mut concrete.expr, &captures);
+            expanded.push(concrete);
+        }
+    }
+    *decls = expanded;
+    Ok(())
+}
+
+fn parse_generic_name_pattern(name: &str) -> Result<Option<Vec<GenericNamePart>>, Error> {
+    if !name.contains('{') && !name.contains('}') {
+        return Ok(None);
+    }
+    let mut parts = Vec::new();
+    let mut index = 0;
+    while let Some(relative_start) = name[index..].find('{') {
+        let start = index + relative_start;
+        if start > index {
+            parts.push(GenericNamePart::Literal(name[index..start].to_string()));
+        }
+        let inner_start = start + 1;
+        let Some(relative_end) = name[inner_start..].find('}') else {
+            return Err(Error::new(format!(
+                "unterminated generic name placeholder in '{name}'"
+            )));
+        };
+        let end = inner_start + relative_end;
+        let placeholder = &name[inner_start..end];
+        if parse_generic_name(placeholder).is_none() {
+            return Err(Error::new(format!(
+                "invalid generic name placeholder '{{{placeholder}}}' in '{name}'"
+            )));
+        }
+        parts.push(GenericNamePart::Placeholder(placeholder.to_string()));
+        index = end + 1;
+    }
+    if name[index..].contains('}') {
+        return Err(Error::new(format!(
+            "unmatched generic name placeholder close in '{name}'"
+        )));
+    }
+    if index < name.len() {
+        parts.push(GenericNamePart::Literal(name[index..].to_string()));
+    }
+    Ok(Some(parts))
+}
+
+fn match_generic_name_pattern(
+    pattern: &[GenericNamePart],
+    name: &str,
+) -> Option<HashMap<String, String>> {
+    let mut captures = HashMap::new();
+    let mut index = 0;
+    for (part_index, part) in pattern.iter().enumerate() {
+        match part {
+            GenericNamePart::Literal(literal) => {
+                if !name[index..].starts_with(literal) {
+                    return None;
+                }
+                index += literal.len();
+            }
+            GenericNamePart::Placeholder(placeholder) => {
+                let next_literal = pattern[part_index + 1..].iter().find_map(|part| {
+                    if let GenericNamePart::Literal(literal) = part {
+                        (!literal.is_empty()).then_some(literal.as_str())
+                    } else {
+                        None
+                    }
+                });
+                let end = if let Some(next_literal) = next_literal {
+                    index + name[index..].find(next_literal)?
+                } else {
+                    name.len()
+                };
+                if end == index {
+                    return None;
+                }
+                let capture = &name[index..end];
+                if let Some(previous) = captures.get(placeholder) {
+                    if previous != capture {
+                        return None;
+                    }
+                } else {
+                    captures.insert(placeholder.clone(), capture.to_string());
+                }
+                index = end;
+            }
+        }
+    }
+    (index == name.len()).then_some(captures)
+}
+
+fn instantiate_type_template(
+    ty: &mut Type,
+    captures: &HashMap<String, String>,
+) -> Result<(), Error> {
+    match ty {
+        Type::Custom { name, .. } => *name = instantiate_name_template(name, captures),
+        Type::Generic(name) => {
+            if let Some(capture) = captures.get(name) {
+                if let Some(resolved) = parse_builtin_type_name(capture) {
+                    *ty = resolved;
+                }
+            }
+        }
+        Type::VecGeneric(dim) => {
+            let resolved = instantiate_generic_dim(dim, captures);
+            *ty = vector_type_for_generic_dim(resolved);
+        }
+        Type::MatGeneric(rows, columns) => {
+            let rows = instantiate_generic_dim(rows, captures);
+            let columns = instantiate_generic_dim(columns, captures);
+            *ty = matrix_type_for_generic_dims(rows, columns);
+        }
+        Type::Array(element) => instantiate_type_template(element, captures)?,
+        Type::Product(parts) => {
+            for part in parts {
+                instantiate_type_template(part, captures)?;
+            }
+        }
+        Type::Func(input, output) => {
+            instantiate_type_template(input, captures)?;
+            instantiate_type_template(output, captures)?;
+        }
+        Type::Unit
+        | Type::Bool
+        | Type::Float
+        | Type::Int
+        | Type::Complex
+        | Type::Quat
+        | Type::Isom2
+        | Type::Isom3
+        | Type::Vec2
+        | Type::Vec3
+        | Type::Vec4
+        | Type::Mat(_, _)
+        | Type::Object
+        | Type::Object2D => {}
+    }
+    Ok(())
+}
+
+fn instantiate_generic_dim(dim: &GenericDim, captures: &HashMap<String, String>) -> GenericDim {
+    match dim {
+        GenericDim::Known(_) => dim.clone(),
+        GenericDim::Var(name) => captures
+            .get(name)
+            .and_then(|capture| parse_generic_dim(capture))
+            .unwrap_or_else(|| dim.clone()),
+    }
+}
+
+fn capture_call_type_generics(
+    func_ty: &Type,
+    arg_types: &[Type],
+    captures: &mut HashMap<String, String>,
+) {
+    let (inputs, _) = flatten_func_type(func_ty);
+    let inputs = inputs
+        .into_iter()
+        .flat_map(|input| match input {
+            Type::Product(parts) => parts.iter().collect::<Vec<_>>(),
+            other => vec![other],
+        })
+        .collect::<Vec<_>>();
+    if inputs.len() != arg_types.len() {
+        return;
+    }
+    for (expected, actual) in inputs.iter().zip(arg_types) {
+        capture_type_generics(expected, actual, captures);
+    }
+}
+
+fn capture_type_generics(expected: &Type, actual: &Type, captures: &mut HashMap<String, String>) {
+    match (expected, actual) {
+        (Type::Generic(name), actual) => {
+            insert_generic_capture(name, format_type(actual), captures)
+        }
+        (Type::VecGeneric(dim), actual) => {
+            if let Some(dimension) = concrete_vector_dimension(actual) {
+                capture_generic_dim(dim, dimension, captures);
+            }
+        }
+        (Type::MatGeneric(rows, columns), Type::Mat(actual_rows, actual_columns)) => {
+            capture_generic_dim(rows, *actual_rows, captures);
+            capture_generic_dim(columns, *actual_columns, captures);
+        }
+        (Type::Product(expected), Type::Product(actual)) if expected.len() == actual.len() => {
+            for (expected, actual) in expected.iter().zip(actual) {
+                capture_type_generics(expected, actual, captures);
+            }
+        }
+        (Type::Func(expected_input, expected_output), Type::Func(actual_input, actual_output)) => {
+            capture_type_generics(expected_input, actual_input, captures);
+            capture_type_generics(expected_output, actual_output, captures);
+        }
+        (Type::Array(expected), Type::Array(actual)) => {
+            capture_type_generics(expected, actual, captures);
+        }
+        _ => {}
+    }
+}
+
+fn capture_generic_dim(
+    expected: &GenericDim,
+    actual: usize,
+    captures: &mut HashMap<String, String>,
+) {
+    if let GenericDim::Var(name) = expected {
+        insert_generic_capture(name, actual.to_string(), captures);
+    }
+}
+
+fn insert_generic_capture(name: &str, value: String, captures: &mut HashMap<String, String>) {
+    captures.entry(name.to_string()).or_insert(value);
+}
+
+fn concrete_vector_dimension(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Vec2 | Type::Complex => Some(2),
+        Type::Vec3 => Some(3),
+        Type::Vec4 | Type::Quat => Some(4),
+        Type::VecGeneric(GenericDim::Known(dimension)) => Some(*dimension),
+        _ => None,
+    }
+}
+
+fn type_has_uncaptured_template_vars(ty: &Type, captures: &HashMap<String, String>) -> bool {
+    match ty {
+        Type::Generic(name) => !captures.contains_key(name),
+        Type::VecGeneric(dim) => dim_has_uncaptured_template_var(dim, captures),
+        Type::MatGeneric(rows, columns) => {
+            dim_has_uncaptured_template_var(rows, captures)
+                || dim_has_uncaptured_template_var(columns, captures)
+        }
+        Type::Array(element) => type_has_uncaptured_template_vars(element, captures),
+        Type::Product(parts) => parts
+            .iter()
+            .any(|part| type_has_uncaptured_template_vars(part, captures)),
+        Type::Func(input, output) => {
+            type_has_uncaptured_template_vars(input, captures)
+                || type_has_uncaptured_template_vars(output, captures)
+        }
+        Type::Unit
+        | Type::Bool
+        | Type::Float
+        | Type::Int
+        | Type::Complex
+        | Type::Quat
+        | Type::Isom2
+        | Type::Isom3
+        | Type::Custom { .. }
+        | Type::Vec2
+        | Type::Vec3
+        | Type::Vec4
+        | Type::Mat(_, _)
+        | Type::Object
+        | Type::Object2D => false,
+    }
+}
+
+fn dim_has_uncaptured_template_var(dim: &GenericDim, captures: &HashMap<String, String>) -> bool {
+    matches!(dim, GenericDim::Var(name) if !captures.contains_key(name))
+}
+
+fn instantiate_func_body_template(body: &mut FuncBody, captures: &HashMap<String, String>) {
+    match body {
+        FuncBody::Expr(expr) => instantiate_expr_template(expr, captures),
+        FuncBody::RawGlsl(body) => *body = instantiate_name_template(body, captures),
+        FuncBody::RawGlslClosure { params, body } => {
+            for param in params {
+                *param = instantiate_name_template(param, captures);
+            }
+            *body = instantiate_name_template(body, captures);
+        }
+    }
+}
+
+fn instantiate_expr_template(expr: &mut Expr, captures: &HashMap<String, String>) {
+    match expr {
+        Expr::Bool(_) | Expr::Number(_) => {}
+        Expr::RawString(body) => *body = instantiate_name_template(body, captures),
+        Expr::Closure { params, body } => {
+            for param in params {
+                *param = instantiate_name_template(param, captures);
+            }
+            instantiate_expr_template(body, captures);
+        }
+        Expr::Ident(name) => *name = instantiate_name_template(name, captures),
+        Expr::Operator(_) => {}
+        Expr::Tuple(items) | Expr::Array(items) => {
+            for item in items {
+                instantiate_expr_template(item, captures);
+            }
+        }
+        Expr::Call { callee, args } => {
+            instantiate_expr_template(callee, captures);
+            for arg in args {
+                instantiate_expr_template(arg, captures);
+            }
+        }
+        Expr::FieldAccess { object, field } => {
+            instantiate_expr_template(object, captures);
+            *field = instantiate_name_template(field, captures);
+        }
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            instantiate_expr_template(condition, captures);
+            instantiate_expr_template(then_branch, captures);
+            if let Some(else_branch) = else_branch {
+                instantiate_expr_template(else_branch, captures);
+            }
+        }
+        Expr::Index { array, index } => {
+            instantiate_expr_template(array, captures);
+            instantiate_expr_template(index, captures);
+        }
+        Expr::Binary { left, right, .. } => {
+            instantiate_expr_template(left, captures);
+            instantiate_expr_template(right, captures);
+        }
+        Expr::Constructor { name, args } => {
+            *name = instantiate_name_template(name, captures);
+            match args {
+                ConstructorArgs::Named(args) => {
+                    for (name, expr) in args {
+                        *name = instantiate_name_template(name, captures);
+                        instantiate_expr_template(expr, captures);
+                    }
+                }
+                ConstructorArgs::Positional(args) => {
+                    for expr in args {
+                        instantiate_expr_template(expr, captures);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn instantiate_name_template(name: &str, captures: &HashMap<String, String>) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut index = 0;
+    while let Some(relative_start) = name[index..].find('{') {
+        let start = index + relative_start;
+        out.push_str(&name[index..start]);
+        let inner_start = start + 1;
+        let Some(relative_end) = name[inner_start..].find('}') else {
+            out.push_str(&name[start..]);
+            return out;
+        };
+        let end = inner_start + relative_end;
+        let placeholder = &name[inner_start..end];
+        if let Some(capture) = captures.get(placeholder) {
+            out.push_str(capture);
+        } else {
+            out.push_str(&name[start..=end]);
+        }
+        index = end + 1;
+    }
+    out.push_str(&name[index..]);
+    out
+}
+
+fn generic_name_uses(program: &Program) -> Vec<GenericNameUse> {
+    let declared_types = declared_value_types(program);
+    let mut uses = Vec::new();
+    let mut seen = BTreeSet::new();
+    for decl in &program.funcs {
+        collect_func_body_name_uses(&decl.body, &declared_types, &mut uses, &mut seen);
+    }
+    for decl in &program.value_bindings {
+        collect_expr_name_uses(&decl.expr, &declared_types, &mut uses, &mut seen);
+    }
+    for decl in &program.bindings {
+        collect_expr_name_uses(&decl.expr, &declared_types, &mut uses, &mut seen);
+    }
+    for decl in &program.inferred_bindings {
+        collect_expr_name_uses(&decl.expr, &declared_types, &mut uses, &mut seen);
+    }
+    if let Some(output) = &program.output {
+        collect_expr_name_uses(&output.expr, &declared_types, &mut uses, &mut seen);
+    }
+    uses
+}
+
+fn declared_value_types(program: &Program) -> HashMap<String, Type> {
+    let mut types = HashMap::new();
+    for input in &program.inputs {
+        types.insert(input.name.clone(), input.ty.clone());
+    }
+    for decl in &program.funcs {
+        types.insert(decl.name.clone(), decl.ty.clone());
+    }
+    for decl in &program.value_bindings {
+        types.insert(decl.name.clone(), decl.ty.clone());
+    }
+    for decl in &program.bindings {
+        types.insert(decl.name.clone(), decl.ty.clone());
+    }
+    types
+}
+
+fn add_generic_name_use(
+    use_site: GenericNameUse,
+    uses: &mut Vec<GenericNameUse>,
+    seen: &mut BTreeSet<String>,
+) {
+    let key = if let Some(arg_types) = &use_site.arg_types {
+        format!(
+            "{}({})",
+            use_site.name,
+            arg_types
+                .iter()
+                .map(format_type)
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    } else {
+        use_site.name.clone()
+    };
+    if seen.insert(key) {
+        uses.push(use_site);
+    }
+}
+
+fn collect_func_body_name_uses(
+    body: &FuncBody,
+    declared_types: &HashMap<String, Type>,
+    uses: &mut Vec<GenericNameUse>,
+    seen: &mut BTreeSet<String>,
+) {
+    match body {
+        FuncBody::Expr(expr) => collect_expr_name_uses(expr, declared_types, uses, seen),
+        FuncBody::RawGlsl(body) | FuncBody::RawGlslClosure { body, .. } => {
+            collect_raw_glsl_placeholder_name_uses(body, uses, seen)
+        }
+    }
+}
+
+fn collect_raw_glsl_placeholder_name_uses(
+    body: &str,
+    uses: &mut Vec<GenericNameUse>,
+    seen: &mut BTreeSet<String>,
+) {
+    let mut index = 0;
+    while let Some(relative_start) = body[index..].find("${") {
+        let start = index + relative_start + 2;
+        let Some(relative_end) = body[start..].find('}') else {
+            return;
+        };
+        let end = start + relative_end;
+        let name = &body[start..end];
+        if let Some((base, _)) = name.split_once('.') {
+            add_generic_name_use(GenericNameUse::named(base.to_string()), uses, seen);
+        } else {
+            add_generic_name_use(GenericNameUse::named(name.to_string()), uses, seen);
+        }
+        index = end + 1;
+    }
+}
+
+fn collect_expr_name_uses(
+    expr: &Expr,
+    declared_types: &HashMap<String, Type>,
+    uses: &mut Vec<GenericNameUse>,
+    seen: &mut BTreeSet<String>,
+) {
+    match expr {
+        Expr::Bool(_) | Expr::Number(_) | Expr::Operator(_) => {}
+        Expr::RawString(body) => collect_raw_glsl_placeholder_name_uses(body, uses, seen),
+        Expr::Closure { body, .. } => collect_expr_name_uses(body, declared_types, uses, seen),
+        Expr::Ident(name) => {
+            add_generic_name_use(GenericNameUse::named(name.clone()), uses, seen);
+        }
+        Expr::Tuple(items) | Expr::Array(items) => {
+            for item in items {
+                collect_expr_name_uses(item, declared_types, uses, seen);
+            }
+        }
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(name) = callee.as_ref() {
+                let arg_types = args
+                    .iter()
+                    .map(|arg| simple_expr_type(arg, declared_types))
+                    .collect::<Option<Vec<_>>>();
+                if let Some(arg_types) = arg_types {
+                    add_generic_name_use(GenericNameUse::call(name.clone(), arg_types), uses, seen);
+                }
+            }
+            collect_expr_name_uses(callee, declared_types, uses, seen);
+            for arg in args {
+                collect_expr_name_uses(arg, declared_types, uses, seen);
+            }
+        }
+        Expr::FieldAccess { object, .. } => {
+            collect_expr_name_uses(object, declared_types, uses, seen)
+        }
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_expr_name_uses(condition, declared_types, uses, seen);
+            collect_expr_name_uses(then_branch, declared_types, uses, seen);
+            if let Some(else_branch) = else_branch {
+                collect_expr_name_uses(else_branch, declared_types, uses, seen);
+            }
+        }
+        Expr::Index { array, index } => {
+            collect_expr_name_uses(array, declared_types, uses, seen);
+            collect_expr_name_uses(index, declared_types, uses, seen);
+        }
+        Expr::Binary { left, right, .. } => {
+            collect_expr_name_uses(left, declared_types, uses, seen);
+            collect_expr_name_uses(right, declared_types, uses, seen);
+        }
+        Expr::Constructor { name, args } => match args {
+            ConstructorArgs::Named(args) => {
+                add_generic_name_use(GenericNameUse::named(name.clone()), uses, seen);
+                for (_, expr) in args {
+                    collect_expr_name_uses(expr, declared_types, uses, seen);
+                }
+            }
+            ConstructorArgs::Positional(args) => {
+                let arg_types = args
+                    .iter()
+                    .map(|arg| simple_expr_type(arg, declared_types))
+                    .collect::<Option<Vec<_>>>();
+                if let Some(arg_types) = arg_types {
+                    add_generic_name_use(GenericNameUse::call(name.clone(), arg_types), uses, seen);
+                }
+                add_generic_name_use(GenericNameUse::named(name.clone()), uses, seen);
+                for expr in args {
+                    collect_expr_name_uses(expr, declared_types, uses, seen);
+                }
+            }
+        },
+    }
+}
+
+fn simple_expr_type(expr: &Expr, declared_types: &HashMap<String, Type>) -> Option<Type> {
+    match expr {
+        Expr::Ident(name) => declared_types.get(name).cloned(),
+        Expr::Tuple(items) => items
+            .iter()
+            .map(|item| simple_expr_type(item, declared_types))
+            .collect::<Option<Vec<_>>>()
+            .map(Type::Product),
+        _ => None,
+    }
 }
 
 fn mangle_private_module_names(program: &mut Program, module_key: &str) {

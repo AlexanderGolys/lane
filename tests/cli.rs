@@ -645,6 +645,54 @@ fn writes_vulkan_preview_spirv_shaders() {
 }
 
 #[test]
+fn preview_generation_reports_missing_scene_material_requirement() {
+    let temp_dir = unique_temp_dir("lane-cli-preview-missing-scene-material");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let frag_path = temp_dir.join("preview.frag");
+    std::fs::write(&source_path, "const Object scene = Ball3D(r=1)\n").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg(&source_path)
+        .arg(format!("--frag={}", frag_path.display()))
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("preview generation requirements were not met"));
+    assert!(stderr.contains("scene_material"));
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
+fn preview_generation_reports_missing_scene_requirement() {
+    let temp_dir = unique_temp_dir("lane-cli-preview-missing-scene");
+    std::fs::create_dir(&temp_dir).unwrap();
+    let source_path = temp_dir.join("scene.lane");
+    let frag_path = temp_dir.join("preview.frag");
+    std::fs::write(
+        &source_path,
+        "const Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lane"))
+        .arg(&source_path)
+        .arg(format!("--frag={}", frag_path.display()))
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("preview generation requirements were not met"));
+    assert!(stderr.contains("const Object scene"));
+
+    std::fs::remove_dir_all(temp_dir).unwrap();
+}
+
+#[test]
 fn show_prints_compiled_output_while_writing_target_path() {
     let temp_dir = unique_temp_dir("lane-cli-show-target");
     std::fs::create_dir(&temp_dir).unwrap();

@@ -97,6 +97,13 @@ Usage:
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.
 - `lane SOURCE --frag=PATH --vert=PATH` writes complete preview fragment and
   vertex shaders. `--target=vulkan` emits Vulkan GLSL.
+- Auto-generated preview shading (when `main` is not explicitly defined) needs
+  a scene object and material lookup: define `const Object scene = ...` (or at
+  least one `const Object ...` declaration so Lane can alias it to `scene`) and
+  define `const Hom(R3, Material) scene_material = ...` (or `Func(...)` alias).
+  When these requirements are missing, preview generation reports a clear
+  requirement error instead of failing with a lower-level unknown-function
+  message.
 - `lane SOURCE --frag-spv=PATH --vert-spv=PATH` writes Vulkan SPIR-V shaders
   through `glslc`; intermediate files are placed under `target/lane-preview`.
 - `lane preview SOURCE` opens the native Vulkan previewer. It uses `glslc`,
