@@ -1088,7 +1088,30 @@ fn raw_glsl_placeholders_reject_non_nameable_function_operators() {
 }
 
 #[test]
-fn module_can_provide_its_own_product_type() {
+fn rejects_provided_value_declarations_in_modules() {
+    let dir = unique_temp_dir("module_provided_value");
+    fs::create_dir_all(dir.join("modules")).unwrap();
+    fs::write(
+        dir.join("modules").join("inputs.lane"),
+        "#module\nprovided R time\n",
+    )
+    .unwrap();
+    let source_path = dir.join("scene.lane");
+    fs::write(
+        &source_path,
+        "#import inputs\nconst Object output = Ball3D(r=1)\n",
+    )
+    .unwrap();
+    let error = compile_program_from_path(&source_path).unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("line 2: provided declarations are not allowed in modules"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn rejects_provided_product_type_declarations_in_modules() {
     let dir = unique_temp_dir("module_provided_product");
     fs::create_dir_all(dir.join("modules")).unwrap();
     fs::write(
@@ -1099,14 +1122,14 @@ fn module_can_provide_its_own_product_type() {
     let source_path = dir.join("scene.lane");
     fs::write(
         &source_path,
-        "#import materials\nprovided Material material\nconst Hom(R, Material) copiedMaterial = material\nconst Object output = Ball3D(r=1)\n",
+        "#import materials\nconst Object output = Ball3D(r=1)\n",
     )
     .unwrap();
-    let glsl = compile_program_from_path(&source_path).unwrap();
+    let error = compile_program_from_path(&source_path).unwrap_err();
 
-    assert!(!glsl.contains("struct Material"));
-    assert!(glsl.contains("Material copiedMaterial(float _t)"));
-    assert!(glsl.contains("return material;"));
+    assert!(error
+        .to_string()
+        .contains("line 2: provided declarations are not allowed in modules"));
     fs::remove_dir_all(dir).unwrap();
 }
 

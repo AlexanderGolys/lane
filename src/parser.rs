@@ -92,6 +92,12 @@ impl<'a> Parser<'a> {
                 .map_err(|err| err.with_line(line_number))?
             {
                 Decl::ProvidedType(provided_type) => {
+                    if is_module {
+                        return Err(
+                            Error::new("provided declarations are not allowed in modules")
+                                .with_line(line_number),
+                        );
+                    }
                     ensure_public_decl_name(&provided_type.name, "provided type", line_number)?;
                     if is_known_type_name(&provided_type.name)
                         || is_known_category_name(&provided_type.name)
@@ -114,6 +120,12 @@ impl<'a> Parser<'a> {
                     }
                 }
                 Decl::ProductType(product_type) => {
+                    if is_module && product_type.provided {
+                        return Err(
+                            Error::new("provided declarations are not allowed in modules")
+                                .with_line(line_number),
+                        );
+                    }
                     ensure_public_decl_name(&product_type.name, "product type", line_number)?;
                     if is_known_type_name(&product_type.name)
                         || is_known_category_name(&product_type.name)
@@ -136,6 +148,12 @@ impl<'a> Parser<'a> {
                     product_types.push(product_type);
                 }
                 Decl::Input(input) => {
+                    if is_module {
+                        return Err(
+                            Error::new("provided declarations are not allowed in modules")
+                                .with_line(line_number),
+                        );
+                    }
                     ensure_public_decl_name(&input.name, "provided value", line_number)?;
                     inputs.push(input)
                 }
