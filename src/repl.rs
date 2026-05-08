@@ -305,7 +305,8 @@ impl App {
                 .get(self.completion_index)
                 .is_none_or(|item| item.label != prefix)
         {
-            self.completion_matches = lane::lane_completion_items()
+            self.completion_matches = self
+                .active_completion_items()
                 .into_iter()
                 .filter(|item| item.label.starts_with(&prefix))
                 .collect();
@@ -536,6 +537,7 @@ impl App {
         visible.reverse();
 
         if self.input.starts_with('/') {
+            let completion_hint = self.completion_hint_suffix();
             let mut lines = visible
                 .iter()
                 .map(|line| {
@@ -545,6 +547,12 @@ impl App {
                     ))
                 })
                 .collect::<Vec<_>>();
+            if let Some(hint) = completion_hint {
+                if let Some(line) = lines.last_mut() {
+                    line.spans
+                        .push(Span::styled(hint, Style::default().fg(COMPLETION_HINT_FG)));
+                }
+            }
             if lines.len() <= 1 {
                 lines.insert(0, Line::raw(""));
                 lines.push(self.input_status_line());
@@ -612,10 +620,17 @@ impl App {
                 return Some(item.label.clone());
             }
         }
-        lane::lane_completion_items()
+        self.active_completion_items()
             .into_iter()
             .find(|item| item.label.starts_with(prefix))
             .map(|item| item.label)
+    }
+
+    fn active_completion_items(&self) -> Vec<lane::LaneCompletionItem> {
+        if self.input.starts_with('/') {
+            return repl_command_completion_items();
+        }
+        lane::lane_completion_items()
     }
 
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
@@ -804,7 +819,27 @@ fn completion_token(input: &str) -> Option<(usize, String)> {
 }
 
 fn is_completion_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_' || ch == '#'
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '#' || ch == '/'
+}
+
+fn repl_command_completion_items() -> Vec<lane::LaneCompletionItem> {
+    [
+        ("/help", "Show REPL command help"),
+        ("/info", "Show loaded modules, directives, and provided objects"),
+        ("/show", "Open native preview for current session"),
+        ("/split", "Toggle split transcript mode"),
+        ("/clear", "Clear transcript and keep session"),
+        ("/restart", "Reset session source and GLSL state"),
+        ("/exit", "Exit the interactive shell"),
+    ]
+    .into_iter()
+    .map(|(label, detail)| lane::LaneCompletionItem {
+        label: label.to_string(),
+        kind: lane::LaneCompletionKind::Keyword,
+        detail: Some(detail.to_string()),
+        documentation: None,
+    })
+    .collect()
 }
 
 fn placeholder_input_text(gutter_width: u16) -> Text<'static> {
@@ -1177,7 +1212,7 @@ fn help_text() -> String {
         "Enter submits.",
         "Ctrl-Enter inserts a newline when supported by the terminal.",
         "Up and Down recall submitted input history.",
-        "Tab completes the current word with Lane LSP items.",
+        "Tab completes the current word with Lane items or REPL commands.",
         "Ctrl-F formats the current input.",
         "/info shows loaded modules, used directives, and provided objects.",
         "/show opens a native preview window for the current session.",
@@ -1702,6 +1737,20 @@ mod tests {
     }
 
     #[test]
+    fn tab_completes_repl_commands_when_input_starts_with_slash() {
+        let mut app = App::new();
+        app.input = "/he".to_string();
+
+        app.handle_key(KeyEvent::from(KeyCode::Tab));
+
+        assert_eq!(app.input, "/help");
+        assert!(app
+            .completion_matches
+            .iter()
+            .any(|item| item.label == "/help"));
+    }
+
+    #[test]
     fn input_shows_gray_completion_hint_without_inserting_it() {
         let mut app = App::new();
         app.input = "const Object output = Bal".to_string();
@@ -1738,6 +1787,21 @@ mod tests {
             .expect("expected completion hint");
 
         assert_eq!(hint.content.as_ref(), "l3D");
+        assert_eq!(hint.style.fg, Some(COMPLETION_HINT_FG));
+    }
+
+    #[test]
+    fn slash_input_shows_command_completion_hint() {
+        let mut app = App::new();
+        app.input = "/sp".to_string();
+
+        let text = app.input_text();
+        let hint = text.lines[1]
+            .spans
+            .last()
+            .expect("expected completion hint");
+
+        assert_eq!(hint.content.as_ref(), "lit");
         assert_eq!(hint.style.fg, Some(COMPLETION_HINT_FG));
     }
 

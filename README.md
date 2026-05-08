@@ -88,8 +88,9 @@ Usage:
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
   both parts of that submission. Enter submits the current input, Ctrl-Enter
   inserts a newline when supported by the terminal, Up and Down recall submitted
-  input history, Tab completes the current word using the same language-service
-  catalog as `lane-lsp`, Ctrl-F formats the current input, and Ctrl-C exits.
+  input history, Tab completes the current word using `lane-lsp` language items
+  for Lane source and REPL command items for slash commands, Ctrl-F formats the
+  current input, and Ctrl-C exits.
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
 - `lane --show SOURCE TARGET`, `lane -s SOURCE TARGET`, or
   `lane SOURCE TARGET --show` writes `TARGET` and prints the GLSL.
