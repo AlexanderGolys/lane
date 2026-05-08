@@ -844,7 +844,6 @@ fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) 
         return matches!(
             current,
             TranscriptKind::Command
-                | TranscriptKind::Error
                 | TranscriptKind::Help
                 | TranscriptKind::System
         );
@@ -852,7 +851,7 @@ fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) 
     matches!(
         (previous, current),
         (
-            TranscriptKind::Error | TranscriptKind::Help | TranscriptKind::System,
+            TranscriptKind::Help | TranscriptKind::System,
             TranscriptKind::Command
         )
     )
@@ -2095,6 +2094,20 @@ mod tests {
             (app.render_entry(&command), command.kind),
         ]);
         assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn command_entries_leave_one_blank_row_before_error_boxes() {
+        let command = TranscriptEntry::command("/wat".to_string(), None);
+        let error = TranscriptEntry::error("unknown shell command '/wat'".to_string(), None);
+        let mut app = App::new();
+
+        let items = spaced_transcript_items(vec![
+            (app.render_entry(&error), error.kind),
+            (app.render_entry(&command), command.kind),
+        ]);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[1].height(), 1);
     }
 
     #[test]

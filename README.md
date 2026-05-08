@@ -80,6 +80,7 @@ Usage:
   that stay attached to their command response while leaving one blank row
   before the next submitted code block. REPL commands ignore trailing spaces:
   `/help`, `/help   `, and similar forms behave the same.
+  Command lines and error boxes keep a one-row vertical gap.
   `/help` prints REPL command help,
   `/info` shows loaded modules, used directives, and provided objects, `/show`
   opens a native Vulkan preview window for the current session (preview failures
