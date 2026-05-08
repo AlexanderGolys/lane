@@ -36,8 +36,6 @@ const FEED_ENTRY_MIN_HEIGHT: u16 = 3;
 const FEED_ENTRY_GAP: u16 = 1;
 const INPUT_BOTTOM_GAP: u16 = 1;
 const TEXT_BOX_INNER_LEFT_PADDING: u16 = 1;
-const CURRENT_INPUT_GUTTER: &str = "    ";
-const CURRENT_INPUT_GUTTER_WIDTH: u16 = 4;
 const INPUT_PLACEHOLDER: &str = "Type Lane code...";
 
 const HIGHLIGHT_NAMES: &[&str] = &[
@@ -508,7 +506,7 @@ impl App {
             .map_or(0, |line| line.chars().count() as u16);
         let cursor_column = last_line_width
             .saturating_add(TEXT_BOX_INNER_LEFT_PADDING)
-            .saturating_add(CURRENT_INPUT_GUTTER_WIDTH)
+            .saturating_add(self.current_input_gutter_width())
             .min(area.width.saturating_sub(1));
         let cursor_x = area.x.saturating_add(cursor_column);
         let cursor_y = if self.input.contains('\n') {
@@ -521,7 +519,7 @@ impl App {
 
     fn input_text(&mut self) -> Text<'static> {
         if self.input.is_empty() {
-            return placeholder_input_text();
+            return placeholder_input_text(self.current_input_gutter_width());
         }
 
         let mut visible = self.input.lines().rev().take(3).collect::<Vec<_>>();
@@ -545,7 +543,7 @@ impl App {
                     lines.insert(0, Line::raw(""));
                 }
             }
-            return current_input_text(Text::from(lines));
+            return current_input_text(Text::from(lines), self.current_input_gutter_width());
         }
 
         let source = if visible.len() <= 1 {
@@ -562,7 +560,11 @@ impl App {
                 text.lines.insert(0, Line::raw(""));
             }
         }
-        current_input_text(text)
+        current_input_text(text, self.current_input_gutter_width())
+    }
+
+    fn current_input_gutter_width(&self) -> u16 {
+        line_number_gutter_width(self.session.next_line_number())
     }
 
     fn input_status_line(&self) -> Line<'static> {
@@ -722,9 +724,10 @@ fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
     text
 }
 
-fn current_input_text(mut text: Text<'static>) -> Text<'static> {
+fn current_input_text(mut text: Text<'static>, gutter_width: u16) -> Text<'static> {
+    let gutter = " ".repeat(gutter_width as usize);
     for line in &mut text.lines {
-        line.spans.insert(0, Span::raw(CURRENT_INPUT_GUTTER));
+        line.spans.insert(0, Span::raw(gutter.clone()));
         line.spans.insert(0, Span::raw(" "));
     }
     text
@@ -746,15 +749,18 @@ fn is_completion_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '#'
 }
 
-fn placeholder_input_text() -> Text<'static> {
-    current_input_text(Text::from(vec![
-        Line::raw(""),
-        Line::from(Span::styled(
-            INPUT_PLACEHOLDER,
-            Style::default().fg(INPUT_PLACEHOLDER_FG),
-        )),
-        Line::raw(""),
-    ]))
+fn placeholder_input_text(gutter_width: u16) -> Text<'static> {
+    current_input_text(
+        Text::from(vec![
+            Line::raw(""),
+            Line::from(Span::styled(
+                INPUT_PLACEHOLDER,
+                Style::default().fg(INPUT_PLACEHOLDER_FG),
+            )),
+            Line::raw(""),
+        ]),
+        gutter_width,
+    )
 }
 
 fn numbered_lane_text(mut text: Text<'static>, line_start: usize) -> Text<'static> {
@@ -768,6 +774,10 @@ fn numbered_lane_text(mut text: Text<'static>, line_start: usize) -> Text<'stati
             .insert(0, Span::styled(gutter, Style::default().fg(LINE_NUMBER_FG)));
     }
     text
+}
+
+fn line_number_gutter_width(line_number: usize) -> u16 {
+    line_number.to_string().len().saturating_add(3) as u16
 }
 
 #[derive(Default)]
@@ -1507,10 +1517,7 @@ mod tests {
 
         assert_eq!(text.lines.len(), 3);
         assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(
-            text.lines[1].spans[1].content.as_ref(),
-            CURRENT_INPUT_GUTTER
-        );
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), "    ");
         assert_eq!(text.lines[1].spans[2].content.as_ref(), INPUT_PLACEHOLDER);
         assert_eq!(text.lines[1].spans[2].style.fg, Some(INPUT_PLACEHOLDER_FG));
     }
@@ -1540,11 +1547,46 @@ mod tests {
         let text = app.input_text();
 
         assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), "    ");
         assert_eq!(
-            text.lines[1].spans[1].content.as_ref(),
-            CURRENT_INPUT_GUTTER
+            app.current_input_gutter_width(),
+            line_number_gutter_width(1)
         );
-        assert_eq!(CURRENT_INPUT_GUTTER.chars().count() as u16, 4);
+    }
+
+    #[test]
+    fn current_input_gutter_widens_with_next_source_line_number() {
+        let mut app = App::new();
+        app.session.source = (1..=9)
+            .map(|line| format!("R r{line} = {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        app.input = "R radius = 1".to_string();
+
+        let text = app.input_text();
+        let numbered = numbered_lane_text(Text::from("R radius = 1"), 10);
+
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), "     ");
+        assert_eq!(
+            text.lines[1].spans[1].content.chars().count(),
+            numbered.lines[0].spans[0].content.chars().count()
+        );
+    }
+
+    #[test]
+    fn empty_input_placeholder_uses_next_source_line_gutter_width() {
+        let mut app = App::new();
+        app.session.source = (1..=9)
+            .map(|line| format!("R r{line} = {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let text = app.input_text();
+
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), "     ");
+        assert_eq!(text.lines[1].spans[2].content.as_ref(), INPUT_PLACEHOLDER);
     }
 
     #[test]

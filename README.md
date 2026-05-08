@@ -65,7 +65,8 @@ Usage:
   and output code. The current input block leaves one blank terminal row below
   it, and empty input shows gray placeholder text. Submitted Lane entries
   include source line numbers in their transcript gutter, while the current
-  input remains unnumbered but aligned to the same source column.
+  input remains unnumbered and widens its blank gutter to stay aligned to the
+  same source column as line numbers grow.
   Consecutive
   submitted Lane lines share one feed box until a REPL message or generated GLSL
   appears between them, and separate boxes have a blank row between them. Errors
