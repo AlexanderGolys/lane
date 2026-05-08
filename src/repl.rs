@@ -1245,7 +1245,7 @@ impl TranscriptEntry {
 
     fn base_style(&self) -> Style {
         match self.kind {
-            TranscriptKind::Lane if self.errored => Style::default().bg(USER_BG),
+            TranscriptKind::Lane if self.errored => Style::default().fg(ERROR_FG).bg(ERROR_BG),
             TranscriptKind::Lane => Style::default().bg(USER_BG),
             TranscriptKind::Command => Style::default().fg(COMMAND_FG),
             TranscriptKind::Glsl => Style::default().bg(OUTPUT_BG),
@@ -2243,7 +2243,7 @@ mod tests {
 
         assert!(app.transcript[0].errored);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert_eq!(app.transcript[0].base_style().bg, Some(USER_BG));
+        assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
         assert!(app.transcript[0].error.is_some());
         assert_eq!(app.transcript.len(), 1);
     }
