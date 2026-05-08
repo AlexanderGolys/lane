@@ -234,6 +234,7 @@ impl App {
                     .push(TranscriptEntry::system("Session restarted."));
             }
             SubmitOutcome::Help => self.transcript.push(TranscriptEntry::help(help_text())),
+            SubmitOutcome::Info(info) => self.transcript.push(TranscriptEntry::system(info)),
             SubmitOutcome::Show(source) => return Some(ReplAction::Show(source)),
             SubmitOutcome::ToggleSplit => self.toggle_split(),
             SubmitOutcome::Exit => return Some(ReplAction::Exit),
@@ -705,6 +706,7 @@ pub(crate) enum SubmitOutcome {
     Cleared,
     Restarted,
     Help,
+    Info(String),
     Show(String),
     ToggleSplit,
     Exit,
@@ -752,6 +754,10 @@ impl ReplSession {
         match command {
             "\\clear" => SubmitOutcome::Cleared,
             "\\help" => SubmitOutcome::Help,
+            "\\info" => match lane::program_info(&self.source) {
+                Ok(info) => SubmitOutcome::Info(format_program_info(&info)),
+                Err(err) => SubmitOutcome::Error(err.to_string()),
+            },
             "\\show" => SubmitOutcome::Show(self.source.clone()),
             "\\split" => SubmitOutcome::ToggleSplit,
             "\\restart" => {
@@ -769,6 +775,7 @@ fn help_text() -> String {
     [
         "Enter submits.",
         "Ctrl-Enter inserts a newline when supported by the terminal.",
+        "\\info shows loaded modules, used directives, and provided objects.",
         "\\show opens a native preview window for the current session.",
         "\\split toggles split mode.",
         "\\clear clears the transcript but keeps the session.",
@@ -776,6 +783,22 @@ fn help_text() -> String {
         "\\exit leaves.",
     ]
     .join("\n")
+}
+
+fn format_program_info(info: &lane::ProgramInfo) -> String {
+    [
+        info_section("Loaded modules", &info.loaded_modules),
+        info_section("Used directives", &info.directives),
+        info_section("Provided objects", &info.provided_objects),
+    ]
+    .join("\n")
+}
+
+fn info_section(title: &str, items: &[String]) -> String {
+    if items.is_empty() {
+        return format!("{title}:\n  (none)");
+    }
+    format!("{title}:\n  {}", items.join("\n  "))
 }
 
 fn highlight_help_text(source: &str) -> Text<'static> {
@@ -1044,6 +1067,35 @@ mod tests {
     fn help_command_prints_help() {
         let mut session = ReplSession::default();
         assert_eq!(session.submit("\\help"), SubmitOutcome::Help);
+    }
+
+    #[test]
+    fn info_command_reports_session_metadata() {
+        let mut session = ReplSession::default();
+        assert_eq!(session.submit("#import std"), SubmitOutcome::Accepted);
+        assert_eq!(session.submit("#2D"), SubmitOutcome::Accepted);
+        assert_eq!(session.submit("#prec 0.002"), SubmitOutcome::Accepted);
+        assert_eq!(session.submit("provided R time"), SubmitOutcome::Accepted);
+
+        let SubmitOutcome::Info(info) = session.submit("\\info") else {
+            panic!("expected info output");
+        };
+        assert!(info.contains("Loaded modules:\n  std"));
+        assert!(info.contains("Used directives:\n  #2D\n  #prec 0.002"));
+        assert!(info.contains("Provided objects:\n  R time"));
+    }
+
+    #[test]
+    fn info_command_reports_empty_sections() {
+        let mut session = ReplSession::default();
+
+        assert_eq!(
+            session.submit("\\info"),
+            SubmitOutcome::Info(
+                "Loaded modules:\n  (none)\nUsed directives:\n  (none)\nProvided objects:\n  (none)"
+                    .to_string()
+            )
+        );
     }
 
     #[test]

@@ -67,10 +67,11 @@ Usage:
   as red boxes with one blank row of inner padding above and below the message.
   Shell commands are
   recognized only at the start of a line: `\help` prints REPL command help,
-  `\show` opens a native Vulkan preview window for the current session,
-  `\split` toggles a split view where submitted Lane code and generated GLSL are
-  rendered in separate panes, `\clear` clears the transcript but keeps the
-  session, `\restart` starts from an empty session, and `\exit` leaves the shell.
+  `\info` shows loaded modules, used directives, and provided objects, `\show`
+  opens a native Vulkan preview window for the current session, `\split` toggles
+  a split view where submitted Lane code and generated GLSL are rendered in
+  separate panes, `\clear` clears the transcript but keeps the session,
+  `\restart` starts from an empty session, and `\exit` leaves the shell.
   Toggling `\split` off restores the full linear transcript, including generated
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
   both parts of that submission. Enter submits the current input, Ctrl-Enter

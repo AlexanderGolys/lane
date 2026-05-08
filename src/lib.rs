@@ -29,6 +29,36 @@ pub fn compile_program_with_base_dir(
     compile_program_with_base(source, base_dir.as_ref())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProgramInfo {
+    pub loaded_modules: Vec<String>,
+    pub directives: Vec<String>,
+    pub provided_objects: Vec<String>,
+}
+
+pub fn program_info(source: &str) -> Result<ProgramInfo, Error> {
+    program_info_with_base_dir(
+        source,
+        &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    )
+}
+
+pub fn program_info_with_base_dir(
+    source: &str,
+    base_dir: impl AsRef<Path>,
+) -> Result<ProgramInfo, Error> {
+    let program = ModuleLoader::new(base_dir.as_ref()).load_main(source)?;
+    Ok(ProgramInfo {
+        loaded_modules: source_directive_values(source, "#import"),
+        directives: source_info_directives(source),
+        provided_objects: program
+            .inputs
+            .iter()
+            .map(|input| format!("{} {}", format_type(&input.ty), input.name))
+            .collect(),
+    })
+}
+
 pub fn compile_preview_fragment_from_path(
     path: impl AsRef<Path>,
     version: &str,
@@ -140,6 +170,47 @@ const Hom(*, *) main = fragment_main(preview_shade)\n",
         );
     }
     out
+}
+
+fn source_info_directives(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = strip_source_line_comment(line).trim();
+            if line == "#2D" || line.starts_with("#prec ") {
+                Some(line.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn source_directive_values(source: &str, directive: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = strip_source_line_comment(line).trim();
+            line.strip_prefix(directive)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.trim_matches('"').to_string())
+        })
+        .collect()
+}
+
+fn strip_source_line_comment(line: &str) -> &str {
+    let mut in_string = false;
+    let mut chars = line.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if ch == '"' {
+            in_string = !in_string;
+        }
+        if !in_string && ch == '/' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+            return &line[..index];
+        }
+    }
+    line
 }
 
 fn append_preview_provided_values(source: &str, out: &mut String) {
