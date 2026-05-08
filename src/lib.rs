@@ -147,11 +147,6 @@ pub fn lane_completion_items() -> Vec<LaneCompletionItem> {
     }
     for (label, detail, kind) in [
         (
-            "R{n}",
-            "generic real vector space dimension",
-            LaneCompletionKind::Type,
-        ),
-        (
             "Mat{n}x{m}",
             "generic real matrix type",
             LaneCompletionKind::Type,

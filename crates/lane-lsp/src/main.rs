@@ -289,6 +289,7 @@ mod tests {
         assert!(labels.iter().any(|label| label == "raytracing"));
         assert!(labels.iter().any(|label| label == "Ball3D"));
         assert!(labels.iter().any(|label| label == "Mat{n}x{m}"));
+        assert!(!labels.iter().any(|label| label == "R{n}"));
     }
 
     #[test]
