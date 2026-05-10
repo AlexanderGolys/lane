@@ -274,6 +274,15 @@ Function-valued provided inputs can use either `provided Hom(A, B) name` or the
 equivalent morphism form `provided name: A -> B`. Both forms accept comma-list
 names, such as `provided Hom(R, R) f, g` or `provided f, g: R -> R`.
 
+Long expressions can continue onto the next physical line when each continuation
+line starts with whitespace. Tabs are preferred for continuation indentation.
+
+```lane
+R radius = 1
+	+ time
+const Object output = Ball3D(r=radius)
+```
+
 ### `provided CATEGORY TypeName`
 
 Declares an external nominal type. Lane knows its algebraic category, but the

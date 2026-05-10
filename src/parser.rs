@@ -438,14 +438,14 @@ fn logical_source_lines(source: &str) -> Result<Vec<(usize, String)>, Error> {
     for (index, line) in source.lines().enumerate() {
         if pending.is_empty() {
             pending_start = index;
-        } else {
+        } else if in_string || is_continuation_line(line) {
             pending.push('\n');
+        } else {
+            lines.push((pending_start, std::mem::take(&mut pending)));
+            pending_start = index;
         }
         pending.push_str(line);
         in_string ^= quote_count(line) % 2 == 1;
-        if !in_string {
-            lines.push((pending_start, std::mem::take(&mut pending)));
-        }
     }
     if in_string {
         return Err(Error::new("unterminated string literal"));
@@ -454,6 +454,10 @@ fn logical_source_lines(source: &str) -> Result<Vec<(usize, String)>, Error> {
         lines.push((pending_start, pending));
     }
     Ok(lines)
+}
+
+fn is_continuation_line(line: &str) -> bool {
+    !line.trim().is_empty() && line.starts_with(char::is_whitespace)
 }
 
 fn quote_count(line: &str) -> usize {

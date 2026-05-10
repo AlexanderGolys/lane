@@ -1911,6 +1911,23 @@ fn renames_generated_locals_on_name_conflicts() {
 }
 
 #[test]
+fn supports_indented_multiline_expressions() {
+    let source =
+        "provided R time\nR radius = 1\n\t+ time\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = (1.0 + time);"));
+}
+
+#[test]
+fn supports_indented_multiline_call_arguments() {
+    let source = "provided R time\nconst Object output = Ball3D(\n\tr=1 + time\n\t)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D((1.0 + time))"));
+}
+
+#[test]
 fn plain_object_bindings_do_not_export_helpers() {
     let source = "Object shell = Ball3D(r=2)\nconst Object output = shell\n";
     let glsl = compile_program(source).unwrap();
@@ -1935,6 +1952,16 @@ fn reports_line_number_for_parse_errors() {
     assert_eq!(err.line(), Some(2));
     assert!(err.to_string().contains("line 2:"));
     assert!(err.to_string().contains("identifier 'provided'"));
+}
+
+#[test]
+fn reports_start_line_for_multiline_parse_errors() {
+    let source = "Object ok = Ball3D(r=1)\nconst Object output = Ball3D(r=1)\n\t+ *\n";
+    let err = compile_program(source).unwrap_err();
+
+    assert_eq!(err.line(), Some(2));
+    assert!(err.to_string().contains("line 2:"));
+    assert!(err.to_string().contains("unexpected token '*'"));
 }
 
 #[test]
