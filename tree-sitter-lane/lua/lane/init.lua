@@ -64,7 +64,7 @@ local function query_for_parser(query, symbols)
   end
 
   if not has_symbol(symbols, '"=="') then
-    query = remove_line(query, '["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "->"] @operator')
+    query = remove_line(query, '["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "|->"] @operator')
     query = query:gsub(
       '(%(gen_modifier%) @keyword\n)',
       '%1\n(binary_expression operator: _ @operator)\n(unary_expression operator: _ @operator)\n'
@@ -86,6 +86,13 @@ local function query_for_parser(query, symbols)
   if not has_symbol(symbols, "generic_type") then
     query = query:gsub(
       "\n?" .. vim.pesc('(generic_type\n  ["{" "}"] @punctuation.bracket\n  name: (identifier) @type)') .. "\n?",
+      "\n"
+    )
+  end
+
+  if not has_symbol(symbols, "name_template_slot") then
+    query = query:gsub(
+      "\n?" .. vim.pesc('(name_template_slot\n  ["{" "}"] @punctuation.bracket\n  name: (template_slot_content) @variable.parameter)') .. "\n?",
       "\n"
     )
   end

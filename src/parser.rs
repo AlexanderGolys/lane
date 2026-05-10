@@ -1081,7 +1081,7 @@ impl ExprParser {
             Token::Amp => "'&'".to_string(),
             Token::Dot => "'.'".to_string(),
             Token::At => "'@'".to_string(),
-            Token::Arrow => "'->'".to_string(),
+            Token::Arrow => "'|->'".to_string(),
         }
     }
 
@@ -1125,9 +1125,12 @@ fn tokenize(source: &str) -> Vec<Token> {
             }
             continue;
         }
-        if ch == '-' && chars.get(index + 1) == Some(&'>') {
+        if ch == '|'
+            && chars.get(index + 1) == Some(&'-')
+            && chars.get(index + 2) == Some(&'>')
+        {
             tokens.push(Token::Arrow);
-            index += 2;
+            index += 3;
             continue;
         }
         if ch == '=' && chars.get(index + 1) == Some(&'=') {

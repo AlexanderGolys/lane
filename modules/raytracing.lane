@@ -10,20 +10,20 @@ const Set RaycolorConfig = Z x R x R <max_bounces, ray_bias, throughput_threshol
 const RaytraceConfig default_raytrace_config = RaytraceConfig(128, 0.0005, 100)
 const RaycolorConfig default_raycolor_config = RaycolorConfig(6, 0.001, 0.001)
 
-const Hom(Hit, R3) hit_position = hit -> hit.position
-const Hom(Material, R3) material_color = material -> material.color
-const Hom(Material, R3) material_emission = material -> material.emission
-const Hom(Material, R) material_reflectiveness = material -> material.reflectiveness
+const Hom(Hit, R3) hit_position = hit |-> hit.position
+const Hom(Material, R3) material_color = material |-> material.color
+const Hom(Material, R3) material_emission = material |-> material.emission
+const Hom(Material, R) material_reflectiveness = material |-> material.reflectiveness
 
-const Hom(Camera × R2, R2) camera_uv = (camera, v) -> ((v * 2) - camera.resolution) / min(camera.resolution.x, camera.resolution.y)
+const Hom(Camera × R2, R2) camera_uv = (camera, v) |-> ((v * 2) - camera.resolution) / min(camera.resolution.x, camera.resolution.y)
 
-const Hom(Camera, R3) camera_right = camera -> normalize(cross(camera.forward, camera.global_up))
+const Hom(Camera, R3) camera_right = camera |-> normalize(cross(camera.forward, camera.global_up))
 
-const Hom(Camera, R3) camera_up = camera -> normalize(cross(cross(camera.forward, camera.global_up), camera.forward))
+const Hom(Camera, R3) camera_up = camera |-> normalize(cross(cross(camera.forward, camera.global_up), camera.forward))
 
-const Hom(Camera, Hom(R2, Ray)) camera_ray = camera -> v -> Ray(camera.position, normalize(normalize(camera.forward) + (camera_uv(camera, v).x * camera_right(camera)) + (camera_uv(camera, v).y * camera_up(camera))))
+const Hom(Camera, Hom(R2, Ray)) camera_ray = camera |-> v |-> Ray(camera.position, normalize(normalize(camera.forward) + (camera_uv(camera, v).x * camera_right(camera)) + (camera_uv(camera, v).y * camera_up(camera))))
 
-const Hom(RaytraceConfig × Object, Hom(Ray, Hit)) raytrace_with = (config, scene) -> "
+const Hom(RaytraceConfig × Object, Hom(Ray, Hit)) raytrace_with = (config, scene) |-> "
 vec3 _origin = _t.origin;
 vec3 _dir = normalize(_t.dir);
 float _travel = 0.0f;
@@ -43,7 +43,7 @@ vec3 _miss = _origin + _dir * _travel;
 return Hit(_miss, vec3(0.0f, 1.0f, 0.0f), _travel, false);
 "
 
-const Hom(RaycolorConfig × R3 × Hom(Ray, Hit) × Hom(Hit, R3) × Hom(Hit, R3) × Hom(Hit, R), Hom(Ray, R3)) raycolor_from_hit_with = (config, ambientColor, hit_at, color_at, emission_at, reflectiveness_at) -> "
+const Hom(RaycolorConfig × R3 × Hom(Ray, Hit) × Hom(Hit, R3) × Hom(Hit, R3) × Hom(Hit, R), Hom(Ray, R3)) raycolor_from_hit_with = (config, ambientColor, hit_at, color_at, emission_at, reflectiveness_at) |-> "
 Ray _ray = Ray(_t.origin, normalize(_t.dir));
 vec3 _radiance = vec3(0.0f);
 vec3 _throughput = vec3(1.0f);
@@ -67,8 +67,8 @@ for (int bounce = 0; bounce < ${config}.max_bounces; bounce++) {
 return _radiance;
 "
 
-const Hom(Hom(R2, Ray) × Hom(Ray, {Color}), Hom(R2, R4)) shade = (make_ray, color_ray) -> v -> (color_ray(make_ray(v)), 1)
+const Hom(Hom(R2, Ray) × Hom(Ray, {Color}), Hom(R2, R4)) shade = (make_ray, color_ray) |-> v |-> (color_ray(make_ray(v)), 1)
 
-const Hom(Hom(R2, R4), Hom(*, *)) fragment_main = shade_at -> "
+const Hom(Hom(R2, R4), Hom(*, *)) fragment_main = shade_at |-> "
 outColor = ${shade_at}(gl_FragCoord.xy);
 "

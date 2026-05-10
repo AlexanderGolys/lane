@@ -189,7 +189,11 @@ const Object output = values[size(a) - 1]
     (type_identifier)
     (identifier)
     (field_access_expression
-      (identifier)
+      (identifier
+        (name_template_slot
+          (template_slot_content))
+        (name_template_slot
+          (template_slot_content)))
       (identifier)))
   (binding_declaration
     (gen_modifier)
@@ -209,7 +213,7 @@ Raw GLSL Closure Placeholders
 ==================
 
 #module
-const Hom(Object, Hom(Ray, Hit)) raytrace = obj -> "Hit raytrace(Ray ray) { float _d = ${obj.sdf}(ray.origin); return Hit(ray.origin, ${obj.grad}(ray.origin), _d, true); }"
+const Hom(Object, Hom(Ray, Hit)) raytrace = obj |-> "Hit raytrace(Ray ray) { float _d = ${obj.sdf}(ray.origin); return Hit(ray.origin, ${obj.grad}(ray.origin), _d, true); }"
 
 ---
 
@@ -240,7 +244,7 @@ const Hom(Object, Hom(Ray, Hit)) raytrace = obj -> "Hit raytrace(Ray ray) { floa
 Product Closure Parameters
 ==================
 
-const Hom(R x R, R) g = (x, y) -> sin(x + y)
+const Hom(R x R, R) g = (x, y) |-> sin(x + y)
 
 ---
 

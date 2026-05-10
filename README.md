@@ -510,7 +510,7 @@ ASCII `x` is a product separator only when surrounded by whitespace.
 positive integer.
 
 ```lane
-const Hom(R^3, R) sum3 = v -> v.x + v.y + v.z
+const Hom(R^3, R) sum3 = v |-> v.x + v.y + v.z
 Set Triple = R^{3}
 ```
 
@@ -780,12 +780,12 @@ Hom(R2, R4) color = blend * (shape.sdf > 0)
 
 ### Closures
 
-`t -> expr` builds a function by lifting `expr` over the parameter `t`. Product
+`t |-> expr` builds a function by lifting `expr` over the parameter `t`. Product
 domains can name each component explicitly.
 
 ```lane
-Hom(R, R) shifted = t -> sin(t + 1)
-Hom(R x R, R) diagonal = (x, y) -> sin(x + y)
+Hom(R, R) shifted = t |-> sin(t + 1)
+Hom(R x R, R) diagonal = (x, y) |-> sin(x + y)
 ```
 
 The unit type `*` is used for shader entry functions. Raw GLSL module templates

@@ -1,11 +1,13 @@
-["provided" "construct" "const" "Func" "Hom" "End" "Array"] @keyword
+["provided" "construct" "const"] @keyword
+
+["Func" "Hom" "End" "Array"] @lsp.type.operator
 
 (conditional_expression
   ["if" "else"] @keyword.conditional)
 
 (gen_modifier) @keyword
 
-["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "->"] @operator
+["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "|->"] @operator
 
 ["(" ")" "[" "]"] @punctuation.bracket
 ["," "."] @punctuation.delimiter
@@ -23,19 +25,20 @@
   ["{" "}"] @punctuation.bracket
   name: (identifier) @type)
 
-((type_identifier) @constant.builtin
-  (#any-of? @constant.builtin "Ab" "Mon" "Grp" "Ring" "DivRing" "VectR" "RAlg" "Set")
-  (#set! priority 110))
+(name_template_slot
+  ["{" "}"] @punctuation.bracket
+  name: (template_slot_content) @variable.parameter)
 
-(type_identifier) @type
-(type_identifier) @type.builtin
+(category_identifier) @lsp.type.builtin
+
+(type_identifier) @lsp.type.type
 
 (input_declaration
   name: (identifier) @variable.parameter)
 
 (product_type_declaration
-  category: (category_type (type_identifier) @constant.builtin)
-  name: (identifier) @type)
+  category: (category_type (category_identifier) @lsp.type.builtin)
+  name: (identifier) @lsp.type.type)
 
 (product_field_list
   name: (identifier) @property)
@@ -47,7 +50,7 @@
   ["[" "]"] @punctuation.bracket)
 
 (named_argument
-  name: (identifier) @property)
+  name: (identifier) @variable.parameter)
 
 (field_access_expression
   field: (identifier) @property)

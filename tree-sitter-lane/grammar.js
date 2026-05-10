@@ -9,6 +9,17 @@ const PREC = {
     product: 1,
 };
 
+const CATEGORY_NAMES = [
+    'Ab',
+    'Mon',
+    'Grp',
+    'Ring',
+    'DivRing',
+    'VectR',
+    'RAlg',
+    'Set',
+];
+
 module.exports = grammar({
     name: 'lane',
 
@@ -17,7 +28,7 @@ module.exports = grammar({
         $.comment,
     ],
 
-    word: ($) => $.identifier,
+    word: ($) => $._identifier_text,
 
     conflicts: ($) => [
         [$.provided_category_declaration, $.category_type],
@@ -42,16 +53,7 @@ module.exports = grammar({
 
         provided_category_declaration: ($) => seq(
             'provided',
-            field('category', alias(choice(
-                'Ab',
-                'Mon',
-                'Grp',
-                'Ring',
-                'DivRing',
-                'VectR',
-                'RAlg',
-                'Set',
-            ), $.type_identifier)),
+            field('category', $.category_identifier),
             field('name', $.identifier),
         ),
 
@@ -64,16 +66,9 @@ module.exports = grammar({
             optional($.product_field_list),
         ),
 
-        category_type: ($) => alias(choice(
-            'Ab',
-            'Mon',
-            'Grp',
-            'Ring',
-            'DivRing',
-            'VectR',
-            'RAlg',
-            'Set',
-        ), $.type_identifier),
+        category_type: ($) => $.category_identifier,
+
+        category_identifier: () => choice(...CATEGORY_NAMES),
 
         product_field_list: ($) => seq(
             '<',
@@ -186,8 +181,8 @@ module.exports = grammar({
         ),
 
         closure_expression: ($) => prec.right(PREC.closure, choice(
-            seq(field('parameters', $.identifier), '->', field('body', $._expression)),
-            seq(field('parameters', $.closure_parameter_list), '->', field('body', $._expression)),
+            seq(field('parameters', $.identifier), '|->', field('body', $._expression)),
+            seq(field('parameters', $.closure_parameter_list), '|->', field('body', $._expression)),
         )),
 
         closure_parameter_list: ($) => seq(
@@ -311,7 +306,22 @@ module.exports = grammar({
             ']',
         ),
 
-        identifier: () => /[A-Za-z_][A-Za-z0-9_]*(?:\{[A-Za-z0-9_]+\}[A-Za-z0-9_]*)*/,
+        identifier: ($) => prec.right(PREC.unary, seq(
+            $._identifier_text,
+            repeat(choice($.name_template_slot, $._identifier_suffix_text)),
+        )),
+
+        _identifier_text: () => /[A-Za-z_][A-Za-z0-9_]*/,
+
+        _identifier_suffix_text: () => token.immediate(/[A-Za-z_][A-Za-z0-9_]*/),
+
+        name_template_slot: ($) => seq(
+            token.immediate('{'),
+            optional(field('name', $.template_slot_content)),
+            token.immediate('}'),
+        ),
+
+        template_slot_content: () => token.immediate(/[A-Za-z0-9_]+/),
 
         number: () => token(choice(
             /\d+(?:\.\d+)?[eE][+-]?\d+/,

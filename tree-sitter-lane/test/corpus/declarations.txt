@@ -174,9 +174,15 @@ provided Hom(Ray, {Color}) color_ray
         (identifier)
         (identifier))))
   (binding_declaration
-    (type_identifier)
+    (type_identifier
+      (name_template_slot
+        (template_slot_content))
+      (name_template_slot
+        (template_slot_content)))
     (identifier)
-    (identifier))
+    (identifier
+      (name_template_slot
+        (template_slot_content))))
   (input_declaration
     (hom_type
       (type_identifier)
@@ -197,7 +203,7 @@ G product = a * b
 
 (source_file
   (provided_category_declaration
-    (type_identifier)
+    (category_identifier)
     (identifier))
   (input_declaration
     (type_identifier)
@@ -226,7 +232,7 @@ provided Pair p
 (source_file
   (product_type_declaration
     (category_type
-      (type_identifier))
+      (category_identifier))
     (identifier)
     (product_type
       (type_identifier)
@@ -237,7 +243,7 @@ provided Pair p
   (product_type_declaration
     (gen_modifier)
     (category_type
-      (type_identifier))
+      (category_identifier))
     (identifier)
     (product_type
       (type_identifier)

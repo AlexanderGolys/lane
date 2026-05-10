@@ -538,6 +538,11 @@
     }
   },
   {
+    "type": "category_identifier",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "category_type",
     "named": true,
     "fields": {},
@@ -546,7 +551,7 @@
       "required": true,
       "types": [
         {
-          "type": "type_identifier",
+          "type": "category_identifier",
           "named": true
         }
       ]
@@ -1134,6 +1139,21 @@
     }
   },
   {
+    "type": "identifier",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "name_template_slot",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "index_expression",
     "named": true,
     "fields": {
@@ -1379,6 +1399,22 @@
           },
           {
             "type": "unit_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "name_template_slot",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "template_slot_content",
             "named": true
           }
         ]
@@ -1763,7 +1799,7 @@
         "required": true,
         "types": [
           {
-            "type": "type_identifier",
+            "type": "category_identifier",
             "named": true
           }
         ]
@@ -2016,6 +2052,21 @@
     }
   },
   {
+    "type": "type_identifier",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "name_template_slot",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "unary_expression",
     "named": true,
     "fields": {
@@ -2131,10 +2182,6 @@
     "named": false
   },
   {
-    "type": "->",
-    "named": false
-  },
-  {
     "type": ".",
     "named": false
   },
@@ -2171,7 +2218,15 @@
     "named": false
   },
   {
+    "type": "Ab",
+    "named": false
+  },
+  {
     "type": "Array",
+    "named": false
+  },
+  {
+    "type": "DivRing",
     "named": false
   },
   {
@@ -2183,7 +2238,31 @@
     "named": false
   },
   {
+    "type": "Grp",
+    "named": false
+  },
+  {
     "type": "Hom",
+    "named": false
+  },
+  {
+    "type": "Mon",
+    "named": false
+  },
+  {
+    "type": "RAlg",
+    "named": false
+  },
+  {
+    "type": "Ring",
+    "named": false
+  },
+  {
+    "type": "Set",
+    "named": false
+  },
+  {
+    "type": "VectR",
     "named": false
   },
   {
@@ -2216,10 +2295,6 @@
     "named": false
   },
   {
-    "type": "identifier",
-    "named": true
-  },
-  {
     "type": "if",
     "named": false
   },
@@ -2236,7 +2311,7 @@
     "named": true
   },
   {
-    "type": "type_identifier",
+    "type": "template_slot_content",
     "named": true
   },
   {
@@ -2245,6 +2320,10 @@
   },
   {
     "type": "{",
+    "named": false
+  },
+  {
+    "type": "|->",
     "named": false
   },
   {

@@ -501,7 +501,7 @@ fn writes_preview_fragment_and_vertex_shaders() {
     let vert_path = temp_dir.join("preview.vert");
     std::fs::write(
         &source_path,
-        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) |-> material\n",
     )
     .unwrap();
 
@@ -543,7 +543,7 @@ fn preview_shader_version_flag_splits_es_suffix() {
     let frag_path = temp_dir.join("preview.frag");
     std::fs::write(
         &source_path,
-        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) |-> material\n",
     )
     .unwrap();
 
@@ -574,7 +574,7 @@ fn writes_vulkan_preview_glsl_shaders() {
     let vert_path = temp_dir.join("preview.vert");
     std::fs::write(
         &source_path,
-        "provided R time\nconst Object scene = Ball3D(r=1 + sin(time))\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+        "provided R time\nconst Object scene = Ball3D(r=1 + sin(time))\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) |-> material\n",
     )
     .unwrap();
 
@@ -616,7 +616,7 @@ fn writes_vulkan_preview_spirv_shaders() {
     let vert_path = temp_dir.join("preview.vert.spv");
     std::fs::write(
         &source_path,
-        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+        "const Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) |-> material\n",
     )
     .unwrap();
 
@@ -675,7 +675,7 @@ fn preview_generation_reports_missing_scene_requirement() {
     let frag_path = temp_dir.join("preview.frag");
     std::fs::write(
         &source_path,
-        "const Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\n",
+        "const Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) |-> material\n",
     )
     .unwrap();
 

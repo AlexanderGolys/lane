@@ -525,7 +525,7 @@ fn composes_unary_functions_in_function_bodies() {
 #[test]
 fn supports_explicit_product_closure_parameters() {
     let source =
-        "const Hom(R x R, R) g = (x, y) -> sin(x + y)\nconst Object output = Ball3D(r=g(1, 2))\n";
+        "const Hom(R x R, R) g = (x, y) |-> sin(x + y)\nconst Object output = Ball3D(r=g(1, 2))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float g(float _t0, float _t1) {"));
@@ -536,7 +536,7 @@ fn supports_explicit_product_closure_parameters() {
 
 #[test]
 fn preserves_explicit_scalar_product_function_domains() {
-    let source = "const Hom(R x R x R, R) g = v -> v.x + v.x1 + v.z\nprovided R a\nprovided R b\nprovided R c\nconst Object output = Ball3D(r=g(a, b, c))\n";
+    let source = "const Hom(R x R x R, R) g = v |-> v.x + v.x1 + v.z\nprovided R a\nprovided R b\nprovided R c\nconst Object output = Ball3D(r=g(a, b, c))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float g(float _t0, float _t1, float _t2) {"));
@@ -551,7 +551,7 @@ fn preserves_explicit_scalar_product_function_domains() {
 
 #[test]
 fn supports_power_type_product_domains() {
-    let source = "const Hom(R^3, R) g = v -> v.x + v.x1 + v.z\nprovided R a\nprovided R b\nprovided R c\nconst Object output = Ball3D(r=g(a, b, c))\n";
+    let source = "const Hom(R^3, R) g = v |-> v.x + v.x1 + v.z\nprovided R a\nprovided R b\nprovided R c\nconst Object output = Ball3D(r=g(a, b, c))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float g(float _t0, float _t1, float _t2) {"));
@@ -574,12 +574,21 @@ fn supports_power_type_product_declarations() {
 
 #[test]
 fn supports_single_vector_closure_parameter() {
-    let source = "const Hom(R2, R) g = v -> v.x + v.y\nconst Object output = Ball3D(r=g((1, 2)))\n";
+    let source = "const Hom(R2, R) g = v |-> v.x + v.y\nconst Object output = Ball3D(r=g((1, 2)))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float g(vec2 _t) {"));
     assert!(glsl.contains("vec2 _v = _t;"));
     assert!(glsl.contains("return ((_v).x + (_v).y);"));
+}
+
+#[test]
+fn rejects_legacy_closure_arrow_syntax() {
+    let error = compile_program("const Hom(R, R) f = t -> t\nconst Object output = Ball3D(r=1)\n")
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("unexpected token '>' in expression"));
 }
 
 #[test]
@@ -650,7 +659,7 @@ fn rejects_reserved_underscore_names() {
 #[test]
 fn rejects_reserved_underscore_closure_parameters() {
     let error =
-        compile_program("const Hom(R, R) f = _t -> _t\nconst Object output = Ball3D(r=1)\n")
+        compile_program("const Hom(R, R) f = _t |-> _t\nconst Object output = Ball3D(r=1)\n")
             .unwrap_err()
             .to_string();
 
@@ -944,7 +953,7 @@ fn rejects_module_import_cycles() {
 
 #[test]
 fn imports_raytracing_module() {
-    let source = "#import raytracing\nprovided R3 cameraPosition\nprovided R3 cameraForward\nprovided R3 cameraGlobalUp\nprovided R2 resolution\nprovided R3 ambientColor\nconst Camera camera = Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution)\nconst Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) -> material\nconst Hom(R2, Ray) scene_camera_ray = camera_ray(camera)\nconst Hom(Ray, Hit) scene_raytrace = raytrace_with(default_raytrace_config, scene)\nconst Hom(Hit, R3) scene_material_color = hit -> material_color(scene_material(hit.position))\nconst Hom(Hit, R3) scene_material_emission = hit -> material_emission(scene_material(hit.position))\nconst Hom(Hit, R) scene_material_reflectiveness = hit -> material_reflectiveness(scene_material(hit.position))\nconst Hom(Ray, R3) scene_raycolor = raycolor_from_hit_with(default_raycolor_config, ambientColor, scene_raytrace, scene_material_color, scene_material_emission, scene_material_reflectiveness)\nconst Hom(R2, R4) scene_shade = shade(scene_camera_ray, scene_raycolor)\nconst Hom(*, *) main = fragment_main(scene_shade)\n";
+    let source = "#import raytracing\nprovided R3 cameraPosition\nprovided R3 cameraForward\nprovided R3 cameraGlobalUp\nprovided R2 resolution\nprovided R3 ambientColor\nconst Camera camera = Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution)\nconst Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) |-> material\nconst Hom(R2, Ray) scene_camera_ray = camera_ray(camera)\nconst Hom(Ray, Hit) scene_raytrace = raytrace_with(default_raytrace_config, scene)\nconst Hom(Hit, R3) scene_material_color = hit |-> material_color(scene_material(hit.position))\nconst Hom(Hit, R3) scene_material_emission = hit |-> material_emission(scene_material(hit.position))\nconst Hom(Hit, R) scene_material_reflectiveness = hit |-> material_reflectiveness(scene_material(hit.position))\nconst Hom(Ray, R3) scene_raycolor = raycolor_from_hit_with(default_raycolor_config, ambientColor, scene_raytrace, scene_material_color, scene_material_emission, scene_material_reflectiveness)\nconst Hom(R2, R4) scene_shade = shade(scene_camera_ray, scene_raycolor)\nconst Hom(*, *) main = fragment_main(scene_shade)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct Ray"));
@@ -995,7 +1004,7 @@ fn imports_raytracing_module() {
 
 #[test]
 fn raytracing_raycolor_accepts_custom_material_types() {
-    let source = "#import raytracing\nconst VectR FancyMaterial = R3 x R3 x R x R <albedo, glow, roughness, metallic>\nprovided Hom(Ray, Hit) hit\nprovided Hom(R3, FancyMaterial) material\nprovided R3 ambient\nconst Hom(FancyMaterial, R3) color = m -> m.albedo\nconst Hom(FancyMaterial, R3) emission = m -> m.glow\nconst Hom(FancyMaterial, R) reflectiveness = m -> m.metallic\nconst Hom(Hit, R3) color_at = color @ material @ hit_position\nconst Hom(Hit, R3) emission_at = emission @ material @ hit_position\nconst Hom(Hit, R) reflectiveness_at = reflectiveness @ material @ hit_position\nconst Hom(Ray, R3) color_ray = raycolor_from_hit_with(default_raycolor_config, ambient, hit, color_at, emission_at, reflectiveness_at)\n";
+    let source = "#import raytracing\nconst VectR FancyMaterial = R3 x R3 x R x R <albedo, glow, roughness, metallic>\nprovided Hom(Ray, Hit) hit\nprovided Hom(R3, FancyMaterial) material\nprovided R3 ambient\nconst Hom(FancyMaterial, R3) color = m |-> m.albedo\nconst Hom(FancyMaterial, R3) emission = m |-> m.glow\nconst Hom(FancyMaterial, R) reflectiveness = m |-> m.metallic\nconst Hom(Hit, R3) color_at = color @ material @ hit_position\nconst Hom(Hit, R3) emission_at = emission @ material @ hit_position\nconst Hom(Hit, R) reflectiveness_at = reflectiveness @ material @ hit_position\nconst Hom(Ray, R3) color_ray = raycolor_from_hit_with(default_raycolor_config, ambient, hit, color_at, emission_at, reflectiveness_at)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct FancyMaterial"));
@@ -1014,7 +1023,28 @@ fn imports_std_module() {
     assert!(glsl.contains("float projection_1(vec2 _t)"));
     assert!(glsl.contains("return (_v).y;"));
     assert!(glsl.contains("vec3 diagonal3(float _t)"));
-    assert!(glsl.contains("return vec3(_x, _x, _x);"));
+    assert!(glsl.contains("return vec3(_t);"));
+}
+
+#[test]
+fn imported_modules_do_not_offset_main_file_diagnostics() {
+    let source = "#import std\nprovided R time\nprovided Hom(R, R3) flight\nscene = union(toggled, smooths)\nconst Object output = scene\n";
+    let error = compile_program(source).unwrap_err();
+
+    assert_eq!(error.line(), Some(4));
+    assert!(error
+        .to_string()
+        .contains("function 'toggled' needs an explicit call outside function bodies"));
+}
+
+#[test]
+fn expands_generic_name_templates_from_references() {
+    let source = "const Hom(R{n}, R) pick_{i} = v |-> v.x{i}\nprovided R3 p\nR radius = pick_2(p)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float pick_2(vec3 _t)"));
+    assert!(glsl.contains("return (_v).z;"));
+    assert!(!glsl.contains("pick_{i}"));
 }
 
 #[test]
@@ -1023,7 +1053,7 @@ fn raw_glsl_unit_templates_require_main_binding() {
     fs::create_dir_all(dir.join("modules")).unwrap();
     fs::write(
         dir.join("modules").join("preview.lane"),
-        "#module\nconst Hom(Hom(R2, R4), Hom(*, *)) preview = shade -> \"outColor = ${shade}(gl_FragCoord.xy);\"\n",
+        "#module\nconst Hom(Hom(R2, R4), Hom(*, *)) preview = shade |-> \"outColor = ${shade}(gl_FragCoord.xy);\"\n",
     )
     .unwrap();
     let source_path = dir.join("scene.lane");

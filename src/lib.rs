@@ -370,9 +370,9 @@ fn prepare_preview_source(source: &str) -> String {
         out.push_str(
             "\nconst Hom(R2, Ray) preview_camera_ray = camera_ray(Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution))\n\
 const Hom(Ray, Hit) preview_hit = raytrace_with(default_raytrace_config, scene)\n\
-const Hom(Hit, R3) preview_material_color = hit -> material_color(scene_material(hit.position))\n\
-const Hom(Hit, R3) preview_material_emission = hit -> material_emission(scene_material(hit.position))\n\
-const Hom(Hit, R) preview_material_reflectiveness = hit -> material_reflectiveness(scene_material(hit.position))\n\
+const Hom(Hit, R3) preview_material_color = hit |-> material_color(scene_material(hit.position))\n\
+const Hom(Hit, R3) preview_material_emission = hit |-> material_emission(scene_material(hit.position))\n\
+const Hom(Hit, R) preview_material_reflectiveness = hit |-> material_reflectiveness(scene_material(hit.position))\n\
 const Hom(Ray, R3) preview_color = raycolor_from_hit_with(default_raycolor_config, ambientColor, preview_hit, preview_material_color, preview_material_emission, preview_material_reflectiveness)\n\
 const Hom(R2, R4) preview_shade = shade(preview_camera_ray, preview_color)\n\
 const Hom(*, *) main = fragment_main(preview_shade)\n",
@@ -598,7 +598,7 @@ impl ModuleLoader {
 
         let imports = std::mem::take(&mut program.imports);
         let mut merged = empty_program_like(&program);
-        let mut line_offset = 0usize;
+        let mut line_offset = 10_000usize;
         for import in imports {
             let imported = self
                 .load_import(&import.path, stack)
@@ -610,7 +610,7 @@ impl ModuleLoader {
         if program.is_module {
             mangle_private_module_names(&mut program, module_key);
         }
-        append_program(&mut merged, program, line_offset);
+        append_program(&mut merged, program, 0);
         Ok(merged)
     }
 
