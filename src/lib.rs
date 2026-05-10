@@ -578,6 +578,7 @@ impl ModuleLoader {
             return Err(Error::new("#module is only valid in imported module files"));
         }
         let mut merged = self.expand_program(parsed, false, "main", &mut stack)?;
+        expand_referenced_name_templates(&mut merged);
         reject_duplicate_product_types(&merged)?;
         merged.imports.clear();
         Ok(merged)
@@ -665,6 +666,496 @@ fn import_candidate(import_path: &str) -> PathBuf {
     } else {
         path.with_extension("lane")
     }
+}
+
+#[derive(Clone)]
+enum NameTemplatePart {
+    Literal(String),
+    Placeholder(String),
+}
+
+fn expand_referenced_name_templates(program: &mut Program) {
+    let references = referenced_names(program);
+    if references.is_empty() {
+        return;
+    }
+
+    let mut concrete_funcs = Vec::new();
+    let mut seen = program
+        .funcs
+        .iter()
+        .map(|func| (func.name.clone(), format_type(&func.ty)))
+        .collect::<HashSet<_>>();
+
+    program.funcs.retain(|func| {
+        let Some(parts) = parse_name_template(&func.name) else {
+            return true;
+        };
+        for reference in &references {
+            let Some(captures) = match_name_template(&parts, reference) else {
+                continue;
+            };
+            for substitutions in template_substitution_variants(&func.ty, &func.body, &captures) {
+                let concrete = instantiate_name_template_func(func, &substitutions);
+                if seen.insert((concrete.name.clone(), format_type(&concrete.ty))) {
+                    concrete_funcs.push(concrete);
+                }
+            }
+        }
+        false
+    });
+
+    program.funcs.extend(concrete_funcs);
+}
+
+fn referenced_names(program: &Program) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for func in &program.funcs {
+        collect_func_body_names(&func.body, &mut names);
+    }
+    for binding in &program.value_bindings {
+        collect_expr_names(&binding.expr, &mut names);
+    }
+    for binding in &program.bindings {
+        collect_expr_names(&binding.expr, &mut names);
+    }
+    for binding in &program.inferred_bindings {
+        collect_expr_names(&binding.expr, &mut names);
+    }
+    if let Some(output) = &program.output {
+        collect_expr_names(&output.expr, &mut names);
+    }
+    names
+}
+
+fn collect_func_body_names(body: &FuncBody, names: &mut HashSet<String>) {
+    match body {
+        FuncBody::Expr(expr) => collect_expr_names(expr, names),
+        FuncBody::RawGlsl(_) | FuncBody::RawGlslClosure { .. } => {}
+    }
+}
+
+fn collect_expr_names(expr: &Expr, names: &mut HashSet<String>) {
+    match expr {
+        Expr::Ident(name) => {
+            names.insert(name.clone());
+        }
+        Expr::Closure { body, .. } => collect_expr_names(body, names),
+        Expr::Tuple(items) | Expr::Array(items) => {
+            for item in items {
+                collect_expr_names(item, names);
+            }
+        }
+        Expr::Call { callee, args } => {
+            collect_expr_names(callee, names);
+            for arg in args {
+                collect_expr_names(arg, names);
+            }
+        }
+        Expr::FieldAccess { object, .. } => collect_expr_names(object, names),
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_expr_names(condition, names);
+            collect_expr_names(then_branch, names);
+            if let Some(else_branch) = else_branch {
+                collect_expr_names(else_branch, names);
+            }
+        }
+        Expr::Index { array, index } => {
+            collect_expr_names(array, names);
+            collect_expr_names(index, names);
+        }
+        Expr::Binary { left, right, .. } => {
+            collect_expr_names(left, names);
+            collect_expr_names(right, names);
+        }
+        Expr::Constructor { name, args } => {
+            names.insert(name.clone());
+            match args {
+                ConstructorArgs::Named(args) => {
+                    for (_, arg) in args {
+                        collect_expr_names(arg, names);
+                    }
+                }
+                ConstructorArgs::Positional(args) => {
+                    for arg in args {
+                        collect_expr_names(arg, names);
+                    }
+                }
+            }
+        }
+        Expr::Bool(_) | Expr::Number(_) | Expr::RawString(_) | Expr::Operator(_) => {}
+    }
+}
+
+fn parse_name_template(source: &str) -> Option<Vec<NameTemplatePart>> {
+    let mut parts = Vec::new();
+    let mut index = 0;
+    let mut found_placeholder = false;
+    while let Some(relative_start) = source[index..].find('{') {
+        let start = index + relative_start;
+        if start > index {
+            parts.push(NameTemplatePart::Literal(source[index..start].to_string()));
+        }
+        let name_start = start + 1;
+        let relative_end = source[name_start..].find('}')?;
+        let end = name_start + relative_end;
+        let name = &source[name_start..end];
+        if parse_generic_name(name).is_none() {
+            return None;
+        }
+        parts.push(NameTemplatePart::Placeholder(name.to_string()));
+        found_placeholder = true;
+        index = end + 1;
+    }
+    if index < source.len() {
+        parts.push(NameTemplatePart::Literal(source[index..].to_string()));
+    }
+    found_placeholder.then_some(parts)
+}
+
+fn match_name_template(
+    parts: &[NameTemplatePart],
+    candidate: &str,
+) -> Option<HashMap<String, usize>> {
+    let mut captures = HashMap::new();
+    let mut index = 0;
+    for (part_index, part) in parts.iter().enumerate() {
+        match part {
+            NameTemplatePart::Literal(literal) => {
+                if !candidate[index..].starts_with(literal) {
+                    return None;
+                }
+                index += literal.len();
+            }
+            NameTemplatePart::Placeholder(name) => {
+                let next_literal = parts[part_index + 1..].iter().find_map(|part| match part {
+                    NameTemplatePart::Literal(literal) if !literal.is_empty() => {
+                        Some(literal.as_str())
+                    }
+                    _ => None,
+                });
+                let end = if let Some(next_literal) = next_literal {
+                    index + candidate[index..].find(next_literal)?
+                } else {
+                    candidate.len()
+                };
+                let value = candidate[index..end].parse::<usize>().ok()?;
+                if !captures.get(name).is_none_or(|existing| *existing == value) {
+                    return None;
+                }
+                captures.insert(name.clone(), value);
+                index = end;
+            }
+        }
+    }
+    (index == candidate.len()).then_some(captures)
+}
+
+fn template_substitution_variants(
+    ty: &Type,
+    body: &FuncBody,
+    captures: &HashMap<String, usize>,
+) -> Vec<HashMap<String, usize>> {
+    let mut missing_dims = BTreeSet::new();
+    collect_unbound_generic_dims(ty, captures, &mut missing_dims);
+    let missing_dims = missing_dims.into_iter().collect::<Vec<_>>();
+    let min_dim = template_minimum_vector_dimension(body, captures);
+    let mut variants = Vec::new();
+    build_template_substitution_variants(
+        &missing_dims,
+        0,
+        captures.clone(),
+        min_dim,
+        &mut variants,
+    );
+    variants
+}
+
+fn build_template_substitution_variants(
+    names: &[String],
+    index: usize,
+    current: HashMap<String, usize>,
+    min_dim: usize,
+    out: &mut Vec<HashMap<String, usize>>,
+) {
+    if index == names.len() {
+        out.push(current);
+        return;
+    }
+    let mut next = current;
+    next.insert(names[index].clone(), min_dim.max(2));
+    build_template_substitution_variants(names, index + 1, next, min_dim, out);
+}
+
+fn collect_unbound_generic_dims(
+    ty: &Type,
+    captures: &HashMap<String, usize>,
+    out: &mut BTreeSet<String>,
+) {
+    match ty {
+        Type::VecGeneric(dim) => collect_unbound_generic_dim(dim, captures, out),
+        Type::MatGeneric(rows, columns) => {
+            collect_unbound_generic_dim(rows, captures, out);
+            collect_unbound_generic_dim(columns, captures, out);
+        }
+        Type::Array(element) => collect_unbound_generic_dims(element, captures, out),
+        Type::Product(parts) => {
+            for part in parts {
+                collect_unbound_generic_dims(part, captures, out);
+            }
+        }
+        Type::Func(input, output) => {
+            collect_unbound_generic_dims(input, captures, out);
+            collect_unbound_generic_dims(output, captures, out);
+        }
+        Type::Bool
+        | Type::Float
+        | Type::Int
+        | Type::Complex
+        | Type::Quat
+        | Type::Isom2
+        | Type::Isom3
+        | Type::Custom { .. }
+        | Type::Object
+        | Type::Object2D
+        | Type::Vec2
+        | Type::Vec3
+        | Type::Vec4
+        | Type::Mat(_, _)
+        | Type::Unit
+        | Type::Generic(_) => {}
+    }
+}
+
+fn collect_unbound_generic_dim(
+    dim: &GenericDim,
+    captures: &HashMap<String, usize>,
+    out: &mut BTreeSet<String>,
+) {
+    if let GenericDim::Var(name) = dim {
+        if !captures.contains_key(name) {
+            out.insert(name.clone());
+        }
+    }
+}
+
+fn template_minimum_vector_dimension(body: &FuncBody, captures: &HashMap<String, usize>) -> usize {
+    match body {
+        FuncBody::Expr(expr) => expr_minimum_vector_dimension(expr, captures),
+        FuncBody::RawGlsl(body) | FuncBody::RawGlslClosure { body, .. } => {
+            string_minimum_vector_dimension(body, captures)
+        }
+    }
+}
+
+fn expr_minimum_vector_dimension(expr: &Expr, captures: &HashMap<String, usize>) -> usize {
+    match expr {
+        Expr::FieldAccess { object, field } => expr_minimum_vector_dimension(object, captures)
+            .max(field_minimum_vector_dimension(field, captures)),
+        Expr::Closure { body, .. } => expr_minimum_vector_dimension(body, captures),
+        Expr::Tuple(items) | Expr::Array(items) => items
+            .iter()
+            .map(|item| expr_minimum_vector_dimension(item, captures))
+            .max()
+            .unwrap_or(2),
+        Expr::Call { callee, args } => args
+            .iter()
+            .map(|arg| expr_minimum_vector_dimension(arg, captures))
+            .fold(expr_minimum_vector_dimension(callee, captures), usize::max),
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            let else_min = else_branch
+                .as_ref()
+                .map(|expr| expr_minimum_vector_dimension(expr, captures))
+                .unwrap_or(2);
+            expr_minimum_vector_dimension(condition, captures)
+                .max(expr_minimum_vector_dimension(then_branch, captures))
+                .max(else_min)
+        }
+        Expr::Index { array, index } => expr_minimum_vector_dimension(array, captures)
+            .max(expr_minimum_vector_dimension(index, captures)),
+        Expr::Binary { left, right, .. } => expr_minimum_vector_dimension(left, captures)
+            .max(expr_minimum_vector_dimension(right, captures)),
+        Expr::Constructor { args, .. } => match args {
+            ConstructorArgs::Named(args) => args
+                .iter()
+                .map(|(_, arg)| expr_minimum_vector_dimension(arg, captures))
+                .max()
+                .unwrap_or(2),
+            ConstructorArgs::Positional(args) => args
+                .iter()
+                .map(|arg| expr_minimum_vector_dimension(arg, captures))
+                .max()
+                .unwrap_or(2),
+        },
+        Expr::RawString(source) => string_minimum_vector_dimension(source, captures),
+        Expr::Bool(_) | Expr::Number(_) | Expr::Ident(_) | Expr::Operator(_) => 2,
+    }
+}
+
+fn field_minimum_vector_dimension(field: &str, captures: &HashMap<String, usize>) -> usize {
+    let Some(index) = field.strip_prefix('x') else {
+        return 2;
+    };
+    let Some(placeholder) = index
+        .strip_prefix('{')
+        .and_then(|rest| rest.strip_suffix('}'))
+    else {
+        return index.parse::<usize>().map_or(2, |value| value + 1);
+    };
+    captures.get(placeholder).map_or(2, |value| value + 1)
+}
+
+fn string_minimum_vector_dimension(source: &str, captures: &HashMap<String, usize>) -> usize {
+    captures
+        .iter()
+        .filter_map(|(name, value)| {
+            source
+                .contains(&format!("x{{{name}}}"))
+                .then_some(value + 1)
+        })
+        .max()
+        .unwrap_or(2)
+}
+
+fn instantiate_name_template_func(
+    func: &FuncDecl,
+    substitutions: &HashMap<String, usize>,
+) -> FuncDecl {
+    let generic_substitutions = GenericSubstitution {
+        types: HashMap::new(),
+        dims: substitutions.clone(),
+    };
+    FuncDecl {
+        name: substitute_name_template_text(&func.name, substitutions),
+        ty: substitute_type(&func.ty, &generic_substitutions),
+        body: substitute_func_body_templates(&func.body, substitutions),
+        generated: func.generated,
+        line: func.line,
+    }
+}
+
+fn substitute_func_body_templates(
+    body: &FuncBody,
+    substitutions: &HashMap<String, usize>,
+) -> FuncBody {
+    match body {
+        FuncBody::Expr(expr) => FuncBody::Expr(substitute_expr_templates(expr, substitutions)),
+        FuncBody::RawGlsl(body) => {
+            FuncBody::RawGlsl(substitute_name_template_text(body, substitutions))
+        }
+        FuncBody::RawGlslClosure { params, body } => FuncBody::RawGlslClosure {
+            params: params.clone(),
+            body: substitute_name_template_text(body, substitutions),
+        },
+    }
+}
+
+fn substitute_expr_templates(expr: &Expr, substitutions: &HashMap<String, usize>) -> Expr {
+    match expr {
+        Expr::Ident(name) => Expr::Ident(substitute_name_template_text(name, substitutions)),
+        Expr::Closure { params, body } => Expr::Closure {
+            params: params.clone(),
+            body: Box::new(substitute_expr_templates(body, substitutions)),
+        },
+        Expr::Tuple(items) => Expr::Tuple(
+            items
+                .iter()
+                .map(|item| substitute_expr_templates(item, substitutions))
+                .collect(),
+        ),
+        Expr::Array(items) => Expr::Array(
+            items
+                .iter()
+                .map(|item| substitute_expr_templates(item, substitutions))
+                .collect(),
+        ),
+        Expr::Call { callee, args } => Expr::Call {
+            callee: Box::new(substitute_expr_templates(callee, substitutions)),
+            args: args
+                .iter()
+                .map(|arg| substitute_expr_templates(arg, substitutions))
+                .collect(),
+        },
+        Expr::FieldAccess { object, field } => Expr::FieldAccess {
+            object: Box::new(substitute_expr_templates(object, substitutions)),
+            field: substitute_name_template_text(field, substitutions),
+        },
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => Expr::Conditional {
+            condition: Box::new(substitute_expr_templates(condition, substitutions)),
+            then_branch: Box::new(substitute_expr_templates(then_branch, substitutions)),
+            else_branch: else_branch
+                .as_ref()
+                .map(|expr| Box::new(substitute_expr_templates(expr, substitutions))),
+        },
+        Expr::Index { array, index } => Expr::Index {
+            array: Box::new(substitute_expr_templates(array, substitutions)),
+            index: Box::new(substitute_expr_templates(index, substitutions)),
+        },
+        Expr::Binary { op, left, right } => Expr::Binary {
+            op: *op,
+            left: Box::new(substitute_expr_templates(left, substitutions)),
+            right: Box::new(substitute_expr_templates(right, substitutions)),
+        },
+        Expr::Constructor { name, args } => Expr::Constructor {
+            name: substitute_name_template_text(name, substitutions),
+            args: match args {
+                ConstructorArgs::Named(args) => ConstructorArgs::Named(
+                    args.iter()
+                        .map(|(name, arg)| {
+                            (name.clone(), substitute_expr_templates(arg, substitutions))
+                        })
+                        .collect(),
+                ),
+                ConstructorArgs::Positional(args) => ConstructorArgs::Positional(
+                    args.iter()
+                        .map(|arg| substitute_expr_templates(arg, substitutions))
+                        .collect(),
+                ),
+            },
+        },
+        Expr::RawString(source) => {
+            Expr::RawString(substitute_name_template_text(source, substitutions))
+        }
+        Expr::Bool(value) => Expr::Bool(*value),
+        Expr::Number(value) => Expr::Number(*value),
+        Expr::Operator(op) => Expr::Operator(*op),
+    }
+}
+
+fn substitute_name_template_text(source: &str, substitutions: &HashMap<String, usize>) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut index = 0;
+    while let Some(relative_start) = source[index..].find('{') {
+        let start = index + relative_start;
+        out.push_str(&source[index..start]);
+        let name_start = start + 1;
+        let Some(relative_end) = source[name_start..].find('}') else {
+            out.push_str(&source[start..]);
+            return out;
+        };
+        let end = name_start + relative_end;
+        let name = &source[name_start..end];
+        if let Some(value) = substitutions.get(name) {
+            out.push_str(&value.to_string());
+        } else {
+            out.push_str(&source[start..=end]);
+        }
+        index = end + 1;
+    }
+    out.push_str(&source[index..]);
+    out
 }
 
 fn empty_program_like(program: &Program) -> Program {

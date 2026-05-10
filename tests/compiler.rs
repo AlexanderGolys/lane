@@ -1095,6 +1095,16 @@ fn imports_std_module() {
 }
 
 #[test]
+fn imports_std_projection_templates_for_expression_arguments() {
+    let source = "#import std\nprovided R2 uv\nR radius = projection_1(uv + uv)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float projection_1(vec2 _t)"));
+    assert!(glsl.contains("return (_v).y;"));
+    assert!(glsl.contains("float radius = projection_1((uv + uv));"));
+}
+
+#[test]
 fn imported_modules_do_not_offset_main_file_diagnostics() {
     let source = "#import std\nprovided R time\nprovided Hom(R, R3) flight\nscene = union(toggled, smooths)\nconst Object output = scene\n";
     let error = compile_program(source).unwrap_err();
