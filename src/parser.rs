@@ -120,6 +120,40 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            if let Some(provided_types) =
+                parse_multi_provided_type_decls(line).map_err(|err| err.with_line(line_number))?
+            {
+                if is_module {
+                    return Err(
+                        Error::new("provided declarations are not allowed in modules")
+                            .with_line(line_number),
+                    );
+                }
+                for provided_type in provided_types {
+                    ensure_public_decl_name(&provided_type.name, "provided type", line_number)?;
+                    if is_known_type_name(&provided_type.name)
+                        || is_known_category_name(&provided_type.name)
+                    {
+                        return Err(Error::new(format!(
+                            "'{}' cannot be used as a provided type name",
+                            provided_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                    if custom_types
+                        .insert(provided_type.name.clone(), provided_type.category)
+                        .is_some()
+                    {
+                        return Err(Error::new(format!(
+                            "duplicate provided type '{}'",
+                            provided_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                }
+                continue;
+            }
+
             match self
                 .parse_decl_with_custom_types(
                     line,
@@ -636,6 +670,42 @@ fn parse_multi_input_decls(
         });
     }
     Ok(Some(inputs))
+}
+
+fn parse_multi_provided_type_decls(line: &str) -> Result<Option<Vec<ProvidedTypeDecl>>, Error> {
+    let Some(rest) = line.strip_prefix("provided ") else {
+        return Ok(None);
+    };
+    if rest.contains('=') {
+        return Ok(None);
+    }
+
+    let rest = rest.trim();
+    let Some(first_comma) = find_top_level_comma(rest) else {
+        return Ok(None);
+    };
+    let Some(split_index) = rest[..first_comma].rfind(' ') else {
+        return Err(Error::new("expected '<category> <name>'"));
+    };
+    let category_source = rest[..split_index].trim();
+    let Some(category) = category_by_name(category_source) else {
+        return Ok(None);
+    };
+    let names_source = rest[split_index + 1..].trim();
+
+    let mut types = Vec::new();
+    for name in names_source.split(',').map(str::trim) {
+        if name.is_empty() {
+            return Err(Error::new(
+                "expected a name after ',' in provided declaration",
+            ));
+        }
+        types.push(ProvidedTypeDecl {
+            name: name.to_string(),
+            category,
+        });
+    }
+    Ok(Some(types))
 }
 
 fn parse_provided_arrow_decls(

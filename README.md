@@ -301,7 +301,7 @@ Declares an external nominal type. Lane knows its algebraic category, but the
 host GLSL environment must provide the representation and operations.
 
 ```lane
-provided Grp G
+provided Grp G, K
 provided G a
 provided G b
 provided Hom(G, R) measure

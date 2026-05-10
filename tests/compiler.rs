@@ -1376,6 +1376,14 @@ fn supports_provided_group_category_types() {
 }
 
 #[test]
+fn supports_multiple_provided_category_types_on_one_line() {
+    let source = "provided Grp G, K\nprovided G a\nprovided K b\nprovided Hom(G, R) measure_g\nprovided Hom(K, R) measure_k\nR radius = measure_g(a * a) + measure_k(b * b)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = (measure_g(mult_G(a, a)) + measure_k(mult_K(b, b)));"));
+}
+
+#[test]
 fn supports_product_group_types_with_named_fields() {
     let source = "Grp G = Isom3 x Isom2 <m, n>\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
