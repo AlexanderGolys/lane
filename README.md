@@ -13,13 +13,23 @@ cargo build --workspace
 cargo test --workspace
 ```
 
-Install the compiler CLI:
+Install or rebuild the compiler CLI, LSP server, and bundled Tree-sitter parser:
+
+```sh
+scripts/install-lane
+```
+
+The installer runs `cargo install --path .`, `cargo install --path crates/lane-lsp`,
+and rebuilds `tree-sitter-lane/parser.so` from the generated parser sources. If
+the `tree-sitter` CLI is available, it regenerates the parser sources first.
+
+Install the compiler CLI by itself:
 
 ```sh
 cargo install --path .
 ```
 
-Install the LSP server:
+Install the LSP server by itself:
 
 ```sh
 cargo install --path crates/lane-lsp

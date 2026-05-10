@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+echo "==> Building Lane workspace"
+cargo build --workspace --manifest-path "$ROOT/Cargo.toml"
+
+echo "==> Installing lane CLI"
+cargo install --path "$ROOT"
+
+echo "==> Installing lane-lsp"
+cargo install --path "$ROOT/crates/lane-lsp"
+
+echo "==> Rebuilding tree-sitter-lane parser"
+(
+    cd "$ROOT/tree-sitter-lane"
+    if command -v tree-sitter >/dev/null 2>&1; then
+        tree-sitter generate
+    fi
+
+    cc_bin="${CC:-cc}"
+    case "$(uname -s)" in
+        Darwin)
+            "$cc_bin" -fPIC -dynamiclib -I src src/parser.c -o parser.so
+            ;;
+        *)
+            "$cc_bin" -fPIC -shared -I src src/parser.c -o parser.so
+            ;;
+    esac
+)
+
+echo "==> Installed lane, lane-lsp, and tree-sitter-lane/parser.so"
