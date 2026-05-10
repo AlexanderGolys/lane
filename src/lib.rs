@@ -1267,7 +1267,7 @@ enum AlgebraicCategory {
     Grp,
     Ring,
     DivRing,
-    VectR,
+    RVect,
     RAlg,
     Set,
 }
@@ -1299,8 +1299,8 @@ const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 8] = [
         name: "DivRing",
     },
     AlgebraicCategoryDef {
-        category: AlgebraicCategory::VectR,
-        name: "VectR",
+        category: AlgebraicCategory::RVect,
+        name: "RVect",
     },
     AlgebraicCategoryDef {
         category: AlgebraicCategory::RAlg,
@@ -1354,7 +1354,7 @@ fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {
         if rows == columns {
             categories.push(AlgebraicCategory::Ring);
         }
-        categories.push(AlgebraicCategory::VectR);
+        categories.push(AlgebraicCategory::RVect);
         return categories;
     }
 
@@ -1402,7 +1402,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
             AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
             AlgebraicCategory::RAlg,
-            AlgebraicCategory::VectR,
+            AlgebraicCategory::RVect,
         ],
     },
     BuiltinTypeDef {
@@ -1421,7 +1421,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
             AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
             AlgebraicCategory::RAlg,
-            AlgebraicCategory::VectR,
+            AlgebraicCategory::RVect,
         ],
     },
     BuiltinTypeDef {
@@ -1429,21 +1429,21 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         aliases: &["Vec2", "R2"],
         display_name: "R2",
         support_glsl: None,
-        categories: &[AlgebraicCategory::VectR],
+        categories: &[AlgebraicCategory::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Vec3,
         aliases: &["Vec3", "R3"],
         display_name: "R3",
         support_glsl: None,
-        categories: &[AlgebraicCategory::VectR],
+        categories: &[AlgebraicCategory::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Vec4,
         aliases: &["Vec4", "R4"],
         display_name: "R4",
         support_glsl: None,
-        categories: &[AlgebraicCategory::VectR],
+        categories: &[AlgebraicCategory::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Quat,
@@ -1454,7 +1454,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
             AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
             AlgebraicCategory::RAlg,
-            AlgebraicCategory::VectR,
+            AlgebraicCategory::RVect,
         ],
     },
     BuiltinTypeDef {
@@ -1744,20 +1744,20 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
     if matches!(ty, Type::VecGeneric(_)) {
         return matches!(
             category,
-            AlgebraicCategory::VectR
+            AlgebraicCategory::RVect
                 | AlgebraicCategory::Ab
                 | AlgebraicCategory::Mon
                 | AlgebraicCategory::Grp
         );
     }
     if let Type::MatGeneric(rows, columns) = ty {
-        return category == AlgebraicCategory::VectR
+        return category == AlgebraicCategory::RVect
             || (unify_symbolic_dims(rows, columns, &mut GenericSubstitution::default())
                 && (category == AlgebraicCategory::Ring
                     || category_implies(AlgebraicCategory::Ring, category)));
     }
     if let Type::Mat(rows, columns) = ty {
-        return category == AlgebraicCategory::VectR
+        return category == AlgebraicCategory::RVect
             || (rows == columns
                 && (category == AlgebraicCategory::Ring
                     || category_implies(AlgebraicCategory::Ring, category)));
@@ -1779,7 +1779,7 @@ fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> boo
     matches!(
         (source, target),
         (AlgebraicCategory::RAlg, AlgebraicCategory::Ring)
-            | (AlgebraicCategory::RAlg, AlgebraicCategory::VectR)
+            | (AlgebraicCategory::RAlg, AlgebraicCategory::RVect)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Ab)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Mon)
             | (AlgebraicCategory::Ring, AlgebraicCategory::Ab)
@@ -1789,13 +1789,13 @@ fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> boo
             | (AlgebraicCategory::DivRing, AlgebraicCategory::Ab)
             | (AlgebraicCategory::DivRing, AlgebraicCategory::Mon)
             | (AlgebraicCategory::Grp, AlgebraicCategory::Mon)
-            | (AlgebraicCategory::VectR, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::RVect, AlgebraicCategory::Ab)
             | (AlgebraicCategory::Ab, AlgebraicCategory::Set)
             | (AlgebraicCategory::Mon, AlgebraicCategory::Set)
             | (AlgebraicCategory::Grp, AlgebraicCategory::Set)
             | (AlgebraicCategory::Ring, AlgebraicCategory::Set)
             | (AlgebraicCategory::DivRing, AlgebraicCategory::Set)
-            | (AlgebraicCategory::VectR, AlgebraicCategory::Set)
+            | (AlgebraicCategory::RVect, AlgebraicCategory::Set)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Set)
     )
 }

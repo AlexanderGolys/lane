@@ -218,7 +218,8 @@ const Hom(Object, Hom(Ray, Hit)) raytrace = obj |-> "Hit raytrace(Ray ray) { flo
 ---
 
 (source_file
-  (directive)
+  (directive
+    (directive_token))
   (binding_declaration
     (gen_modifier)
     (hom_type

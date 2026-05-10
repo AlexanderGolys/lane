@@ -181,6 +181,10 @@
         "required": true,
         "types": [
           {
+            "type": " x ",
+            "named": false
+          },
+          {
             "type": "!=",
             "named": false
           },
@@ -829,6 +833,29 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "directive",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "directive_token",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1805,7 +1832,7 @@
         ]
       },
       "name": {
-        "multiple": false,
+        "multiple": true,
         "required": true,
         "types": [
           {
@@ -2146,6 +2173,10 @@
     "fields": {}
   },
   {
+    "type": " x ",
+    "named": false
+  },
+  {
     "type": "!=",
     "named": false
   },
@@ -2254,15 +2285,15 @@
     "named": false
   },
   {
+    "type": "RVect",
+    "named": false
+  },
+  {
     "type": "Ring",
     "named": false
   },
   {
     "type": "Set",
-    "named": false
-  },
-  {
-    "type": "VectR",
     "named": false
   },
   {
@@ -2287,7 +2318,7 @@
     "named": false
   },
   {
-    "type": "directive",
+    "type": "directive_token",
     "named": true
   },
   {

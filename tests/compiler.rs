@@ -308,7 +308,7 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "DivRing" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "VectR" && object.ty == "Cat"));
+        .any(|object| object.name == "RVect" && object.ty == "Cat"));
     assert!(objects
         .iter()
         .any(|object| object.name == "Bool" && object.ty == "DivRing"));
@@ -1021,7 +1021,7 @@ fn imports_raytracing_module() {
 
 #[test]
 fn raytracing_raycolor_accepts_custom_material_types() {
-    let source = "#import raytracing\nconst VectR FancyMaterial = R3 x R3 x R x R <albedo, glow, roughness, metallic>\nprovided Hom(Ray, Hit) hit\nprovided Hom(R3, FancyMaterial) material\nprovided R3 ambient\nconst Hom(FancyMaterial, R3) color = m |-> m.albedo\nconst Hom(FancyMaterial, R3) emission = m |-> m.glow\nconst Hom(FancyMaterial, R) reflectiveness = m |-> m.metallic\nconst Hom(Hit, R3) color_at = color @ material @ hit_position\nconst Hom(Hit, R3) emission_at = emission @ material @ hit_position\nconst Hom(Hit, R) reflectiveness_at = reflectiveness @ material @ hit_position\nconst Hom(Ray, R3) color_ray = raycolor_from_hit_with(default_raycolor_config, ambient, hit, color_at, emission_at, reflectiveness_at)\n";
+    let source = "#import raytracing\nconst RVect FancyMaterial = R3 x R3 x R x R <albedo, glow, roughness, metallic>\nprovided Hom(Ray, Hit) hit\nprovided Hom(R3, FancyMaterial) material\nprovided R3 ambient\nconst Hom(FancyMaterial, R3) color = m |-> m.albedo\nconst Hom(FancyMaterial, R3) emission = m |-> m.glow\nconst Hom(FancyMaterial, R) reflectiveness = m |-> m.metallic\nconst Hom(Hit, R3) color_at = color @ material @ hit_position\nconst Hom(Hit, R3) emission_at = emission @ material @ hit_position\nconst Hom(Hit, R) reflectiveness_at = reflectiveness @ material @ hit_position\nconst Hom(Ray, R3) color_ray = raycolor_from_hit_with(default_raycolor_config, ambient, hit, color_at, emission_at, reflectiveness_at)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct FancyMaterial"));
@@ -1163,7 +1163,7 @@ fn rejects_provided_product_type_declarations_in_modules() {
     fs::create_dir_all(dir.join("modules")).unwrap();
     fs::write(
         dir.join("modules").join("materials.lane"),
-        "#module\nprovided VectR Material = R3 x R3 x R <color, emission, reflectiveness>\n",
+        "#module\nprovided RVect Material = R3 x R3 x R <color, emission, reflectiveness>\n",
     )
     .unwrap();
     let source_path = dir.join("scene.lane");
@@ -1182,7 +1182,7 @@ fn rejects_provided_product_type_declarations_in_modules() {
 
 #[test]
 fn provided_product_type_is_declared_but_not_emitted() {
-    let source = "provided VectR External = R3 x R <color, weight>\nprovided External external\nconst Hom(R, External) copied = external\n";
+    let source = "provided RVect External = R3 x R <color, weight>\nprovided External external\nconst Hom(R, External) copied = external\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(!glsl.contains("struct External"));
@@ -1417,7 +1417,7 @@ fn rejects_division_for_group_category_types() {
 
 #[test]
 fn supports_provided_vector_space_category_types() {
-    let source = "provided VectR V\nprovided V v\nprovided Hom(V, R) norm\nR radius = norm(2 * (v / 3))\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided RVect V\nprovided V v\nprovided Hom(V, R) norm\nR radius = norm(2 * (v / 3))\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float scene_sdf(vec3 p) {"));
@@ -1483,7 +1483,7 @@ fn supports_conditional_value_expressions() {
 
 #[test]
 fn supports_product_conditional_values_without_glsl_ternaries() {
-    let source = "const VectR Swatch = R3 x R <color, weight>\nprovided Bool flag\nconst Swatch warm = Swatch((1, 0, 0), 1)\nconst Swatch cool = Swatch((0, 0, 1), 2)\nconst Swatch selected = if(flag) warm else cool\nconst Object output = Ball3D(r=selected.weight)\n";
+    let source = "const RVect Swatch = R3 x R <color, weight>\nprovided Bool flag\nconst Swatch warm = Swatch((1, 0, 0), 1)\nconst Swatch cool = Swatch((0, 0, 1), 2)\nconst Swatch selected = if(flag) warm else cool\nconst Object output = Ball3D(r=selected.weight)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains(

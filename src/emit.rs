@@ -1157,7 +1157,7 @@ fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
             ProductOp::Sub,
             ProductOp::Mult,
         ],
-        AlgebraicCategory::VectR => &[
+        AlgebraicCategory::RVect => &[
             ProductOp::Zero,
             ProductOp::Add,
             ProductOp::Sub,
@@ -2856,7 +2856,7 @@ fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
     if other == &Type::Int {
         Some(Type::Int)
     } else if other == &Type::Float
-        || has_category(other, AlgebraicCategory::VectR)
+        || has_category(other, AlgebraicCategory::RVect)
         || has_category(other, AlgebraicCategory::RAlg)
     {
         Some(Type::Float)

@@ -18,8 +18,11 @@ const Object output = spin(time) * moved
 ---
 
 (source_file
-  (directive)
-  (directive)
+  (directive
+    (directive_token))
+  (directive
+    (directive_token)
+    (number))
   (input_declaration
     (type_identifier)
     (identifier))

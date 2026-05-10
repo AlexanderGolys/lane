@@ -175,7 +175,7 @@ fn lists_known_builtin_objects_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("DivRing: Cat"));
-    assert!(stdout.contains("VectR: Cat"));
+    assert!(stdout.contains("RVect: Cat"));
     assert!(stdout.contains("Bool: DivRing"));
     assert!(stdout.contains("C: DivRing, RAlg"));
     assert!(stdout.contains("H: DivRing, RAlg"));
@@ -347,7 +347,7 @@ fn prints_bash_completion_from_cli() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
-    assert!(stdout.contains("Ab Mon Grp Ring DivRing VectR RAlg"));
+    assert!(stdout.contains("Ab Mon Grp Ring DivRing RVect RAlg"));
     assert!(stdout.contains("C Isom2 Isom3"));
     assert!(stdout.contains("diff"));
     assert!(!stdout.contains("Complex diff Isom2"));

@@ -534,7 +534,7 @@ Categories classify which algebraic operations are available.
 | `Grp` | group | `e`, `*`, inverse helpers |
 | `Ring` | ring | `0`, `1`, `+`, `-`, `*` |
 | `DivRing` | division ring | ring operations and `/` |
-| `VectR` | real vector space | `0`, `+`, `-`, scalar `*` and `/` |
+| `RVect` | real vector space | `0`, `+`, `-`, scalar `*` and `/` |
 | `RAlg` | real algebra | ring operations and scalar multiplication |
 
 The category order used by Lane is:
@@ -545,7 +545,7 @@ DivRing < Ring
 Ring < Mon
 Ring < Ab
 RAlg < Ring
-RAlg < VectR < Ab
+RAlg < RVect < Ab
 RAlg < Mon
 ```
 

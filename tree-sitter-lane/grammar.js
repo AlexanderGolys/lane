@@ -15,7 +15,7 @@ const CATEGORY_NAMES = [
     'Grp',
     'Ring',
     'DivRing',
-    'VectR',
+    'RVect',
     'RAlg',
     'Set',
 ];
@@ -36,14 +36,15 @@ module.exports = grammar({
     ],
 
     rules: {
-        source_file: ($) => repeat($._declaration),
+        source_file: ($) => seq(repeat($.directive), repeat($._declaration)),
 
         comment: () => token(seq('//', /.*/)),
 
-        directive: () => token(seq('#', /.*/)),
+        directive_token: () => token(/#[A-Za-z0-9_]+/),
+
+        directive: ($) => prec.right(seq($.directive_token, optional(choice($.number, $.identifier)))),
 
         _declaration: ($) => choice(
-            $.directive,
             $.provided_category_declaration,
             $.product_type_declaration,
             $.input_declaration,
@@ -54,7 +55,7 @@ module.exports = grammar({
         provided_category_declaration: ($) => seq(
             'provided',
             field('category', $.category_identifier),
-            field('name', $.identifier),
+            commaSep1(field('name', $.identifier)),
         ),
 
         product_type_declaration: ($) => seq(
@@ -73,7 +74,6 @@ module.exports = grammar({
         product_field_list: ($) => seq(
             '<',
             commaSep1(field('name', $.identifier)),
-            optional(','),
             '>',
         ),
 
@@ -283,6 +283,7 @@ module.exports = grammar({
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '*'), field('right', $._expression))),
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '/'), field('right', $._expression))),
             prec.left(PREC.compose, seq(field('left', $._expression), field('operator', '@'), field('right', $._expression))),
+            prec.left(PREC.compose, seq(field('left', $._expression), field('operator', ' x '), field('right', $._expression))),
         ),
 
         parenthesized_expression: ($) => seq(

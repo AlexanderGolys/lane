@@ -1469,7 +1469,7 @@ fn product_category_supported(category: AlgebraicCategory) -> bool {
             | AlgebraicCategory::Mon
             | AlgebraicCategory::Grp
             | AlgebraicCategory::Ring
-            | AlgebraicCategory::VectR
+            | AlgebraicCategory::RVect
             | AlgebraicCategory::RAlg
             | AlgebraicCategory::Set
     )
@@ -4795,13 +4795,13 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
     }
 
     if matches!(op, BinOp::Mul | BinOp::Div)
-        && has_category(left, AlgebraicCategory::VectR)
+        && has_category(left, AlgebraicCategory::RVect)
         && right == &Type::Float
     {
         return Ok(left.clone());
     }
 
-    if op == BinOp::Mul && left == &Type::Float && has_category(right, AlgebraicCategory::VectR) {
+    if op == BinOp::Mul && left == &Type::Float && has_category(right, AlgebraicCategory::RVect) {
         return Ok(right.clone());
     }
 
@@ -4825,7 +4825,7 @@ fn bool_numeric_cast_type_for_binary(other: &Type) -> Option<Type> {
     if other == &Type::Int {
         Some(Type::Int)
     } else if other == &Type::Float
-        || has_category(other, AlgebraicCategory::VectR)
+        || has_category(other, AlgebraicCategory::RVect)
         || has_category(other, AlgebraicCategory::RAlg)
     {
         Some(Type::Float)
