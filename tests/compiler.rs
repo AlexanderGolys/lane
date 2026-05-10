@@ -634,6 +634,14 @@ fn supports_provided_arrow_function_declarations() {
 }
 
 #[test]
+fn supports_multiple_provided_arrow_function_declarations() {
+    let source = "provided f, g: R -> R\nconst Object output = Ball3D(r=f(g(1)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D(f(g(1.0)))"));
+}
+
+#[test]
 fn rejects_multiple_names_in_value_definitions() {
     let error = compile_program("R a, b = 1\nconst Object output = Ball3D(r=1)\n")
         .unwrap_err()

@@ -85,7 +85,7 @@ module.exports = grammar({
             ),
             seq(
                 'provided',
-                field('name', $.identifier),
+                commaSep1(field('name', $.identifier)),
                 ':',
                 field('type', $.function_arrow_type),
             ),

@@ -173,12 +173,19 @@ Provided Arrow Function
 ==================
 
 provided f: X -> Y
+provided g, h: X -> Y
 const Object output = Ball3D(r=1)
 
 ---
 
 (source_file
   (input_declaration
+    (identifier)
+    (function_arrow_type
+      (type_identifier)
+      (type_identifier)))
+  (input_declaration
+    (identifier)
     (identifier)
     (function_arrow_type
       (type_identifier)

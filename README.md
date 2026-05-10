@@ -266,11 +266,13 @@ thread provided values through helper parameters.
 provided R time
 provided R3 center
 provided measure: R3 -> R
+provided density, shadow: R3 -> R
 const Object output = Ball3D(r=1 + time) + center
 ```
 
 Function-valued provided inputs can use either `provided Hom(A, B) name` or the
-equivalent morphism form `provided name: A -> B`.
+equivalent morphism form `provided name: A -> B`. Both forms accept comma-list
+names, such as `provided Hom(R, R) f, g` or `provided f, g: R -> R`.
 
 ### `provided CATEGORY TypeName`
 
