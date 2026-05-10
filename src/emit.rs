@@ -900,6 +900,11 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
             collect_object_getter_value_refs(z, names);
             collect_object_getter_value_refs(w, names);
         }
+        ValueExpr::Product(values) => {
+            for value in values {
+                collect_object_getter_value_refs(value, names);
+            }
+        }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
                 collect_object_getter_value_refs(row, names);
@@ -1832,6 +1837,11 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
             collect_concat_helpers(z, helpers);
             collect_concat_helpers(w, helpers);
         }
+        ValueExpr::Product(values) => {
+            for value in values {
+                collect_concat_helpers(value, helpers);
+            }
+        }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
                 collect_concat_helpers(row, helpers);
@@ -1925,6 +1935,11 @@ fn collect_conditional_helpers(
             collect_conditional_helpers(z, helpers);
             collect_conditional_helpers(w, helpers);
         }
+        ValueExpr::Product(values) => {
+            for value in values {
+                collect_conditional_helpers(value, helpers);
+            }
+        }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
                 collect_conditional_helpers(row, helpers);
@@ -1965,6 +1980,9 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
                 && is_global_const_value_expr(z, names)
                 && is_global_const_value_expr(w, names)
         }
+        ValueExpr::Product(values) => values
+            .iter()
+            .all(|value| is_global_const_value_expr(value, names)),
         ValueExpr::Matrix { rows, .. } => rows
             .iter()
             .all(|row| is_global_const_value_expr(row, names)),
@@ -2131,6 +2149,11 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_refs(z, names);
             collect_value_refs(w, names);
         }
+        ValueExpr::Product(values) => {
+            for value in values {
+                collect_value_refs(value, names);
+            }
+        }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
                 collect_value_refs(row, names);
@@ -2216,6 +2239,11 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_function_refs(y, names);
             collect_value_function_refs(z, names);
             collect_value_function_refs(w, names);
+        }
+        ValueExpr::Product(values) => {
+            for value in values {
+                collect_value_function_refs(value, names);
+            }
         }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
@@ -2437,6 +2465,11 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_support(y, names);
             collect_value_support(z, names);
             collect_value_support(w, names);
+        }
+        ValueExpr::Product(values) => {
+            for value in values {
+                collect_value_support(value, names);
+            }
         }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
@@ -2671,6 +2704,7 @@ fn emit_value_expr(
             emit_value_expr(z, helper_names, value_names),
             emit_value_expr(w, helper_names, value_names)
         ),
+        ValueExpr::Product(_) => unreachable!("structural product values are not emitted directly"),
         ValueExpr::Matrix { columns, rows } => {
             emit_matrix(rows, *columns, helper_names, value_names)
         }

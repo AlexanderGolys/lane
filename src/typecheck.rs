@@ -1020,9 +1020,10 @@ impl TypedProgram {
                     | Type::Vec4
                     | Type::Mat(_, _)
                     | Type::Array(_)
+                    | Type::Product(_)
             ) {
                 return Err(Error::new(format!(
-                    "function '{}' currently only supports scalar, vector, matrix, or array outputs",
+                    "function '{}' currently only supports scalar, vector, matrix, array, or product outputs",
                     func.name
                 ))
                 .with_line(func.line));
@@ -2775,6 +2776,11 @@ fn collect_lifted_param_type(
             collect_lifted_param_type(z, name, ty)?;
             collect_lifted_param_type(w, name, ty)?;
         }
+        ValueExpr::Product(values) => {
+            for value in values {
+                collect_lifted_param_type(value, name, ty)?;
+            }
+        }
         ValueExpr::Matrix { rows, .. } => {
             for row in rows {
                 collect_lifted_param_type(row, name, ty)?;
@@ -4480,38 +4486,32 @@ fn infer_tensor_function_product_candidates(
 ) -> Result<Vec<FunctionExpr>, Error> {
     let left = infer_function_expr(left, env)?;
     let right = infer_function_expr(right, env)?;
-    if left.input != Type::Float || right.input != Type::Float {
-        return Err(Error::new(
-            "function product syntax currently supports scalar domains",
-        ));
-    }
-    if left.output != Type::Float || right.output != Type::Float {
-        return Err(Error::new(
-            "function product syntax currently supports scalar codomains",
-        ));
-    }
+    let input = scalar_product_output([&left.input, &right.input].into_iter())?;
+    let output = scalar_product_output([&left.output, &right.output].into_iter())?;
     Ok(vec![FunctionExpr {
-        input: Type::Vec2,
-        output: Type::Vec2,
+        input,
+        output,
         kind: FunctionExprKind::ProductTensor(Box::new(left), Box::new(right)),
     }])
 }
 
 fn scalar_product_output<'a>(parts: impl Iterator<Item = &'a Type>) -> Result<Type, Error> {
-    let count = parts
+    let parts = parts.cloned().collect::<Vec<_>>();
+    let scalar_count = parts
+        .iter()
         .map(scalar_product_part_len)
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| Error::new("function products currently require scalar codomains"))?
-        .into_iter()
-        .sum::<usize>();
-    match count {
-        2 => Ok(Type::Vec2),
-        3 => Ok(Type::Vec3),
-        4 => Ok(Type::Vec4),
-        _ => Err(Error::new(
-            "function products currently support R2, R3, and R4 codomains",
-        )),
+        .collect::<Option<Vec<_>>>();
+    if let Some(count) = scalar_count.map(|parts| parts.into_iter().sum::<usize>()) {
+        return match count {
+            2 => Ok(Type::Vec2),
+            3 => Ok(Type::Vec3),
+            4 => Ok(Type::Vec4),
+            _ => Err(Error::new(
+                "function products currently support R2, R3, and R4 scalar codomains",
+            )),
+        };
     }
+    Ok(Type::Product(parts))
 }
 
 fn scalar_product_part_len(ty: &Type) -> Option<usize> {

@@ -826,8 +826,10 @@ binding name.
 ### Function Products
 
 Tuples of functions with the same domain form a vector-valued function when the
-expected codomain is `R2`, `R3`, or `R4`. The domains must match as written:
-`Hom(R2, R)` and `Hom(R x R, R)` are different signatures.
+expected codomain is `R2`, `R3`, or `R4`. For non-scalar codomains, the tuple
+preserves the structural product type, such as `Hom(X, Y x Z)`. The domains
+must match as written: `Hom(R2, R)` and `Hom(R x R, R)` are different
+signatures.
 
 ```lane
 Hom(R, R2) circle = (sin, cos)

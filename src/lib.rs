@@ -2536,6 +2536,7 @@ enum ValueExpr {
         Box<ValueExpr>,
         Box<ValueExpr>,
     ),
+    Product(Vec<ValueExpr>),
     Matrix {
         columns: usize,
         rows: Vec<ValueExpr>,
@@ -2597,6 +2598,7 @@ impl ValueExpr {
             Self::Vec2(_, _) => Type::Vec2,
             Self::Vec3(_, _, _) => Type::Vec3,
             Self::Vec4(_, _, _, _) => Type::Vec4,
+            Self::Product(values) => Type::Product(values.iter().map(ValueExpr::ty).collect()),
             Self::Matrix { columns, rows } => Type::Mat(rows.len(), *columns),
             Self::MatrixBasis { ty, .. } => ty.clone(),
             Self::UnitVectorBasis { ty, .. } => ty.clone(),
@@ -2802,6 +2804,9 @@ fn cast_value_for_expected_type(value: ValueExpr, expected_ty: &Type) -> ValueEx
 }
 
 fn product_value(values: Vec<ValueExpr>) -> ValueExpr {
+    if !values.iter().all(|value| value.ty() == Type::Float) {
+        return ValueExpr::Product(values);
+    }
     match values.as_slice() {
         [x, y] => ValueExpr::Vec2(Box::new(x.clone()), Box::new(y.clone())),
         [x, y, z] => ValueExpr::Vec3(

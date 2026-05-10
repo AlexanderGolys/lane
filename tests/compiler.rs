@@ -828,6 +828,13 @@ fn supports_tensor_function_products() {
 }
 
 #[test]
+fn supports_structural_function_products() {
+    let source = "provided VectR X, Y, Z, W\nprovided f: X -> Y\nprovided Hom(X, Z) g\nprovided Hom(Z, W) h\nHom(X, Y x Z) fg = (f, g)\nHom(X x Z, Y x W) fxh = f x h\n";
+
+    compile_program(source).unwrap();
+}
+
+#[test]
 fn supports_operator_references_as_value_calls() {
     let source = "provided R x\nprovided R y\nR sum = &+(x, y)\nBool ordered = &<(x, y)\nconst Object output = Ball3D(r=sum + if(ordered) 1 else 0)\n";
     let glsl = compile_program(source).unwrap();
