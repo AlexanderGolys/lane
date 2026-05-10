@@ -80,13 +80,9 @@ impl<'a> Parser<'a> {
             }
             directives_open = false;
 
-            if let Some(parsed_inputs) = parse_multi_input_decls(
-                line,
-                line_number,
-                &custom_types,
-                ambient_dimension,
-            )
-            .map_err(|err| err.with_line(line_number))?
+            if let Some(parsed_inputs) =
+                parse_multi_input_decls(line, line_number, &custom_types, ambient_dimension)
+                    .map_err(|err| err.with_line(line_number))?
             {
                 if is_module {
                     return Err(
@@ -253,6 +249,14 @@ impl<'a> Parser<'a> {
         }
 
         if let Some(rest) = line.strip_prefix("provided ") {
+            if let Some(input) = parse_provided_arrow_decl(
+                rest.trim(),
+                line_number,
+                custom_types,
+                ambient_dimension,
+            )? {
+                return Ok(Decl::Input(input));
+            }
             let (ty, name) = split_type_name(rest.trim())?;
             if let Some(category) = category_by_name(ty) {
                 return Ok(Decl::ProvidedType(ProvidedTypeDecl {
@@ -299,7 +303,7 @@ impl<'a> Parser<'a> {
             }));
         }
         let (ty_source, name) = split_type_name(left)?;
-        if ty_source.contains(',') || name.contains(',') {
+        if find_top_level_comma(ty_source).is_some() || name.contains(',') {
             return Err(Error::new(
                 "multiple names are only supported for provided declarations",
             ));
@@ -573,7 +577,7 @@ fn parse_multi_input_decls(
     }
 
     let rest = rest.trim();
-    let Some(first_comma) = rest.find(',') else {
+    let Some(first_comma) = find_top_level_comma(rest) else {
         return Ok(None);
     };
     let Some(split_index) = rest[..first_comma].rfind(' ') else {
@@ -585,15 +589,13 @@ fn parse_multi_input_decls(
         return Ok(None);
     }
 
-    let ty = parse_type_with_custom_types_for_ambient(
-        ty_source,
-        custom_types,
-        ambient_dimension,
-    )?;
+    let ty = parse_type_with_custom_types_for_ambient(ty_source, custom_types, ambient_dimension)?;
     let mut inputs = Vec::new();
     for name in names_source.split(',').map(str::trim) {
         if name.is_empty() {
-            return Err(Error::new("expected a name after ',' in provided declaration"));
+            return Err(Error::new(
+                "expected a name after ',' in provided declaration",
+            ));
         }
         inputs.push(InputDecl {
             name: name.to_string(),
@@ -602,6 +604,34 @@ fn parse_multi_input_decls(
         });
     }
     Ok(Some(inputs))
+}
+
+fn parse_provided_arrow_decl(
+    source: &str,
+    line_number: usize,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+    ambient_dimension: ShapeDimension,
+) -> Result<Option<InputDecl>, Error> {
+    let Some((name, function_type)) = source.split_once(':') else {
+        return Ok(None);
+    };
+    let name = name.trim();
+    if !is_identifier(name) {
+        return Ok(None);
+    }
+    let Some(arrow_index) = find_top_level_arrow(function_type) else {
+        return Ok(None);
+    };
+    let input = function_type[..arrow_index].trim();
+    let output = function_type[arrow_index + 2..].trim();
+    Ok(Some(InputDecl {
+        name: name.to_string(),
+        ty: Type::func(
+            parse_type_with_custom_types_for_ambient(input, custom_types, ambient_dimension)?,
+            parse_type_with_custom_types_for_ambient(output, custom_types, ambient_dimension)?,
+        ),
+        line: line_number,
+    }))
 }
 
 fn split_product_type_fields(source: &str) -> Result<(&str, Option<Vec<String>>), Error> {
@@ -1196,10 +1226,7 @@ fn tokenize(source: &str) -> Vec<Token> {
             }
             continue;
         }
-        if ch == '|'
-            && chars.get(index + 1) == Some(&'-')
-            && chars.get(index + 2) == Some(&'>')
-        {
+        if ch == '|' && chars.get(index + 1) == Some(&'-') && chars.get(index + 2) == Some(&'>') {
             tokens.push(Token::Arrow);
             index += 3;
             continue;
@@ -1433,18 +1460,42 @@ fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {
 }
 
 fn split_top_level_comma(source: &str) -> Result<(&str, &str), Error> {
+    let Some(index) = find_top_level_comma(source) else {
+        return Err(Error::new("expected ',' in function type"));
+    };
+    Ok((source[..index].trim(), source[index + 1..].trim()))
+}
+
+fn find_top_level_comma(source: &str) -> Option<usize> {
     let mut depth = 0;
     for (index, ch) in source.char_indices() {
         match ch {
             '(' => depth += 1,
             ')' => depth -= 1,
             ',' if depth == 0 => {
-                return Ok((source[..index].trim(), source[index + 1..].trim()));
+                return Some(index);
             }
             _ => {}
         }
     }
-    Err(Error::new("expected ',' in function type"))
+    None
+}
+
+fn find_top_level_arrow(source: &str) -> Option<usize> {
+    let mut depth = 0;
+    let bytes = source.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let ch = source[index..].chars().next().unwrap();
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            '-' if depth == 0 && bytes.get(index + 1) == Some(&b'>') => return Some(index),
+            _ => {}
+        }
+        index += ch.len_utf8();
+    }
+    None
 }
 
 fn split_top_level_product(source: &str) -> Option<Vec<&str>> {

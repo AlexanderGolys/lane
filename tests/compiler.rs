@@ -574,7 +574,8 @@ fn supports_power_type_product_declarations() {
 
 #[test]
 fn supports_single_vector_closure_parameter() {
-    let source = "const Hom(R2, R) g = v |-> v.x + v.y\nconst Object output = Ball3D(r=g((1, 2)))\n";
+    let source =
+        "const Hom(R2, R) g = v |-> v.x + v.y\nconst Object output = Ball3D(r=g((1, 2)))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float g(vec2 _t) {"));
@@ -597,6 +598,39 @@ fn supports_multiple_provided_values_on_one_line() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("ParamBall3D(((a + b) + c))"));
+}
+
+#[test]
+fn supports_provided_function_types_with_commas() {
+    let source = "provided Hom(R, R) f\nconst Object output = Ball3D(r=f(1))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D(f(1.0))"));
+}
+
+#[test]
+fn supports_multiple_provided_function_values_on_one_line() {
+    let source = "provided Hom(R, R) f, g\nconst Object output = Ball3D(r=f(g(1)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D(f(g(1.0)))"));
+}
+
+#[test]
+fn supports_function_declarations_with_comma_types_and_tuple_bodies() {
+    let source = "provided Hom(R, R) f\nprovided Hom(R, R) g\nHom(R, R2) pair = (f, g)\nconst Object output = Ball3D(r=pair(1).x)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 pair(float _t)"));
+    assert!(glsl.contains("return vec2(f(_t), g(_t));"));
+}
+
+#[test]
+fn supports_provided_arrow_function_declarations() {
+    let source = "provided f: R -> R\nconst Object output = Ball3D(r=f(1))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D(f(1.0))"));
 }
 
 #[test]

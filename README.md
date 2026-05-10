@@ -262,8 +262,12 @@ thread provided values through helper parameters.
 ```lane
 provided R time
 provided R3 center
+provided measure: R3 -> R
 const Object output = Ball3D(r=1 + time) + center
 ```
+
+Function-valued provided inputs can use either `provided Hom(A, B) name` or the
+equivalent morphism form `provided name: A -> B`.
 
 ### `provided CATEGORY TypeName`
 
