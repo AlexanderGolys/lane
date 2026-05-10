@@ -226,7 +226,9 @@ a program needs a different precision.
 Imports a Lane module from the local `modules/` directory or the installed Lane
 module directory. Imported modules must start with `#module`, may define Lane
 helpers and raw GLSL functions, and cannot contain `provided` declarations. The
-shipped modules include `std` and `raytracing`.
+`#module` directive is only valid in files loaded through `#import`; scene or
+entrypoint files must omit it. The shipped modules include `std` and
+`raytracing`.
 
 ```lane
 #import std

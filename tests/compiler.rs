@@ -934,6 +934,15 @@ fn imports_local_modules_and_mangles_private_names() {
 }
 
 #[test]
+fn rejects_module_directive_in_main_programs() {
+    let error = compile_program("#module\nconst Object output = Ball3D(r=1)\n")
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("#module is only valid in imported module files"));
+}
+
+#[test]
 fn imports_module_raw_glsl_functions() {
     let dir = unique_temp_dir("module_raw");
     fs::create_dir_all(dir.join("modules")).unwrap();
