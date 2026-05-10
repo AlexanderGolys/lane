@@ -136,6 +136,36 @@ const Object output = Ball3D(r=1)
           (number))))))
 
 ==================
+Multiple Provided Inputs
+==================
+
+provided R a, b, c
+const Object output = Ball3D(r=a + b + c)
+
+---
+
+(source_file
+  (input_declaration
+    (type_identifier)
+    (identifier)
+    (identifier)
+    (identifier))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (named_argument
+          (identifier)
+          (binary_expression
+            (binary_expression
+              (identifier)
+              (identifier))
+            (identifier)))))))
+
+==================
 Array Declarations
 ==================
 

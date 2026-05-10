@@ -80,6 +80,27 @@ impl<'a> Parser<'a> {
             }
             directives_open = false;
 
+            if let Some(parsed_inputs) = parse_multi_input_decls(
+                line,
+                line_number,
+                &custom_types,
+                ambient_dimension,
+            )
+            .map_err(|err| err.with_line(line_number))?
+            {
+                if is_module {
+                    return Err(
+                        Error::new("provided declarations are not allowed in modules")
+                            .with_line(line_number),
+                    );
+                }
+                for input in parsed_inputs {
+                    ensure_public_decl_name(&input.name, "provided value", line_number)?;
+                    inputs.push(input);
+                }
+                continue;
+            }
+
             match self
                 .parse_decl_with_custom_types(
                     line,
@@ -278,6 +299,11 @@ impl<'a> Parser<'a> {
             }));
         }
         let (ty_source, name) = split_type_name(left)?;
+        if ty_source.contains(',') || name.contains(',') {
+            return Err(Error::new(
+                "multiple names are only supported for provided declarations",
+            ));
+        }
         let ty = parse_type_with_custom_types_for_ambient(
             ty_source.trim(),
             custom_types,
@@ -531,6 +557,51 @@ fn parse_product_type_decl(
         provided,
         line: line_number,
     }))
+}
+
+fn parse_multi_input_decls(
+    line: &str,
+    line_number: usize,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+    ambient_dimension: ShapeDimension,
+) -> Result<Option<Vec<InputDecl>>, Error> {
+    let Some(rest) = line.strip_prefix("provided ") else {
+        return Ok(None);
+    };
+    if rest.contains('=') {
+        return Ok(None);
+    }
+
+    let rest = rest.trim();
+    let Some(first_comma) = rest.find(',') else {
+        return Ok(None);
+    };
+    let Some(split_index) = rest[..first_comma].rfind(' ') else {
+        return Err(Error::new("expected '<type> <name>'"));
+    };
+    let ty_source = rest[..split_index].trim();
+    let names_source = rest[split_index + 1..].trim();
+    if category_by_name(ty_source).is_some() {
+        return Ok(None);
+    }
+
+    let ty = parse_type_with_custom_types_for_ambient(
+        ty_source,
+        custom_types,
+        ambient_dimension,
+    )?;
+    let mut inputs = Vec::new();
+    for name in names_source.split(',').map(str::trim) {
+        if name.is_empty() {
+            return Err(Error::new("expected a name after ',' in provided declaration"));
+        }
+        inputs.push(InputDecl {
+            name: name.to_string(),
+            ty: ty.clone(),
+            line: line_number,
+        });
+    }
+    Ok(Some(inputs))
 }
 
 fn split_product_type_fields(source: &str) -> Result<(&str, Option<Vec<String>>), Error> {

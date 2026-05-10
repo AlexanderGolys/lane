@@ -573,6 +573,7 @@ Use previously declared values, functions, objects, or provided inputs.
 
 ```lane
 provided R radius
+provided R x, y, z
 Object ball = Ball3D(r=radius)
 const Object output = ball
 ```

@@ -80,7 +80,7 @@ module.exports = grammar({
         input_declaration: ($) => seq(
             'provided',
             field('type', $._type),
-            field('name', $.identifier),
+            commaSep1(field('name', $.identifier)),
         ),
 
         binding_declaration: ($) => seq(

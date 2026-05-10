@@ -592,6 +592,23 @@ fn rejects_legacy_closure_arrow_syntax() {
 }
 
 #[test]
+fn supports_multiple_provided_values_on_one_line() {
+    let source = "provided R a, b, c\nconst Object output = Ball3D(r=a + b + c)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D(((a + b) + c))"));
+}
+
+#[test]
+fn rejects_multiple_names_in_value_definitions() {
+    let error = compile_program("R a, b = 1\nconst Object output = Ball3D(r=1)\n")
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("multiple names are only supported for provided declarations"));
+}
+
+#[test]
 fn supports_generic_vector_function_calls_and_composition() {
     let source = "provided Hom(R{n}, R) measure\nprovided Hom(R3, R3) warp\nprovided R3 p\nconst Hom(R3, R) h = measure @ warp\nconst Object output = Ball3D(r=h(p))\n";
     let glsl = compile_program(source).unwrap();
