@@ -77,10 +77,18 @@ module.exports = grammar({
             '>',
         ),
 
-        input_declaration: ($) => seq(
-            'provided',
-            field('type', $._type),
-            commaSep1(field('name', $.identifier)),
+        input_declaration: ($) => choice(
+            seq(
+                'provided',
+                field('type', $._type),
+                commaSep1(field('name', $.identifier)),
+            ),
+            seq(
+                'provided',
+                field('name', $.identifier),
+                ':',
+                field('type', $.function_arrow_type),
+            ),
         ),
 
         binding_declaration: ($) => seq(
@@ -148,6 +156,12 @@ module.exports = grammar({
             ',',
             field('output', $._type),
             ')',
+        ),
+
+        function_arrow_type: ($) => seq(
+            field('input', $._type),
+            '->',
+            field('output', $._type),
         ),
 
         end_type: ($) => seq(

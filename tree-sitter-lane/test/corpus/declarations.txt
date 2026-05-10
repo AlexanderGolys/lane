@@ -169,6 +169,32 @@ const Object output = Ball3D(r=a + b + c)
             (identifier)))))))
 
 ==================
+Provided Arrow Function
+==================
+
+provided f: X -> Y
+const Object output = Ball3D(r=1)
+
+---
+
+(source_file
+  (input_declaration
+    (identifier)
+    (function_arrow_type
+      (type_identifier)
+      (type_identifier)))
+  (binding_declaration
+    (gen_modifier)
+    (type_identifier)
+    (identifier)
+    (call_expression
+      (identifier)
+      (argument_list
+        (named_argument
+          (identifier)
+          (number))))))
+
+==================
 Array Declarations
 ==================
 

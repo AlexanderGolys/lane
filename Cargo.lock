@@ -1197,6 +1197,8 @@ dependencies = [
  "lane",
  "tokio",
  "tower-lsp",
+ "tree-sitter",
+ "tree-sitter-language",
 ]
 
 [[package]]

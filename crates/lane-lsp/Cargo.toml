@@ -7,3 +7,5 @@ edition = "2021"
 lane = { path = "../.." }
 tokio = { version = "1", features = ["io-std", "macros", "rt-multi-thread"] }
 tower-lsp = "0.20"
+tree-sitter = "0.26.8"
+tree-sitter-language = "0.1.7"
