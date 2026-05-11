@@ -4484,8 +4484,8 @@ fn infer_tensor_function_product_candidates(
     right: &Expr,
     env: &Env<'_>,
 ) -> Result<Vec<FunctionExpr>, Error> {
-    let left = infer_function_expr(left, env)?;
-    let right = infer_function_expr(right, env)?;
+    let left = infer_tensor_product_part(left, env)?;
+    let right = infer_tensor_product_part(right, env)?;
     let input = scalar_product_output([&left.input, &right.input].into_iter())?;
     let output = scalar_product_output([&left.output, &right.output].into_iter())?;
     Ok(vec![FunctionExpr {
@@ -4493,6 +4493,11 @@ fn infer_tensor_function_product_candidates(
         output,
         kind: FunctionExprKind::ProductTensor(Box::new(left), Box::new(right)),
     }])
+}
+
+fn infer_tensor_product_part(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error> {
+    infer_function_expr(expr, env)
+        .or_else(|_| infer_function_expr_for_type(expr, env, &Type::Float, &Type::Float))
 }
 
 fn scalar_product_output<'a>(parts: impl Iterator<Item = &'a Type>) -> Result<Type, Error> {

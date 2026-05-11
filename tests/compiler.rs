@@ -832,6 +832,15 @@ fn supports_tensor_function_products() {
 }
 
 #[test]
+fn infers_tensor_function_products() {
+    let source = "g = sin x sin\nprovided R2 uv\nconst Object output = Ball3D(r=length(g(uv)))\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("vec2 g(vec2 _t)"));
+    assert!(glsl.contains("return vec2(sin(_t[0]), sin(_t[1]));"));
+}
+
+#[test]
 fn supports_structural_function_products() {
     let source = "provided RVect X, Y, U, W\nprovided f: X -> Y\nprovided Hom(X, U) g\nprovided Hom(U, W) h\nHom(X, Y x U) fg = (f, g)\nHom(X x U, Y x W) fxh = f x h\n";
 

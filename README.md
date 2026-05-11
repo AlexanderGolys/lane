@@ -851,10 +851,12 @@ R2 p = circle(time)
 ```
 
 `f x g` forms a product map for scalar functions, applying the left function to
-the first coordinate and the right function to the second.
+the first coordinate and the right function to the second. Unannotated bindings
+can infer this scalar tensor-product form.
 
 ```lane
 Hom(R2, R2) warp = sin x cos
+fold = sin x sin
 R2 q = warp([1, 2])
 ```
 
