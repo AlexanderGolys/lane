@@ -776,23 +776,31 @@ impl ModuleLoader {
     }
 
     fn resolve_import(&self, import_path: &str) -> Result<PathBuf, Error> {
-        let relative = import_candidate(import_path);
-        let mut roots = Vec::new();
-        if let Ok(paths) = std::env::var("LANE_MODULE_PATH") {
-            roots.extend(std::env::split_paths(&paths));
-        }
-        roots.push(self.base_dir.clone());
-        roots.push(self.base_dir.join("modules"));
-        roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("modules"));
-
-        for root in roots {
-            let candidate = root.join(&relative);
-            if candidate.exists() {
-                return Ok(candidate);
-            }
-        }
-        Err(Error::new(format!("module '{import_path}' not found")))
+        resolve_import_path(import_path, &self.base_dir)
     }
+}
+
+pub fn resolve_import_path(
+    import_path: &str,
+    base_dir: impl AsRef<Path>,
+) -> Result<PathBuf, Error> {
+    let relative = import_candidate(import_path);
+    let base_dir = base_dir.as_ref();
+    let mut roots = Vec::new();
+    if let Ok(paths) = std::env::var("LANE_MODULE_PATH") {
+        roots.extend(std::env::split_paths(&paths));
+    }
+    roots.push(base_dir.to_path_buf());
+    roots.push(base_dir.join("modules"));
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("modules"));
+
+    for root in roots {
+        let candidate = root.join(&relative);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(Error::new(format!("module '{import_path}' not found")))
 }
 
 fn import_candidate(import_path: &str) -> PathBuf {

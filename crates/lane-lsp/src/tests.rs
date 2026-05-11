@@ -68,3 +68,47 @@ fn emits_document_symbols_for_top_level_declarations() {
     assert_eq!(symbols[6].kind, tower_lsp::lsp_types::SymbolKind::VARIABLE);
     assert_eq!(symbols[5].selection_range.start, Position::new(4, 13));
 }
+
+#[test]
+fn links_imports_to_resolved_modules() {
+    let base_dir =
+        std::env::temp_dir().join(format!("lane-lsp-import-links-{}", std::process::id()));
+    let modules_dir = base_dir.join("modules");
+    std::fs::create_dir_all(&modules_dir).unwrap();
+    std::fs::write(modules_dir.join("helpers.lane"), "#module\n").unwrap();
+
+    let links = Backend::import_links("  #import helpers\nconst R radius = 1\n", &base_dir);
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].range.start, Position::new(0, 10));
+    assert_eq!(links[0].range.end, Position::new(0, 17));
+    assert_eq!(
+        links[0].target.as_ref().unwrap().to_file_path().unwrap(),
+        modules_dir.join("helpers.lane")
+    );
+
+    std::fs::remove_dir_all(base_dir).unwrap();
+}
+
+#[test]
+fn links_quoted_nested_imports() {
+    let base_dir = std::env::temp_dir().join(format!(
+        "lane-lsp-quoted-import-links-{}",
+        std::process::id()
+    ));
+    let modules_dir = base_dir.join("modules").join("math");
+    std::fs::create_dir_all(&modules_dir).unwrap();
+    std::fs::write(modules_dir.join("helpers.lane"), "#module\n").unwrap();
+
+    let links = Backend::import_links("#import \"math/helpers\"\n", &base_dir);
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].range.start, Position::new(0, 9));
+    assert_eq!(links[0].range.end, Position::new(0, 21));
+    assert_eq!(
+        links[0].target.as_ref().unwrap().to_file_path().unwrap(),
+        modules_dir.join("helpers.lane")
+    );
+
+    std::fs::remove_dir_all(base_dir).unwrap();
+}

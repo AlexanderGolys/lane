@@ -8,12 +8,13 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
-    DocumentSymbolParams, DocumentSymbolResponse, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, MarkedString,
-    MessageType, OneOf, Position, Range, SemanticTokensFullOptions, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams, DocumentLink,
+    DocumentLinkOptions, DocumentLinkParams, DocumentSymbolParams, DocumentSymbolResponse, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, MarkedString, MessageType, OneOf, Position, Range,
+    SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -86,6 +87,14 @@ impl Backend {
         lane::lane_hover_for_word(word)
     }
 
+    fn import_links(text: &str, base_dir: impl AsRef<std::path::Path>) -> Vec<DocumentLink> {
+        let base_dir = base_dir.as_ref();
+        text.lines()
+            .enumerate()
+            .filter_map(|(line_index, line)| import_link_for_line(line, line_index, base_dir))
+            .collect()
+    }
+
     fn word_at_position(text: &str, position: Position) -> Option<String> {
         let line = text.lines().nth(position.line as usize)?;
         let chars = line.chars().collect::<Vec<_>>();
@@ -132,6 +141,10 @@ impl LanguageServer for Backend {
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                document_link_provider: Some(DocumentLinkOptions {
+                    resolve_provider: Some(false),
+                    work_done_progress_options: Default::default(),
+                }),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 semantic_tokens_provider: Some(
                     SemanticTokensOptions {
@@ -250,6 +263,14 @@ impl LanguageServer for Backend {
         )))
     }
 
+    async fn document_link(&self, params: DocumentLinkParams) -> Result<Option<Vec<DocumentLink>>> {
+        let uri = params.text_document.uri;
+        let Some(text) = self.documents.get(&uri).await else {
+            return Ok(None);
+        };
+        Ok(Some(Self::import_links(&text, Self::base_dir(&uri))))
+    }
+
     async fn semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
@@ -280,6 +301,49 @@ fn whole_document_range(text: &str) -> Range {
         Position::new(0, 0),
         Position::new(line_count.saturating_add(1), 0),
     )
+}
+
+fn import_link_for_line(
+    line: &str,
+    line_index: usize,
+    base_dir: &std::path::Path,
+) -> Option<DocumentLink> {
+    let directive_start = line.find("#import")?;
+    if !line[..directive_start].trim().is_empty() {
+        return None;
+    }
+
+    let rest_start = directive_start + "#import".len();
+    let path_start_offset = line[rest_start..].find(|ch: char| !ch.is_whitespace())?;
+    let mut path_start = rest_start + path_start_offset;
+    let mut path_end = line[path_start..]
+        .find(|ch: char| ch.is_whitespace())
+        .map(|offset| path_start + offset)
+        .unwrap_or(line.len());
+
+    if line[path_start..].starts_with('"') {
+        path_start += 1;
+        let quoted_end = line[path_start..].find('"')?;
+        path_end = path_start + quoted_end;
+    }
+
+    let import_path = line[path_start..path_end].trim();
+    if import_path.is_empty() {
+        return None;
+    }
+
+    let target_path = lane::resolve_import_path(import_path, base_dir).ok()?;
+    let target = Url::from_file_path(target_path).ok()?;
+    let line = line_index as u32;
+    Some(DocumentLink {
+        range: Range::new(
+            Position::new(line, path_start as u32),
+            Position::new(line, path_end as u32),
+        ),
+        target: Some(target),
+        tooltip: Some(format!("Open Lane module {import_path}")),
+        data: None,
+    })
 }
 
 #[tokio::main]
