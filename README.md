@@ -151,6 +151,8 @@ open file, so local modules work the same way in the editor and the CLI. The
 server also provides formatting, full-document semantic tokens, plus basic
 completion and hover entries for Lane keywords, built-in modules, primitive
 constructors, type aliases, categories, and built-in functions. The semantic
+formatter trims trailing whitespace, collapses repeated blank lines, and
+normalizes spaced ASCII type products such as `R x R` to `R × R`. The semantic
 token legend uses Lane-specific `directive`, `functor`, and `category` token
 kinds, while mapping imported modules to `namespace`, raw GLSL bodies to
 `string`, and type parameters such as `{n}` to `typeParameter`. Standalone type completions stay

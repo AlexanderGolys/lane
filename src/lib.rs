@@ -230,7 +230,7 @@ pub fn format_lane_source(source: &str) -> String {
         if blank && previous_blank {
             continue;
         }
-        lines.push(line.to_string());
+        lines.push(format_lane_line(line));
         previous_blank = blank;
     }
     if lines.is_empty() {
@@ -239,6 +239,137 @@ pub fn format_lane_source(source: &str) -> String {
     let mut formatted = lines.join("\n");
     formatted.push('\n');
     formatted
+}
+
+fn format_lane_line(line: &str) -> String {
+    let Some(equal_index) = find_top_level_equal(line) else {
+        return format_declaration_type_head(line);
+    };
+    if is_product_type_assignment_head(&line[..equal_index]) {
+        let mut formatted = String::new();
+        formatted.push_str(&line[..=equal_index]);
+        formatted.push_str(&format_product_type_assignment_tail(
+            &line[equal_index + 1..],
+        ));
+        return formatted;
+    }
+    let mut formatted = format_declaration_type_head(&line[..equal_index]);
+    formatted.push_str(&line[equal_index..]);
+    formatted
+}
+
+fn format_product_type_assignment_tail(tail: &str) -> String {
+    let Some(field_index) = tail.find('<') else {
+        return format_type_product_separators(tail);
+    };
+    let mut formatted = format_type_product_separators(&tail[..field_index]);
+    formatted.push_str(&tail[field_index..]);
+    formatted
+}
+
+fn format_declaration_type_head(line: &str) -> String {
+    let leading_len = line.len() - line.trim_start().len();
+    let (leading, body) = line.split_at(leading_len);
+    if let Some(rest) = body.strip_prefix("provided ") {
+        return format_prefixed_declaration_type_head(leading, "provided ", rest);
+    }
+    if let Some(rest) = body.strip_prefix("const ") {
+        return format_prefixed_declaration_type_head(leading, "const ", rest);
+    }
+    format_type_before_name(line)
+}
+
+fn format_prefixed_declaration_type_head(leading: &str, prefix: &str, rest: &str) -> String {
+    let mut formatted = String::new();
+    formatted.push_str(leading);
+    formatted.push_str(prefix);
+    if let Some(colon_index) = find_top_level_colon(rest) {
+        formatted.push_str(&rest[..=colon_index]);
+        formatted.push_str(&format_type_product_separators(&rest[colon_index + 1..]));
+        return formatted;
+    }
+    formatted.push_str(&format_type_before_name(rest));
+    formatted
+}
+
+fn format_type_before_name(source: &str) -> String {
+    let trimmed_end_len = source.trim_end().len();
+    let trailing = &source[trimmed_end_len..];
+    let head = &source[..trimmed_end_len];
+    let Some(name_end) = head.rfind(|ch: char| !ch.is_ascii_whitespace()) else {
+        return source.to_string();
+    };
+    let Some(space_before_name) = head[..=name_end].rfind(|ch: char| ch.is_ascii_whitespace())
+    else {
+        return source.to_string();
+    };
+    let mut formatted = format_type_product_separators(&head[..space_before_name]);
+    formatted.push_str(&head[space_before_name..]);
+    formatted.push_str(trailing);
+    formatted
+}
+
+fn format_type_product_separators(source: &str) -> String {
+    let mut formatted = String::new();
+    for (index, ch) in source.char_indices() {
+        if ch == 'x' {
+            let prev_space = index > 0 && source.as_bytes()[index - 1].is_ascii_whitespace();
+            let next_index = index + ch.len_utf8();
+            let next_space = source
+                .as_bytes()
+                .get(next_index)
+                .is_some_and(u8::is_ascii_whitespace);
+            if prev_space && next_space {
+                formatted.push('×');
+                continue;
+            }
+        }
+        formatted.push(ch);
+    }
+    formatted
+}
+
+fn find_top_level_equal(source: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (index, ch) in source.char_indices() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            '=' if depth == 0 => return Some(index),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn find_top_level_colon(source: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (index, ch) in source.char_indices() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => return Some(index),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_product_type_assignment_head(head: &str) -> bool {
+    let head = head.trim();
+    let head = head
+        .strip_prefix("provided ")
+        .or_else(|| head.strip_prefix("const "))
+        .unwrap_or(head)
+        .trim();
+    let mut parts = head.split_whitespace();
+    let Some(category) = parts.next() else {
+        return false;
+    };
+    let Some(_name) = parts.next() else {
+        return false;
+    };
+    parts.next().is_none() && category_by_name(category).is_some()
 }
 
 pub fn compile_preview_fragment_from_path(
@@ -3777,5 +3908,44 @@ impl BinOp {
             Self::Product => "x",
             Self::Compose => "@",
         }
+    }
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::format_lane_source;
+
+    #[test]
+    fn formats_ascii_product_separators_in_types() {
+        let source = "\
+provided Hom(R3 x R3, R3) cross
+provided f: X x Y -> Z
+const Hom(R x R, R) wave = sin x cos
+";
+
+        assert_eq!(
+            format_lane_source(source),
+            "\
+provided Hom(R3 × R3, R3) cross
+provided f: X × Y -> Z
+const Hom(R × R, R) wave = sin x cos
+"
+        );
+    }
+
+    #[test]
+    fn formats_product_type_definition_without_renaming_x_bindings() {
+        let source = "\
+Set Pair = R x R <left, right>
+const R x = 1
+";
+
+        assert_eq!(
+            format_lane_source(source),
+            "\
+Set Pair = R × R <left, right>
+const R x = 1
+"
+        );
     }
 }
