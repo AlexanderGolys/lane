@@ -622,27 +622,13 @@ impl App {
     }
 
     fn latest_mergeable_lane_entry(&self) -> Option<usize> {
-        let mut trailing_group = None;
-        for (index, entry) in self.transcript.iter().enumerate().rev() {
-            match entry.kind {
-                TranscriptKind::Lane if !entry.errored => {
-                    return match trailing_group {
-                        Some(group) if entry.group == Some(group) => Some(index),
-                        Some(_) => None,
-                        None => Some(index),
-                    };
-                }
-                TranscriptKind::Glsl => {
-                    let group = entry.group?;
-                    if trailing_group.is_some_and(|trailing_group| trailing_group != group) {
-                        return None;
-                    }
-                    trailing_group = Some(group);
-                }
-                _ => return None,
-            }
+        let index = self.transcript.len().checked_sub(1)?;
+        let entry = self.transcript.get(index)?;
+        if matches!(entry.kind, TranscriptKind::Lane) && !entry.errored {
+            Some(index)
+        } else {
+            None
         }
-        None
     }
 
     fn attach_group_error(&mut self, group: usize, error: String) {
@@ -2371,7 +2357,7 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_lane_submissions_merge_across_generated_glsl() {
+    fn lane_submissions_do_not_merge_across_generated_glsl() {
         let mut app = App::new();
         app.transcript.clear();
         app.input = "const R radius = 1".to_string();
@@ -2379,19 +2365,19 @@ mod tests {
         app.input = "R diameter = radius * 2".to_string();
         app.submit_input();
 
-        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript.len(), 3);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
         assert!(matches!(app.transcript[1].kind, TranscriptKind::Glsl));
-        assert_eq!(
-            app.transcript[0].text,
-            "const R radius = 1\nR diameter = radius * 2"
-        );
+        assert!(matches!(app.transcript[2].kind, TranscriptKind::Lane));
+        assert_eq!(app.transcript[0].text, "const R radius = 1");
+        assert_eq!(app.transcript[2].text, "R diameter = radius * 2");
         assert_eq!(app.transcript[0].line_start, Some(1));
         assert_eq!(app.transcript[0].group, app.transcript[1].group);
+        assert_ne!(app.transcript[0].group, app.transcript[2].group);
     }
 
     #[test]
-    fn consecutive_glsl_outputs_share_one_feed_box() {
+    fn generated_glsl_outputs_do_not_merge_across_lane_blocks() {
         let mut app = App::new();
         app.transcript.clear();
         app.split_mode = true;
@@ -2400,14 +2386,30 @@ mod tests {
         app.input = "const R diameter = radius * 2".to_string();
         app.submit_input();
 
-        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript.len(), 4);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
         assert!(matches!(app.transcript[1].kind, TranscriptKind::Glsl));
+        assert!(matches!(app.transcript[2].kind, TranscriptKind::Lane));
+        assert!(matches!(app.transcript[3].kind, TranscriptKind::Glsl));
         assert!(app.transcript[1].text.contains("const float radius = 1.0f;"));
-        assert!(app
-            .transcript[1]
+        assert!(app.transcript[3]
             .text
             .contains("const float diameter = (radius * 2.0f);"));
+    }
+
+    #[test]
+    fn adjacent_glsl_outputs_share_one_feed_box() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.push_glsl_output("float radius = 1.0;".to_string(), Some(0));
+        app.push_glsl_output("float diameter = radius * 2.0;".to_string(), Some(0));
+
+        assert_eq!(app.transcript.len(), 1);
+        assert!(matches!(app.transcript[0].kind, TranscriptKind::Glsl));
+        assert_eq!(
+            app.transcript[0].text,
+            "float radius = 1.0;\nfloat diameter = radius * 2.0;"
+        );
     }
 
     #[test]
