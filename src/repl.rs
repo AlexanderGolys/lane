@@ -148,6 +148,7 @@ impl Drop for ReplTerminal {
 struct App {
     session: ReplSession,
     input: String,
+    input_cursor: usize,
     input_history: Vec<String>,
     history_file: Option<PathBuf>,
     history_position: Option<usize>,
@@ -158,6 +159,7 @@ struct App {
     highlighter: SyntaxHighlighter,
     split_mode: bool,
     selected_group: Option<usize>,
+    transcript_scroll: usize,
     next_group: usize,
     layout: TranscriptLayout,
 }
@@ -175,6 +177,7 @@ impl App {
         Self {
             session: ReplSession::default(),
             input: String::new(),
+            input_cursor: 0,
             input_history,
             history_file,
             history_position: None,
@@ -188,6 +191,7 @@ impl App {
             highlighter: SyntaxHighlighter::new(),
             split_mode: false,
             selected_group: None,
+            transcript_scroll: 0,
             next_group: 0,
             layout: TranscriptLayout::default(),
         }
@@ -224,21 +228,25 @@ impl App {
             {
                 self.clear_history_navigation();
                 self.clear_completion();
-                self.input.push('\n');
+                self.insert_input_char('\n');
             }
             (KeyCode::Enter, _) => return self.submit_input(),
             (KeyCode::Tab, _) => self.apply_completion(),
             (KeyCode::Up, _) => self.recall_older_input(),
             (KeyCode::Down, _) => self.recall_newer_input(),
+            (KeyCode::Left, _) => self.move_input_cursor_left(),
+            (KeyCode::Right, _) => self.move_input_cursor_right(),
+            (KeyCode::PageUp, _) => self.scroll_transcript_up(),
+            (KeyCode::PageDown, _) => self.scroll_transcript_down(),
             (KeyCode::Backspace, _) => {
                 self.clear_history_navigation();
                 self.clear_completion();
-                self.input.pop();
+                self.backspace_input_char();
             }
             (KeyCode::Char(ch), _) => {
                 self.clear_history_navigation();
                 self.clear_completion();
-                self.input.push(ch);
+                self.insert_input_char(ch);
             }
             _ => {}
         }
@@ -255,6 +263,8 @@ impl App {
                     let _ = copy_text_to_clipboard(&text);
                 }
             }
+            MouseEventKind::ScrollUp => self.scroll_transcript_up(),
+            MouseEventKind::ScrollDown => self.scroll_transcript_down(),
             _ => {}
         }
     }
@@ -273,13 +283,58 @@ impl App {
         entry.copyable_text().map(str::to_string)
     }
 
+    fn insert_input_char(&mut self, ch: char) {
+        self.input.insert(self.input_cursor, ch);
+        self.input_cursor += ch.len_utf8();
+    }
+
+    fn backspace_input_char(&mut self) {
+        let Some((previous, _)) = self.input[..self.input_cursor].char_indices().next_back()
+        else {
+            return;
+        };
+        self.input.drain(previous..self.input_cursor);
+        self.input_cursor = previous;
+    }
+
+    fn move_input_cursor_left(&mut self) {
+        if let Some((previous, _)) = self.input[..self.input_cursor].char_indices().next_back() {
+            self.input_cursor = previous;
+        }
+    }
+
+    fn move_input_cursor_right(&mut self) {
+        if self.input_cursor >= self.input.len() {
+            return;
+        }
+        let next = self.input[self.input_cursor..]
+            .chars()
+            .next()
+            .map(|ch| self.input_cursor + ch.len_utf8())
+            .unwrap_or(self.input.len());
+        self.input_cursor = next;
+    }
+
+    fn scroll_transcript_up(&mut self) {
+        self.transcript_scroll = self
+            .transcript_scroll
+            .saturating_add(1)
+            .min(self.transcript.len().saturating_sub(1));
+    }
+
+    fn scroll_transcript_down(&mut self) {
+        self.transcript_scroll = self.transcript_scroll.saturating_sub(1);
+    }
+
     fn submit_input(&mut self) -> Option<ReplAction> {
         self.clear_history_navigation();
         self.clear_completion();
         let input = std::mem::take(&mut self.input);
+        self.input_cursor = 0;
         if input.trim().is_empty() {
             return None;
         }
+        self.transcript_scroll = 0;
 
         self.record_input_history(&input);
         let is_command = input.starts_with('/');
@@ -355,10 +410,11 @@ impl App {
         self.input = lane::format_lane_source(&self.input)
             .trim_end_matches(['\r', '\n'])
             .to_string();
+        self.input_cursor = self.input.len();
     }
 
     fn apply_completion(&mut self) {
-        let Some((start, prefix)) = completion_token(&self.input) else {
+        let Some((start, prefix)) = completion_token(&self.input[..self.input_cursor]) else {
             self.clear_completion();
             return;
         };
@@ -375,7 +431,8 @@ impl App {
         let Some(completed) = completion_target(&prefix, &self.completion_matches) else {
             return;
         };
-        self.input.replace_range(start.., &completed);
+        self.input.replace_range(start..self.input_cursor, &completed);
+        self.input_cursor = start + completed.len();
     }
 
     fn clear_completion(&mut self) {
@@ -421,6 +478,7 @@ impl App {
         };
         self.history_position = Some(position);
         self.input = self.input_history[position].clone();
+        self.input_cursor = self.input.len();
         self.clear_completion();
     }
 
@@ -436,6 +494,7 @@ impl App {
             self.history_position = None;
             self.input = std::mem::take(&mut self.history_draft);
         }
+        self.input_cursor = self.input.len();
         self.clear_completion();
     }
 
@@ -505,6 +564,7 @@ impl App {
                 .enumerate()
                 .rev()
                 .filter(|(_, entry)| !matches!(entry.kind, TranscriptKind::Glsl))
+                .skip(self.transcript_scroll)
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
             let glsl_entries = self
@@ -513,6 +573,7 @@ impl App {
                 .enumerate()
                 .rev()
                 .filter(|(_, entry)| matches!(entry.kind, TranscriptKind::Glsl))
+                .skip(self.transcript_scroll)
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
             self.layout
@@ -553,6 +614,7 @@ impl App {
                 .iter()
                 .enumerate()
                 .rev()
+                .skip(self.transcript_scroll)
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
             self.layout.record_bottom_to_top(
@@ -584,21 +646,20 @@ impl App {
         let input = Paragraph::new(self.input_text()).style(Style::default().bg(USER_BG));
         frame.render_widget(input, area);
 
-        let last_line_width = self
-            .input
-            .lines()
-            .last()
-            .map_or(0, |line| line.chars().count() as u16);
-        let cursor_column = last_line_width
+        let (cursor_line, cursor_width) = input_cursor_position(&self.input, self.input_cursor);
+        let cursor_column = cursor_width
             .saturating_add(TEXT_BOX_INNER_LEFT_PADDING)
             .saturating_add(self.current_input_gutter_width())
             .min(area.width.saturating_sub(1));
         let cursor_x = area.x.saturating_add(cursor_column);
-        let cursor_y = if self.input.contains('\n') {
-            area.y.saturating_add(area.height.saturating_sub(1))
+        let total_lines = input_line_count(&self.input);
+        let cursor_row = if total_lines <= 1 {
+            1.min(area.height.saturating_sub(1))
         } else {
-            area.y.saturating_add(1.min(area.height.saturating_sub(1)))
+            let visible_start = total_lines.saturating_sub(area.height as usize);
+            cursor_line.saturating_sub(visible_start) as u16
         };
+        let cursor_y = area.y.saturating_add(cursor_row.min(area.height.saturating_sub(1)));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
     }
 
@@ -909,6 +970,21 @@ fn current_input_text(mut text: Text<'static>, gutter_width: u16) -> Text<'stati
         line.spans.insert(0, Span::raw(" "));
     }
     text
+}
+
+fn input_line_count(input: &str) -> usize {
+    input.chars().filter(|ch| *ch == '\n').count() + 1
+}
+
+fn input_cursor_position(input: &str, cursor: usize) -> (usize, u16) {
+    let before_cursor = &input[..cursor.min(input.len())];
+    let line = before_cursor.chars().filter(|ch| *ch == '\n').count();
+    let column = before_cursor
+        .rsplit_once('\n')
+        .map_or(before_cursor, |(_, suffix)| suffix)
+        .chars()
+        .count() as u16;
+    (line, column)
 }
 
 fn completion_token(input: &str) -> Option<(usize, String)> {
@@ -1448,6 +1524,8 @@ impl ReplSession {
 fn help_text() -> String {
     [
         "Ctrl-F formats the current input.",
+        "PageUp/PageDown or the mouse wheel scroll the transcript.",
+        "Left/Right move through the current input.",
         "Right-click a transcript block to copy its text.",
         "/info shows loaded modules, used directives, and provided objects.",
         "/show opens a native preview window for the current session.",
@@ -1686,6 +1764,11 @@ mod tests {
         std::env::temp_dir().join(format!("lane-repl-history-test-{unique}.txt"))
     }
 
+    fn set_app_input(app: &mut App, input: &str) {
+        app.input = input.to_string();
+        app.input_cursor = app.input.len();
+    }
+
     #[test]
     fn accepts_setup_and_emits_after_const() {
         let mut session = ReplSession::default();
@@ -1808,6 +1891,60 @@ mod tests {
         assert_eq!(app.transcript.len(), 2);
         assert_eq!(app.transcript[0].text, "const R radius = 1");
         assert_eq!(app.transcript[1].text, "float radius = 1.0;");
+    }
+
+    #[test]
+    fn left_and_right_arrows_move_input_cursor_for_insertions() {
+        let mut app = App::new();
+        app.input = "ab".to_string();
+        app.input_cursor = app.input.len();
+
+        app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE));
+        assert_eq!(app.input, "aXb");
+
+        app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::NONE));
+        assert_eq!(app.input, "aXbY");
+    }
+
+    #[test]
+    fn backspace_removes_character_before_input_cursor() {
+        let mut app = App::new();
+        app.input = "abc".to_string();
+        app.input_cursor = 2;
+
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+        assert_eq!(app.input, "ac");
+        assert_eq!(app.input_cursor, 1);
+    }
+
+    #[test]
+    fn transcript_scroll_moves_and_submit_returns_to_latest() {
+        let mut app = App::new();
+        app.transcript = vec![
+            TranscriptEntry::system("old"),
+            TranscriptEntry::system("middle"),
+            TranscriptEntry::system("new"),
+        ];
+
+        app.scroll_transcript_up();
+        app.scroll_transcript_up();
+        assert_eq!(app.transcript_scroll, 2);
+        app.scroll_transcript_down();
+        assert_eq!(app.transcript_scroll, 1);
+
+        app.input = "R radius = 1".to_string();
+        app.input_cursor = app.input.len();
+        app.submit_input();
+
+        assert_eq!(app.transcript_scroll, 0);
+    }
+
+    #[test]
+    fn input_cursor_position_tracks_multiline_columns() {
+        assert_eq!(input_cursor_position("abc\nde", 6), (1, 2));
     }
 
     #[test]
@@ -2103,7 +2240,7 @@ mod tests {
     #[test]
     fn tab_completes_current_input_from_lsp_items() {
         let mut app = App::new();
-        app.input = "const Object output = Bal".to_string();
+        set_app_input(&mut app, "const Object output = Bal");
 
         app.handle_key(KeyEvent::from(KeyCode::Tab));
 
@@ -2117,7 +2254,7 @@ mod tests {
     #[test]
     fn tab_completes_repl_commands_when_input_starts_with_slash() {
         let mut app = App::new();
-        app.input = "/he".to_string();
+        set_app_input(&mut app, "/he");
 
         app.handle_key(KeyEvent::from(KeyCode::Tab));
 
@@ -2131,7 +2268,7 @@ mod tests {
     #[test]
     fn tab_does_not_extend_beyond_ambiguous_command_prefix() {
         let mut app = App::new();
-        app.input = "/s".to_string();
+        set_app_input(&mut app, "/s");
 
         app.handle_key(KeyEvent::from(KeyCode::Tab));
 
@@ -2149,7 +2286,7 @@ mod tests {
     #[test]
     fn input_shows_gray_completion_hint_without_inserting_it() {
         let mut app = App::new();
-        app.input = "const Object output = Bal".to_string();
+        set_app_input(&mut app, "const Object output = Bal");
 
         let text = app.input_text();
         let hint = text.lines[1]
@@ -2165,7 +2302,7 @@ mod tests {
     #[test]
     fn completion_hint_uses_selected_tab_completion_candidate() {
         let mut app = App::new();
-        app.input = "const Object output = Bal".to_string();
+        set_app_input(&mut app, "const Object output = Bal");
         app.completion_matches = lane::lane_completion_items()
             .into_iter()
             .filter(|item| matches!(item.label.as_str(), "Ball2D" | "Ball3D"))
@@ -2189,7 +2326,7 @@ mod tests {
     #[test]
     fn slash_input_shows_command_completion_hint() {
         let mut app = App::new();
-        app.input = "/sp".to_string();
+        set_app_input(&mut app, "/sp");
 
         let text = app.input_text();
         let hint = text.lines[1]
@@ -2204,7 +2341,10 @@ mod tests {
     #[test]
     fn ctrl_f_formats_current_input() {
         let mut app = App::new();
-        app.input = "R radius = 1   \n\n\nconst R diameter = radius * 2   ".to_string();
+        set_app_input(
+            &mut app,
+            "R radius = 1   \n\n\nconst R diameter = radius * 2   ",
+        );
 
         app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
 
@@ -2215,7 +2355,7 @@ mod tests {
     fn shift_enter_inserts_newline_without_submitting() {
         let mut app = App::new();
         app.transcript.clear();
-        app.input = "R radius = 1".to_string();
+        set_app_input(&mut app, "R radius = 1");
 
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
 
@@ -2227,7 +2367,7 @@ mod tests {
     fn alt_enter_inserts_newline_without_submitting() {
         let mut app = App::new();
         app.transcript.clear();
-        app.input = "R radius = 1".to_string();
+        set_app_input(&mut app, "R radius = 1");
 
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
 
