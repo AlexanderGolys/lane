@@ -278,7 +278,7 @@ impl App {
     fn copyable_text_at(&self, x: u16, y: u16) -> Option<String> {
         let index = self.layout.entry_at(x, y)?;
         let entry = self.transcript.get(index)?;
-        entry.copyable_text().map(str::to_string)
+        entry.copyable_text()
     }
 
     fn insert_input_char(&mut self, ch: char) {
@@ -1141,6 +1141,19 @@ fn errored_lane_text(
     Text::from(lines)
 }
 
+fn errored_lane_copy_text(source: &str, error: &str) -> String {
+    let mut text = error
+        .lines()
+        .map(strip_error_line_reference)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !text.is_empty() && !source.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(source);
+    text
+}
+
 fn strip_error_line_reference(line: &str) -> String {
     let mut words = line.split_whitespace();
     match (words.next(), words.next()) {
@@ -1401,10 +1414,14 @@ impl TranscriptEntry {
         }
     }
 
-    fn copyable_text(&self) -> Option<&str> {
+    fn copyable_text(&self) -> Option<String> {
         match self.kind {
             TranscriptKind::Welcome => None,
-            _ => Some(self.text.as_str()),
+            TranscriptKind::Lane if self.error.is_some() => Some(errored_lane_copy_text(
+                &self.text,
+                self.error.as_deref().unwrap_or(""),
+            )),
+            _ => Some(self.text.clone()),
         }
     }
 
@@ -2770,6 +2787,25 @@ mod tests {
             Some("const R radius = 1")
         );
         assert_eq!(app.copyable_text_at(1, 1), None);
+    }
+
+    #[test]
+    fn right_click_copy_includes_error_message_for_failed_lane_blocks() {
+        let mut app = App::new();
+        let mut entry =
+            TranscriptEntry::submitted("const R radius = *".to_string(), Some(0), Some(1));
+        entry.errored = true;
+        entry.error = Some("line 1: unexpected token '*' in expression".to_string());
+        app.transcript = vec![entry];
+        app.layout.entries = vec![RenderedEntry {
+            index: 0,
+            area: Rect::new(4, 5, 40, 4),
+        }];
+
+        assert_eq!(
+            app.copyable_text_at(10, 6).as_deref(),
+            Some("unexpected token '*' in expression\nconst R radius = *")
+        );
     }
 
     #[test]
