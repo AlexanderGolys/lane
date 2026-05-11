@@ -160,6 +160,8 @@ struct App {
     split_mode: bool,
     selected_group: Option<usize>,
     transcript_scroll: usize,
+    split_user_scroll: usize,
+    split_glsl_scroll: usize,
     next_group: usize,
     layout: TranscriptLayout,
 }
@@ -192,6 +194,8 @@ impl App {
             split_mode: false,
             selected_group: None,
             transcript_scroll: 0,
+            split_user_scroll: 0,
+            split_glsl_scroll: 0,
             next_group: 0,
             layout: TranscriptLayout::default(),
         }
@@ -263,8 +267,12 @@ impl App {
                     let _ = copy_text_to_clipboard(&text);
                 }
             }
-            MouseEventKind::ScrollUp => self.scroll_transcript_up(),
-            MouseEventKind::ScrollDown => self.scroll_transcript_down(),
+            MouseEventKind::ScrollUp => {
+                self.scroll_at(mouse.column, mouse.row, ScrollDirection::Up)
+            }
+            MouseEventKind::ScrollDown => {
+                self.scroll_at(mouse.column, mouse.row, ScrollDirection::Down)
+            }
             _ => {}
         }
     }
@@ -315,14 +323,67 @@ impl App {
     }
 
     fn scroll_transcript_up(&mut self) {
-        self.transcript_scroll = self
-            .transcript_scroll
-            .saturating_add(1)
-            .min(self.transcript.len().saturating_sub(1));
+        if self.split_mode {
+            self.scroll_split_pane_up(SplitPane::User);
+        } else {
+            self.transcript_scroll = self
+                .transcript_scroll
+                .saturating_add(1)
+                .min(self.transcript.len().saturating_sub(1));
+        }
     }
 
     fn scroll_transcript_down(&mut self) {
-        self.transcript_scroll = self.transcript_scroll.saturating_sub(1);
+        if self.split_mode {
+            self.scroll_split_pane_down(SplitPane::User);
+        } else {
+            self.transcript_scroll = self.transcript_scroll.saturating_sub(1);
+        }
+    }
+
+    fn scroll_at(&mut self, x: u16, y: u16, direction: ScrollDirection) {
+        if !self.split_mode {
+            match direction {
+                ScrollDirection::Up => self.scroll_transcript_up(),
+                ScrollDirection::Down => self.scroll_transcript_down(),
+            }
+            return;
+        }
+
+        let pane = self.layout.pane_at(x, y).unwrap_or(SplitPane::User);
+        match direction {
+            ScrollDirection::Up => self.scroll_split_pane_up(pane),
+            ScrollDirection::Down => self.scroll_split_pane_down(pane),
+        }
+    }
+
+    fn scroll_split_pane_up(&mut self, pane: SplitPane) {
+        let max_scroll = self.split_pane_entry_count(pane).saturating_sub(1);
+        match pane {
+            SplitPane::User => {
+                self.split_user_scroll = self.split_user_scroll.saturating_add(1).min(max_scroll)
+            }
+            SplitPane::Glsl => {
+                self.split_glsl_scroll = self.split_glsl_scroll.saturating_add(1).min(max_scroll)
+            }
+        }
+    }
+
+    fn scroll_split_pane_down(&mut self, pane: SplitPane) {
+        match pane {
+            SplitPane::User => self.split_user_scroll = self.split_user_scroll.saturating_sub(1),
+            SplitPane::Glsl => self.split_glsl_scroll = self.split_glsl_scroll.saturating_sub(1),
+        }
+    }
+
+    fn split_pane_entry_count(&self, pane: SplitPane) -> usize {
+        self.transcript
+            .iter()
+            .filter(|entry| match pane {
+                SplitPane::User => !matches!(entry.kind, TranscriptKind::Glsl),
+                SplitPane::Glsl => matches!(entry.kind, TranscriptKind::Glsl),
+            })
+            .count()
     }
 
     fn submit_input(&mut self) -> Option<ReplAction> {
@@ -334,6 +395,8 @@ impl App {
             return None;
         }
         self.transcript_scroll = 0;
+        self.split_user_scroll = 0;
+        self.split_glsl_scroll = 0;
 
         self.record_input_history(&input);
         let is_command = input.starts_with('/');
@@ -611,7 +674,7 @@ impl App {
                 .enumerate()
                 .rev()
                 .filter(|(_, entry)| !matches!(entry.kind, TranscriptKind::Glsl))
-                .skip(self.transcript_scroll)
+                .skip(self.split_user_scroll)
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
             let glsl_entries = self
@@ -620,9 +683,12 @@ impl App {
                 .enumerate()
                 .rev()
                 .filter(|(_, entry)| matches!(entry.kind, TranscriptKind::Glsl))
-                .skip(self.transcript_scroll)
+                .skip(self.split_glsl_scroll)
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
+            self.layout.record_pane(SplitPane::User, user_area);
+            self.layout
+                .record_pane(SplitPane::Glsl, transcript_feed_area(split[1]));
             self.render_transcript_entries(frame, user_entries.as_slice(), user_area);
             self.render_transcript_entries(
                 frame,
@@ -1236,9 +1302,14 @@ fn new_glsl_since(previous: &str, current: &str) -> String {
 #[derive(Default)]
 struct TranscriptLayout {
     entries: Vec<RenderedEntry>,
+    panes: Vec<RenderedPane>,
 }
 
 impl TranscriptLayout {
+    fn record_pane(&mut self, pane: SplitPane, area: Rect) {
+        self.panes.push(RenderedPane { pane, area });
+    }
+
     fn record_bottom_to_top(
         &mut self,
         area: Rect,
@@ -1287,11 +1358,36 @@ impl TranscriptLayout {
             .find(|entry| contains(entry.area, x, y))
             .map(|entry| entry.index)
     }
+
+    fn pane_at(&self, x: u16, y: u16) -> Option<SplitPane> {
+        self.panes
+            .iter()
+            .find(|pane| contains(pane.area, x, y))
+            .map(|pane| pane.pane)
+    }
 }
 
 #[derive(Clone, Copy)]
 struct RenderedEntry {
     index: usize,
+    area: Rect,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SplitPane {
+    User,
+    Glsl,
+}
+
+#[derive(Clone, Copy)]
+enum ScrollDirection {
+    Up,
+    Down,
+}
+
+#[derive(Clone, Copy)]
+struct RenderedPane {
+    pane: SplitPane,
     area: Rect,
 }
 
@@ -2039,6 +2135,51 @@ mod tests {
         app.submit_input();
 
         assert_eq!(app.transcript_scroll, 0);
+    }
+
+    #[test]
+    fn split_scroll_offsets_move_independently() {
+        let mut app = App::new();
+        app.split_mode = true;
+        app.transcript = vec![
+            TranscriptEntry::submitted("R old = 1".to_string(), Some(0), Some(1)),
+            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0)),
+            TranscriptEntry::submitted("R new = 2".to_string(), Some(1), Some(2)),
+            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1)),
+        ];
+
+        app.scroll_split_pane_up(SplitPane::Glsl);
+        assert_eq!(app.split_user_scroll, 0);
+        assert_eq!(app.split_glsl_scroll, 1);
+
+        app.scroll_split_pane_up(SplitPane::User);
+        app.scroll_split_pane_down(SplitPane::Glsl);
+        assert_eq!(app.split_user_scroll, 1);
+        assert_eq!(app.split_glsl_scroll, 0);
+    }
+
+    #[test]
+    fn split_mouse_wheel_scrolls_pane_under_pointer() {
+        let backend = ratatui::backend::TestBackend::new(80, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new();
+        app.split_mode = true;
+        app.transcript = vec![
+            TranscriptEntry::submitted("R old = 1".to_string(), Some(0), Some(1)),
+            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0)),
+            TranscriptEntry::submitted("R new = 2".to_string(), Some(1), Some(2)),
+            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1)),
+        ];
+
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        app.scroll_at(45, 1, ScrollDirection::Up);
+        assert_eq!(app.split_user_scroll, 0);
+        assert_eq!(app.split_glsl_scroll, 1);
+
+        app.scroll_at(5, 1, ScrollDirection::Up);
+        assert_eq!(app.split_user_scroll, 1);
+        assert_eq!(app.split_glsl_scroll, 1);
     }
 
     #[test]

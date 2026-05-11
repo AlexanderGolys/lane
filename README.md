@@ -101,7 +101,7 @@ Usage:
   opens a native Vulkan preview window for the current session (preview failures
   are shown as REPL error blocks without exiting the shell), `/split` toggles
   a split view where submitted Lane code and generated GLSL are rendered in
-  separate panes without adding toggle messages to the transcript, `/clear` clears the transcript but keeps the session,
+  separate panes with independent mouse-wheel scrolling and without adding toggle messages to the transcript, `/clear` clears the transcript but keeps the session,
   `/code` shows the full session source as one code block, `/save <filename>`
   writes that source to a file, `/export <filename>` writes generated GLSL to
   a file, `/restart` starts from an empty session, and `/exit` leaves the shell.
