@@ -15,7 +15,9 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{List, ListDirection, ListItem, Paragraph};
+#[cfg(test)]
+use ratatui::widgets::ListItem;
+use ratatui::widgets::Paragraph;
 use ratatui::Terminal;
 use tree_sitter_highlight::{
     Error as HighlightError, Highlight, HighlightConfiguration, HighlightEvent, Highlighter,
@@ -608,37 +610,12 @@ impl App {
                 .skip(self.transcript_scroll)
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
-            self.layout
-                .record_bottom_to_top(user_area, user_entries.as_slice(), &self.transcript);
-            self.layout.record_bottom_to_top(
-                transcript_feed_area(split[1]),
+            self.render_transcript_entries(frame, user_entries.as_slice(), user_area);
+            self.render_transcript_entries(
+                frame,
                 glsl_entries.as_slice(),
-                &self.transcript,
+                transcript_feed_area(split[1]),
             );
-            let user_items = user_entries
-                .iter()
-                .map(|index| {
-                    (
-                        self.render_entry(&self.transcript[*index].clone()),
-                        self.transcript[*index].kind,
-                    )
-                })
-                .collect::<Vec<_>>();
-            let glsl_items = glsl_entries
-                .iter()
-                .map(|index| {
-                    (
-                        self.render_entry(&self.transcript[*index].clone()),
-                        self.transcript[*index].kind,
-                    )
-                })
-                .collect::<Vec<_>>();
-            let user_transcript = List::new(spaced_transcript_items(user_items))
-                .direction(ListDirection::BottomToTop);
-            let glsl_transcript = List::new(spaced_transcript_items(glsl_items))
-                .direction(ListDirection::BottomToTop);
-            frame.render_widget(user_transcript, user_area);
-            frame.render_widget(glsl_transcript, transcript_feed_area(split[1]));
             self.render_input(frame, input_area);
         } else {
             let entries = self
@@ -649,24 +626,32 @@ impl App {
                 .skip(self.transcript_scroll)
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>();
-            self.layout.record_bottom_to_top(
-                transcript_area(frame.area()),
+            self.render_transcript_entries(
+                frame,
                 entries.as_slice(),
-                &self.transcript,
+                transcript_area(frame.area()),
             );
-            let items = entries
-                .iter()
-                .map(|index| {
-                    (
-                        self.render_entry(&self.transcript[*index].clone()),
-                        self.transcript[*index].kind,
-                    )
-                })
-                .collect::<Vec<_>>();
-            let transcript =
-                List::new(spaced_transcript_items(items)).direction(ListDirection::BottomToTop);
-            frame.render_widget(transcript, transcript_area(frame.area()));
             self.render_input(frame, input_area(frame.area()));
+        }
+    }
+
+    fn render_transcript_entries(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        entries: &[usize],
+        area: Rect,
+    ) {
+        let first_new_layout_entry = self.layout.entries.len();
+        self.layout
+            .record_bottom_to_top(area, entries, &self.transcript);
+        let visible_entries = self.layout.entries[first_new_layout_entry..].to_vec();
+        for rendered in visible_entries {
+            let Some(entry) = self.transcript.get(rendered.index).cloned() else {
+                continue;
+            };
+            let paragraph = Paragraph::new(self.render_entry_text(&entry))
+                .style(entry.style(self.selected_group));
+            frame.render_widget(paragraph, rendered.area);
         }
     }
 
@@ -802,7 +787,12 @@ impl App {
         lane::lane_completion_items()
     }
 
+    #[cfg(test)]
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
+        ListItem::new(self.render_entry_text(entry)).style(entry.style(self.selected_group))
+    }
+
+    fn render_entry_text(&mut self, entry: &TranscriptEntry) -> Text<'static> {
         let text = match entry.kind {
             TranscriptKind::Lane => {
                 if let (Some(line_start), Some(error)) = (entry.line_start, entry.error.as_deref())
@@ -835,8 +825,7 @@ impl App {
         } else {
             padded_feed_text(text)
         };
-        let text = left_padded_text(text);
-        ListItem::new(text).style(entry.style(self.selected_group))
+        left_padded_text(text)
     }
 }
 
@@ -929,6 +918,7 @@ fn input_top_gap(area: Rect) -> u16 {
     )
 }
 
+#[cfg(test)]
 fn spaced_transcript_items(
     items: Vec<(ListItem<'static>, TranscriptKind)>,
 ) -> Vec<ListItem<'static>> {
@@ -1286,6 +1276,7 @@ impl TranscriptLayout {
     }
 }
 
+#[derive(Clone, Copy)]
 struct RenderedEntry {
     index: usize,
     area: Rect,
@@ -2598,6 +2589,26 @@ mod tests {
     }
 
     #[test]
+    fn oversized_glsl_entry_still_renders_visible_lines() {
+        let backend = ratatui::backend::TestBackend::new(60, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new();
+        app.transcript.clear();
+        app.transcript.push(TranscriptEntry::glsl(
+            (0..20)
+                .map(|index| format!("glsl_line_{index}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Some(0),
+        ));
+
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        let buffer_text = terminal_buffer_text(terminal.backend().buffer());
+
+        assert!(buffer_text.contains("glsl_line_0"));
+    }
+
+    #[test]
     fn transcript_area_matches_input_left_padding() {
         let frame_area = Rect::new(0, 0, 20, 12);
 
@@ -2987,5 +2998,17 @@ mod tests {
             "expected declaration"
         );
         assert_eq!(text.lines[2].spans[0].content.as_ref(), " | ");
+    }
+
+    fn terminal_buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+        let area = buffer.area;
+        let mut text = String::new();
+        for y in area.y..area.y.saturating_add(area.height) {
+            for x in area.x..area.x.saturating_add(area.width) {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+        text
     }
 }
