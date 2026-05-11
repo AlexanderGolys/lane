@@ -104,9 +104,10 @@ Usage:
   a file, `/restart` starts from an empty session, and `/exit` leaves the shell.
   Toggling `/split` off restores the full linear transcript, including generated
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
-  both parts of that submission, right-clicking a transcript block copies
-  that block's visible text to the terminal clipboard, including the error
-  message on failed submitted Lane blocks, and PageUp/PageDown or the
+  both parts of that submission with a consistent selected background,
+  right-clicking a transcript block copies that block's visible text to the
+  terminal clipboard, including the error message on failed submitted Lane
+  blocks, and PageUp/PageDown or the
   mouse wheel scrolls the transcript. Enter submits the current input, Shift-Enter
   (or Alt-Enter fallback) inserts a newline when supported by the terminal, Up and Down recall submitted
   input history across sessions, Left and Right move through the current input,

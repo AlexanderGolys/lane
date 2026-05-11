@@ -1118,17 +1118,14 @@ fn errored_lane_text(
     for line in error.lines() {
         let line = strip_error_line_reference(line);
         lines.push(Line::from(vec![
-            Span::styled(
-                message_padding.clone(),
-                Style::default().fg(ERROR_FG).bg(ERROR_BG),
-            ),
-            Span::styled(line.to_string(), Style::default().fg(ERROR_FG).bg(ERROR_BG)),
+            Span::styled(message_padding.clone(), Style::default().fg(ERROR_FG)),
+            Span::styled(line.to_string(), Style::default().fg(ERROR_FG)),
         ]));
     }
     if error.lines().next().is_none() {
         lines.push(Line::from(Span::styled(
             message_padding,
-            Style::default().fg(ERROR_FG).bg(ERROR_BG),
+            Style::default().fg(ERROR_FG),
         )));
     }
 
@@ -2891,7 +2888,31 @@ mod tests {
             "const Object output = Missing3D(r=1)"
         );
         assert_eq!(text.lines[0].spans[1].style.fg, Some(ERROR_FG));
-        assert_eq!(text.lines[0].spans[1].style.bg, Some(ERROR_BG));
+        assert_eq!(text.lines[0].spans[1].style.bg, None);
+    }
+
+    #[test]
+    fn selected_failed_lane_error_message_uses_entry_background() {
+        let mut entry = TranscriptEntry::submitted(
+            "const Object output = Missing3D(r=1)".to_string(),
+            Some(0),
+            Some(7),
+        );
+        entry.errored = true;
+        entry.error = Some("unknown object Missing3D".to_string());
+        let text = errored_lane_text(
+            Text::from(entry.text.clone()),
+            7,
+            entry.error.as_deref().unwrap(),
+        );
+
+        assert_eq!(entry.style(Some(0)).bg, Some(SELECTED_ERROR_BG));
+        assert_eq!(entry.style(Some(0)).fg, Some(ERROR_FG));
+        assert!(text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .all(|span| span.style.bg != Some(ERROR_BG)));
     }
 
     #[test]
