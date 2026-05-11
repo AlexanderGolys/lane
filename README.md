@@ -147,9 +147,9 @@ open file, so local modules work the same way in the editor and the CLI. The
 server also provides formatting, full-document semantic tokens, plus basic
 completion and hover entries for Lane keywords, built-in modules, primitive
 constructors, type aliases, categories, and built-in functions. The semantic
-token legend uses Lane-specific `directive` and `functor` token kinds, while
-mapping imported modules to `namespace`, raw GLSL bodies to `string`, and type
-parameters such as `{n}` to `typeParameter`. Standalone type completions stay
+token legend uses Lane-specific `directive`, `functor`, and `category` token
+kinds, while mapping imported modules to `namespace`, raw GLSL bodies to
+`string`, and type parameters such as `{n}` to `typeParameter`. Standalone type completions stay
 concrete (for example, `R`, `R2`, `R3`) and avoid generic placeholders such as
 `R{n}` that are not valid as direct `provided` type declarations. The REPL uses
 the same completion, formatting, and submitted-error handling.

@@ -22,6 +22,7 @@ const TOKEN_TYPE_OPERATOR: u32 = 10;
 const TOKEN_TYPE_COMMENT: u32 = 11;
 const TOKEN_TYPE_STRING: u32 = 12;
 const TOKEN_TYPE_KEYWORD: u32 = 13;
+const TOKEN_TYPE_CATEGORY: u32 = 14;
 
 const TOKEN_MODIFIER_DECLARATION: u32 = 1 << 0;
 const TOKEN_MODIFIER_DEFAULT_LIBRARY: u32 = 1 << 1;
@@ -64,6 +65,7 @@ pub fn legend() -> SemanticTokensLegend {
             SemanticTokenType::COMMENT,
             SemanticTokenType::STRING,
             SemanticTokenType::KEYWORD,
+            SemanticTokenType::new("category"),
         ],
         token_modifiers: vec![
             SemanticTokenModifier::DECLARATION,
@@ -162,6 +164,7 @@ fn token_spec(capture_name: &str, capture: QueryCapture<'_>, source: &str) -> Op
         "directive" => TOKEN_TYPE_DIRECTIVE,
         "namespace" => TOKEN_TYPE_NAMESPACE,
         "functor" => TOKEN_TYPE_FUNCTOR,
+        "type" if is_category_token_text(text) => TOKEN_TYPE_CATEGORY,
         "type" => TOKEN_TYPE_TYPE,
         "type.declaration" => {
             token_modifiers_bitset |= TOKEN_MODIFIER_DECLARATION;
@@ -212,6 +215,15 @@ fn is_default_library(token_type: u32, text: &str) -> bool {
                     lane::CATEGORY_METATYPE_NAME | lane::TYPE_METATYPE_NAME
                 )
         }
+        TOKEN_TYPE_CATEGORY => {
+            lane::known_category_names()
+                .into_iter()
+                .any(|name| name == text)
+                || lane::known_builtin_object(text).is_some_and(|detail| {
+                    matches!(detail.kind, lane::KnownBuiltinObjectKind::Category)
+                })
+                || text == lane::CATEGORY_METATYPE_NAME
+        }
         TOKEN_TYPE_FUNCTION => {
             lane::known_primitive(text).is_some()
                 || lane::known_builtin_object(text).is_some_and(|detail| {
@@ -220,6 +232,15 @@ fn is_default_library(token_type: u32, text: &str) -> bool {
         }
         _ => false,
     }
+}
+
+fn is_category_token_text(text: &str) -> bool {
+    lane::known_category_names()
+        .into_iter()
+        .any(|name| name == text)
+        || lane::known_builtin_object(text)
+            .is_some_and(|detail| matches!(detail.kind, lane::KnownBuiltinObjectKind::Category))
+        || text == lane::CATEGORY_METATYPE_NAME
 }
 
 fn push_token_segments(
@@ -319,6 +340,10 @@ mod tests {
             legend.token_types[TOKEN_TYPE_FUNCTOR as usize],
             SemanticTokenType::new("functor")
         );
+        assert_eq!(
+            legend.token_types[TOKEN_TYPE_CATEGORY as usize],
+            SemanticTokenType::new("category")
+        );
     }
 
     #[test]
@@ -338,6 +363,37 @@ mod tests {
             .iter()
             .any(|token| token.3 == TOKEN_TYPE_TYPE_PARAMETER));
         assert!(tokens.iter().any(|token| token.3 == TOKEN_TYPE_STRING));
+    }
+
+    #[test]
+    fn emits_distinct_tokens_for_categories_and_types() {
+        let source = "provided Grp G\nprovided G g\nconst Type t = Type\n";
+        let tokens = decoded_tokens(source);
+
+        let lines = source.lines().collect::<Vec<_>>();
+        let grp_start = lines[0].find("Grp").unwrap() as u32;
+        let custom_type_start = lines[1].find("G").unwrap() as u32;
+        let type_start = lines[2].find("Type").unwrap() as u32;
+
+        assert!(tokens.iter().any(|token| {
+            token.0 == 0
+                && token.1 == grp_start
+                && token.2 == "Grp".len() as u32
+                && token.3 == TOKEN_TYPE_CATEGORY
+                && token.4 & TOKEN_MODIFIER_DEFAULT_LIBRARY != 0
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.0 == 1
+                && token.1 == custom_type_start
+                && token.2 == "G".len() as u32
+                && token.3 == TOKEN_TYPE_TYPE
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.0 == 2
+                && token.1 == type_start
+                && token.2 == "Type".len() as u32
+                && token.3 == TOKEN_TYPE_TYPE
+        }));
     }
 
     #[test]
