@@ -29,12 +29,8 @@
 
 (unit_type) @type.builtin
 
-
 (generic_type
   name: (identifier) @type)
-
-(name_template_slot
-  name: (template_slot_content) @lsp.type.parameter)
 
 (category_identifier) @constant.builtin
 
@@ -84,10 +80,10 @@
   function: (identifier) @function)
 
 (arrow_function_declaration
-  dom: (identifier) @type)
+  dom: (_) @type)
 
 (arrow_function_declaration
-  codom: (identifier) @type)
+  codom: (_) @type)
 
 (arrow_function_declaration
   name: (identifier) @function)
