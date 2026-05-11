@@ -324,8 +324,6 @@ impl App {
             }
             SubmitOutcome::Show(source) => return Some(ReplAction::Show(source)),
             SubmitOutcome::ToggleSplit => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
                 self.toggle_split();
             }
             SubmitOutcome::Exit => {
@@ -490,13 +488,6 @@ impl App {
 
     fn toggle_split(&mut self) {
         self.split_mode = !self.split_mode;
-        let mode = if self.split_mode {
-            "split"
-        } else {
-            "linear transcript"
-        };
-        self.transcript
-            .push(TranscriptEntry::system(format!("Display mode: {mode}.")));
     }
 
     fn draw(&mut self, frame: &mut ratatui::Frame) {
@@ -1718,6 +1709,27 @@ mod tests {
     fn split_command_toggles_split_mode() {
         let mut session = ReplSession::default();
         assert_eq!(session.submit("/split"), SubmitOutcome::ToggleSplit);
+    }
+
+    #[test]
+    fn split_toggle_preserves_transcript_text() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.transcript.push(TranscriptEntry::submitted(
+            "const R radius = 1".to_string(),
+            Some(0),
+            Some(1),
+        ));
+        app.transcript
+            .push(TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0)));
+        app.input = "/split".to_string();
+
+        app.submit_input();
+
+        assert!(app.split_mode);
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0].text, "const R radius = 1");
+        assert_eq!(app.transcript[1].text, "float radius = 1.0;");
     }
 
     #[test]

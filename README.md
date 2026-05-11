@@ -97,7 +97,7 @@ Usage:
   opens a native Vulkan preview window for the current session (preview failures
   are shown as REPL error blocks without exiting the shell), `/split` toggles
   a split view where submitted Lane code and generated GLSL are rendered in
-  separate panes, `/clear` clears the transcript but keeps the session,
+  separate panes without adding toggle messages to the transcript, `/clear` clears the transcript but keeps the session,
   `/restart` starts from an empty session, and `/exit` leaves the shell.
   Toggling `/split` off restores the full linear transcript, including generated
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
