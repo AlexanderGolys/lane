@@ -111,8 +111,8 @@ Usage:
   both parts of that submission with a consistent selected background,
   right-clicking a transcript block copies that block's visible text to the
   terminal clipboard, including the error message on failed submitted Lane
-  blocks, and PageUp/PageDown or the
-  mouse wheel scrolls the transcript. Enter submits the current input, Shift-Enter
+  blocks, and PageUp/PageDown or the mouse wheel scrolls transcript rows rather
+  than jumping by visual feed block. Enter submits the current input, Shift-Enter
   (or Alt-Enter fallback) inserts a newline when supported by the terminal, Up and Down recall submitted
   input history across sessions, Left and Right move through the current input,
   Tab completes to the longest unambiguous prefix using `lane-lsp` language items

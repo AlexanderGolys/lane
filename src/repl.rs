@@ -326,10 +326,13 @@ impl App {
         if self.split_mode {
             self.scroll_split_pane_up(SplitPane::User);
         } else {
-            self.transcript_scroll = self
-                .transcript_scroll
-                .saturating_add(1)
-                .min(self.transcript.len().saturating_sub(1));
+            self.transcript_scroll = self.transcript_scroll.saturating_add(1).min(
+                transcript_row_count(
+                    &linear_transcript_entries(&self.transcript),
+                    &self.transcript,
+                )
+                .saturating_sub(1),
+            );
         }
     }
 
@@ -358,7 +361,8 @@ impl App {
     }
 
     fn scroll_split_pane_up(&mut self, pane: SplitPane) {
-        let max_scroll = self.split_pane_entry_count(pane).saturating_sub(1);
+        let max_scroll = transcript_row_count(&self.split_pane_entries(pane), &self.transcript)
+            .saturating_sub(1);
         match pane {
             SplitPane::User => {
                 self.split_user_scroll = self.split_user_scroll.saturating_add(1).min(max_scroll)
@@ -376,14 +380,17 @@ impl App {
         }
     }
 
-    fn split_pane_entry_count(&self, pane: SplitPane) -> usize {
+    fn split_pane_entries(&self, pane: SplitPane) -> Vec<usize> {
         self.transcript
             .iter()
-            .filter(|entry| match pane {
+            .enumerate()
+            .rev()
+            .filter(|(_, entry)| match pane {
                 SplitPane::User => !matches!(entry.kind, TranscriptKind::Glsl),
                 SplitPane::Glsl => matches!(entry.kind, TranscriptKind::Glsl),
             })
-            .count()
+            .map(|(index, _)| index)
+            .collect()
     }
 
     fn submit_input(&mut self) -> Option<ReplAction> {
@@ -658,47 +665,31 @@ impl App {
                 .split(frame.area());
             let user_area = transcript_area(split[0]);
             let input_area = input_area(split[0]);
-            let user_entries = self
-                .transcript
-                .iter()
-                .enumerate()
-                .rev()
-                .filter(|(_, entry)| !matches!(entry.kind, TranscriptKind::Glsl))
-                .skip(self.split_user_scroll)
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
-            let glsl_entries = self
-                .transcript
-                .iter()
-                .enumerate()
-                .rev()
-                .filter(|(_, entry)| matches!(entry.kind, TranscriptKind::Glsl))
-                .skip(self.split_glsl_scroll)
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
+            let user_entries = self.split_pane_entries(SplitPane::User);
+            let glsl_entries = self.split_pane_entries(SplitPane::Glsl);
             self.layout.record_pane(SplitPane::User, user_area);
             self.layout
                 .record_pane(SplitPane::Glsl, transcript_feed_area(split[1]));
-            self.render_transcript_entries(frame, user_entries.as_slice(), user_area);
+            self.render_transcript_entries(
+                frame,
+                user_entries.as_slice(),
+                user_area,
+                self.split_user_scroll,
+            );
             self.render_transcript_entries(
                 frame,
                 glsl_entries.as_slice(),
                 transcript_feed_area(split[1]),
+                self.split_glsl_scroll,
             );
             self.render_input(frame, input_area);
         } else {
-            let entries = self
-                .transcript
-                .iter()
-                .enumerate()
-                .rev()
-                .skip(self.transcript_scroll)
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
+            let entries = linear_transcript_entries(&self.transcript);
             self.render_transcript_entries(
                 frame,
                 entries.as_slice(),
                 transcript_area(frame.area()),
+                self.transcript_scroll,
             );
             self.render_input(frame, input_area(frame.area()));
         }
@@ -709,10 +700,11 @@ impl App {
         frame: &mut ratatui::Frame,
         entries: &[usize],
         area: Rect,
+        scroll_rows: usize,
     ) {
         let first_new_layout_entry = self.layout.entries.len();
         self.layout
-            .record_bottom_to_top(area, entries, &self.transcript);
+            .record_bottom_to_top(area, entries, &self.transcript, scroll_rows);
         let visible_entries = self.layout.entries[first_new_layout_entry..].to_vec();
         for rendered in visible_entries {
             let Some(entry) = self.transcript.get(rendered.index).cloned() else {
@@ -1023,6 +1015,40 @@ fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) 
             TranscriptKind::Command
         )
     )
+}
+
+fn linear_transcript_entries(transcript: &[TranscriptEntry]) -> Vec<usize> {
+    transcript
+        .iter()
+        .enumerate()
+        .rev()
+        .map(|(index, _)| index)
+        .collect()
+}
+
+fn transcript_row_count(entries: &[usize], transcript: &[TranscriptEntry]) -> usize {
+    let mut rows = 0usize;
+    for (position, index) in entries.iter().enumerate() {
+        let Some(entry) = transcript.get(*index) else {
+            continue;
+        };
+        rows = rows.saturating_add(entry.line_count() as usize);
+        let adjacent_without_gap = entries
+            .get(position + 1)
+            .and_then(|next_index| {
+                transcript
+                    .get(*next_index)
+                    .map(|next_entry| (*next_index, next_entry))
+            })
+            .is_some_and(|(next_index, next_entry)| {
+                index.abs_diff(next_index) == 1
+                    && adjacent_without_feed_gap(entry.kind, next_entry.kind)
+            });
+        if !adjacent_without_gap && position + 1 < entries.len() {
+            rows = rows.saturating_add(FEED_ENTRY_GAP as usize);
+        }
+    }
+    rows
 }
 
 fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
@@ -1338,27 +1364,35 @@ impl TranscriptLayout {
         area: Rect,
         entries: &[usize],
         transcript: &[TranscriptEntry],
+        mut scroll_rows: usize,
     ) {
         let mut next_bottom = area.y.saturating_add(area.height);
         for (position, index) in entries.iter().enumerate() {
             let Some(entry) = transcript.get(*index) else {
                 continue;
             };
-            let height = entry.line_count().min(next_bottom.saturating_sub(area.y));
-            if height == 0 {
-                break;
+            let entry_rows = entry.line_count() as usize;
+            if scroll_rows >= entry_rows {
+                scroll_rows -= entry_rows;
+            } else {
+                let scrolled_height = entry_rows.saturating_sub(scroll_rows) as u16;
+                scroll_rows = 0;
+                let height = scrolled_height.min(next_bottom.saturating_sub(area.y));
+                if height == 0 {
+                    break;
+                }
+                let y = next_bottom.saturating_sub(height);
+                self.entries.push(RenderedEntry {
+                    index: *index,
+                    area: Rect {
+                        x: area.x,
+                        y,
+                        width: area.width,
+                        height,
+                    },
+                });
+                next_bottom = y;
             }
-            let y = next_bottom.saturating_sub(height);
-            self.entries.push(RenderedEntry {
-                index: *index,
-                area: Rect {
-                    x: area.x,
-                    y,
-                    width: area.width,
-                    height,
-                },
-            });
-            next_bottom = y;
             if next_bottom <= area.y {
                 break;
             }
@@ -1374,7 +1408,13 @@ impl TranscriptLayout {
                         && adjacent_without_feed_gap(entry.kind, next_entry.kind)
                 });
             if !adjacent_without_gap {
-                next_bottom = next_bottom.saturating_sub(FEED_ENTRY_GAP);
+                let gap_rows = FEED_ENTRY_GAP as usize;
+                if scroll_rows >= gap_rows {
+                    scroll_rows -= gap_rows;
+                } else {
+                    scroll_rows = 0;
+                    next_bottom = next_bottom.saturating_sub(FEED_ENTRY_GAP);
+                }
             }
             if next_bottom <= area.y {
                 break;
@@ -2832,13 +2872,28 @@ mod tests {
             TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0), None),
         ];
         let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 11), &[2, 1, 0], &entries);
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 11), &[2, 1, 0], &entries, 0);
 
         assert_eq!(layout.entry_at(0, 10), Some(2));
         assert_eq!(layout.entry_at(0, 7), None);
         assert_eq!(layout.entry_at(0, 6), Some(1));
         assert_eq!(layout.entry_at(0, 3), None);
         assert_eq!(layout.entry_at(0, 2), Some(0));
+    }
+
+    #[test]
+    fn bottom_to_top_layout_scrolls_by_rows_not_entries() {
+        let entries = vec![
+            TranscriptEntry::submitted("R first = 1".to_string(), Some(0), Some(1)),
+            TranscriptEntry::submitted("R second = 2".to_string(), Some(1), Some(2)),
+            TranscriptEntry::submitted("R third = 3".to_string(), Some(2), Some(3)),
+        ];
+        let mut layout = TranscriptLayout::default();
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[2, 1, 0], &entries, 1);
+
+        assert_eq!(layout.entry_at(0, 6), Some(2));
+        assert_eq!(layout.entry_at(0, 4), None);
+        assert_eq!(layout.entry_at(0, 3), Some(1));
     }
 
     #[test]
@@ -2849,7 +2904,7 @@ mod tests {
             TranscriptEntry::submitted("R diameter = 2".to_string(), Some(1), Some(2)),
         ];
         let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[2, 0], &entries);
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[2, 0], &entries, 0);
 
         assert_eq!(layout.entry_at(0, 6), Some(2));
         assert_eq!(layout.entry_at(0, 3), None);
@@ -2865,7 +2920,7 @@ mod tests {
             TranscriptEntry::glsl("float diameter = 2.0;".to_string(), Some(1), None),
         ];
         let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[3, 1], &entries);
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[3, 1], &entries, 0);
 
         assert_eq!(layout.entry_at(0, 6), Some(3));
         assert_eq!(layout.entry_at(0, 3), None);
