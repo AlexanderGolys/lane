@@ -1451,7 +1451,7 @@ fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
         )));
     }
     for component in &decl.components {
-        if !has_category(component, decl.category) {
+        if !product_component_satisfies_category(component, decl.category) {
             return Err(Error::new(format!(
                 "product type '{}' component {} does not satisfy {}",
                 decl.name,
@@ -1461,6 +1461,11 @@ fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+fn product_component_satisfies_category(component: &Type, category: AlgebraicCategory) -> bool {
+    has_category(component, category)
+        || (category == AlgebraicCategory::Grp && has_category(component, AlgebraicCategory::Ab))
 }
 
 fn product_category_supported(category: AlgebraicCategory) -> bool {

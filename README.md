@@ -330,9 +330,13 @@ globals such as `zero_G`, `one_G`, and `e_G` when those operations are needed.
 
 Constructs a nominal product type and emits a GLSL struct. Every component must
 satisfy the declared category or a subcategory. `DivRing` products are rejected.
+For `Grp` products, additive abelian components can participate as group
+components by interpreting `e` as `0`, multiplication as addition, and inverse
+as negation.
 
 ```lane
 Grp G = Isom3 x Isom2 <m, n>
+Grp Motion = Isom3 x R3
 provided G a
 provided G b
 G product = a * b

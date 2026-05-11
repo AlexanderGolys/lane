@@ -1287,9 +1287,10 @@ fn emit_product_op_support(
         blocks,
     );
     for component in &decl.components {
+        let component_op = component_product_op(op, component);
         emit_component_op_dependency(
             component,
-            op,
+            component_op,
             product_types,
             emitted_builtin_support,
             emitted_product_types,
@@ -1393,7 +1394,7 @@ fn emit_product_neutral(decl: &ProductTypeDecl, op: ProductOp) -> String {
     let fields = decl
         .components
         .iter()
-        .map(|ty| emit_component_neutral(op, ty))
+        .map(|ty| emit_component_neutral(component_product_op(op, ty), ty))
         .collect::<Vec<_>>()
         .join(", ");
     format!(
@@ -1412,7 +1413,12 @@ fn emit_product_binary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
         .iter()
         .zip(&decl.field_names)
         .map(|(ty, field)| {
-            emit_component_binary(op, ty, &format!("a.{field}"), &format!("b.{field}"))
+            emit_component_binary(
+                component_product_op(op, ty),
+                ty,
+                &format!("a.{field}"),
+                &format!("b.{field}"),
+            )
         })
         .collect::<Vec<_>>()
         .join(", ");
@@ -1433,7 +1439,9 @@ fn emit_product_unary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
         .components
         .iter()
         .zip(&decl.field_names)
-        .map(|(ty, field)| emit_component_unary(op, ty, &format!("value.{field}")))
+        .map(|(ty, field)| {
+            emit_component_unary(component_product_op(op, ty), ty, &format!("value.{field}"))
+        })
         .collect::<Vec<_>>()
         .join(", ");
     format!(
@@ -1445,6 +1453,19 @@ fn emit_product_unary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
         decl.name,
         fields
     )
+}
+
+fn component_product_op(op: ProductOp, ty: &Type) -> ProductOp {
+    if has_category(ty, AlgebraicCategory::Grp) || !has_category(ty, AlgebraicCategory::Ab) {
+        return op;
+    }
+
+    match op {
+        ProductOp::Identity => ProductOp::Zero,
+        ProductOp::Mult => ProductOp::Add,
+        ProductOp::Inv => ProductOp::Sub,
+        _ => op,
+    }
 }
 
 fn emit_product_scale_op(decl: &ProductTypeDecl) -> String {
@@ -1515,6 +1536,12 @@ fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> S
 
 fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
     match (op, ty) {
+        (ProductOp::Sub, _) => emit_component_binary(
+            ProductOp::Sub,
+            ty,
+            &emit_component_neutral(ProductOp::Zero, ty),
+            value,
+        ),
         (ProductOp::Inv, Type::Bool) => value.to_string(),
         (ProductOp::Inv, Type::Float) => format!("(1.0 / {value})"),
         (ProductOp::Inv, Type::Int) => format!("(1 / {value})"),

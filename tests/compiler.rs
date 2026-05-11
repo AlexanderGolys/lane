@@ -1537,11 +1537,20 @@ fn rejects_real_division_algebra_product_types() {
 }
 
 #[test]
-fn rejects_product_components_outside_category() {
-    let source = "Grp G = Isom3 x R3\nconst Object output = Ball3D(r=1)\n";
-    let err = compile_program(source).unwrap_err().to_string();
+fn supports_abelian_components_in_group_product_types() {
+    let source = "Grp G = Isom3 x R3\nconst Grp Motion = Isom3 x R3 <motion, shift>\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nG identity = e\nG product = a * b\nR radius = measure(product * identity)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
 
-    assert!(err.contains("product type 'G' component R3 does not satisfy Grp"));
+    assert!(glsl.contains("struct G {\n    Isom3 x;\n    vec3 y;\n};"));
+    assert!(glsl.contains("G e_G = G(Isom3(mat3(1.0), vec3(0.0)), vec3(0.0));"));
+    assert!(
+        glsl.contains("G mult_G(G a, G b) {\n    return G(mult_Isom3(a.x, b.x), (a.y + b.y));\n}")
+    );
+    assert!(glsl.contains(
+        "Motion inv_Motion(Motion value) {\n    return Motion(inv_Isom3(value.motion), (vec3(0.0) - value.shift));\n}"
+    ));
+    assert!(glsl.contains("G identity = e_G;"));
+    assert!(glsl.contains("G product = mult_G(a, b);"));
 }
 
 #[test]
