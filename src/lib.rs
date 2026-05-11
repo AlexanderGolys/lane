@@ -359,7 +359,7 @@ fn prepare_preview_source(source: &str) -> String {
         out.push_str("#import raytracing\n");
     }
     out.push_str(source);
-    if !has_const_object(source, "scene") {
+    if !has_object_binding(source, "scene") {
         if let Some(name) = last_const_object_name(source) {
             out.push('\n');
             out.push_str(&format!("const Object scene = {name}\n"));
@@ -437,79 +437,65 @@ fn append_preview_provided_values(source: &str, out: &mut String) {
     }
 }
 
-fn has_const_object(source: &str, object_name: &str) -> bool {
-    source.lines().any(|line| {
-        line.trim_start()
-            .starts_with(&format!("const Object {object_name}"))
-    })
-}
-
 fn has_scene_object_for_preview(source: &str) -> bool {
-    has_const_object(source, "scene") || last_const_object_name(source).is_some()
+    has_object_binding(source, "scene") || last_const_object_name(source).is_some()
 }
 
 fn last_const_object_name(source: &str) -> Option<String> {
-    source
-        .lines()
-        .rev()
-        .filter_map(|line| {
-            let line = line
-                .split_once("//")
-                .map_or(line, |(before, _)| before)
-                .trim();
-            let rest = line.strip_prefix("const Object ")?;
-            let (name, _) = rest.split_once('=')?;
-            Some(name.trim().to_string())
-        })
-        .next()
+    let program = parse_preview_program(source)?;
+    preview_object_bindings(&program)
+        .into_iter()
+        .max_by_key(|(line, _)| *line)
+        .map(|(_, name)| name)
 }
 
 fn has_const_main(source: &str) -> bool {
-    source
-        .lines()
-        .map(|line| {
-            line.split_once("//")
-                .map_or(line, |(before, _)| before)
-                .trim()
-        })
-        .any(|line| {
-            line.starts_with("const Hom(*, *) main")
-                || line.starts_with("const Hom(*,*) main")
-                || line.starts_with("const Func(*, *) main")
-                || line.starts_with("const Func(*,*) main")
-        })
+    parse_preview_program(source)
+        .is_some_and(|program| program.funcs.iter().any(|func| func.name == "main"))
 }
 
 fn has_scene_material_function(source: &str) -> bool {
-    source
-        .lines()
-        .map(|line| {
-            line.split_once("//")
-                .map_or(line, |(before, _)| before)
-                .trim()
-        })
-        .any(|line| {
-            line.starts_with("const Hom(R3, Material) scene_material")
-                || line.starts_with("const Hom(R3,Material) scene_material")
-                || line.starts_with("const Func(R3, Material) scene_material")
-                || line.starts_with("const Func(R3,Material) scene_material")
-        })
+    parse_preview_program(source).is_some_and(|program| {
+        program
+            .funcs
+            .iter()
+            .any(|func| func.name == "scene_material")
+    })
 }
 
 fn has_provided_value(source: &str, value_name: &str) -> bool {
-    source
-        .lines()
-        .map(|line| {
-            line.split_once("//")
-                .map_or(line, |(before, _)| before)
-                .trim()
-        })
-        .any(|line| {
-            let Some(rest) = line.strip_prefix("provided ") else {
-                return false;
-            };
-            rest.split_whitespace().nth(1) == Some(value_name)
-        })
+    parse_preview_program(source).is_some_and(|program| {
+        program.inputs.iter().any(|input| input.name == value_name)
+    })
+}
+
+fn has_object_binding(source: &str, object_name: &str) -> bool {
+    parse_preview_program(source).is_some_and(|program| {
+        preview_object_bindings(&program)
+            .into_iter()
+            .any(|(_, name)| name == object_name)
+    })
+}
+
+fn parse_preview_program(source: &str) -> Option<Program> {
+    parser::Parser::new(source).parse_program().ok()
+}
+
+fn preview_object_bindings(program: &Program) -> Vec<(usize, String)> {
+    let mut bindings = program
+        .bindings
+        .iter()
+        .filter(|binding| matches!(binding.ty, Type::Object))
+        .map(|binding| (binding.line, binding.name.clone()))
+        .collect::<Vec<_>>();
+    bindings.extend(
+        program
+            .inferred_bindings
+            .iter()
+            .filter(|binding| binding.construct)
+            .map(|binding| (binding.line, binding.name.clone())),
+    );
+    bindings
 }
 
 fn reject_preview_provided_functions(program: &Program) -> Result<(), Error> {

@@ -119,7 +119,9 @@ Usage:
   vertex shaders. `--target=vulkan` emits Vulkan GLSL.
 - Auto-generated preview shading (when `main` is not explicitly defined) needs
   a scene object and material lookup: define `const Object scene = ...` and
-  define `const Hom(R3, Material) scene_material = ...`.
+  define `const Hom(R3, Material) scene_material = ...`. Preview requirement
+  detection uses parsed Lane declarations, so object declarations such as
+  `construct Object scene = ...` are recognized without string-prefix checks.
   When these requirements are missing, preview generation reports a clear
   requirement error instead of failing with a lower-level unknown-function
   message.

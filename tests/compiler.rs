@@ -1,5 +1,6 @@
 use lane::{
     compile_program as compile_program_with_float_suffixes, compile_program_from_path,
+    compile_vulkan_preview_fragment,
     known_builtin_object, known_builtin_objects, known_preregistered_objects, known_primitive,
     known_primitives, known_primitives_by_dimension, preregistered_object, Error,
     PreregisteredObjectKind, ShapeDimension,
@@ -1075,6 +1076,17 @@ fn imports_raytracing_module() {
     assert!(glsl.contains("_radiance += _throughput * (_surface_emission"));
     assert!(glsl.contains("_throughput *= _surface_color * _reflectiveness;"));
     assert!(glsl.contains("vec3 _dir = reflect(_ray.dir, _hit.normal);"));
+}
+
+#[test]
+fn preview_requirement_detection_uses_parsed_construct_scene() {
+    let source = "construct Object scene = Ball3D(r=1)
+const Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)
+const Hom(R3, Material) scene_material = (x, y, z) |-> material
+";
+    let glsl = compile_vulkan_preview_fragment(source).unwrap();
+
+    assert!(glsl.contains("float sdf_scene(vec3 p)"));
 }
 
 #[test]
