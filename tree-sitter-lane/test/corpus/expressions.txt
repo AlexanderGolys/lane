@@ -242,6 +242,28 @@ const Hom(Object, Hom(Ray, Hit)) raytrace = obj |-> "Hit raytrace(Ray ray) { flo
         (string_content)))))
 
 ==================
+Function Product Expression
+==================
+
+Hom(R x R, R x R) h = f x g
+
+---
+
+(source_file
+  (binding_declaration
+    (hom_type
+      (product_type
+        (type_identifier)
+        (type_identifier))
+      (product_type
+        (type_identifier)
+        (type_identifier)))
+    (identifier)
+    (binary_expression
+      (identifier)
+      (identifier))))
+
+==================
 Product Closure Parameters
 ==================
 

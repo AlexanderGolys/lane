@@ -297,7 +297,7 @@ module.exports = grammar({
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '*'), field('right', $._expression))),
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '/'), field('right', $._expression))),
             prec.left(PREC.compose, seq(field('left', $._expression), field('operator', '@'), field('right', $._expression))),
-            prec.left(PREC.compose, seq(field('left', $._expression), field('operator', ' x '), field('right', $._expression))),
+            prec.left(PREC.compose, seq(field('left', $._expression), field('operator', 'x'), field('right', $._expression))),
         ),
 
         parenthesized_expression: ($) => seq(

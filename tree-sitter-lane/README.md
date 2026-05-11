@@ -5,6 +5,8 @@ Tree-sitter grammar for the Lane DSL.
 ## Syntax Notes
 
 - Product type field names use angle brackets: `Set Hit = R3 x R <point, distance>`.
+- Product map expressions use spaced `x`, as in `f x g`, and highlight the
+  `x` as an operator.
 - `Array(...)` constructs arrays. Square brackets are reserved for vector and matrix literals.
 - Closures use `|->`, for example `x |-> sin(x)` or `(x, y) |-> x + y`.
 - Generic placeholder suffixes are part of identifiers, for example `R{n}`, `I{3}`, `eye{3}`, and `e{3}{2}`.

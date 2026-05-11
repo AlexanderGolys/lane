@@ -1768,7 +1768,7 @@
                 "name": "operator",
                 "content": {
                   "type": "STRING",
-                  "value": " x "
+                  "value": "x"
                 }
               },
               {

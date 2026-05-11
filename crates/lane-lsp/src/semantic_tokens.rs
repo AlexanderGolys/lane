@@ -448,18 +448,35 @@ mod tests {
     }
 
     #[test]
+    fn classifies_function_product_x_as_operator() {
+        let source = "Hom(R x R, R x R) h = f x g\n";
+        let tokens = decoded_tokens(source);
+        let product_start = source.lines().next().unwrap().rfind("x").unwrap() as u32;
+
+        assert!(tokens.iter().any(|token| {
+            token.0 == 0
+                && token.1 == product_start
+                && token.2 == "x".len() as u32
+                && token.3 == TOKEN_TYPE_OPERATOR
+        }));
+    }
+
+    #[test]
     fn preserves_utf16_columns_for_non_ascii_tokens() {
         let source = "R2 uv = p × q\n";
         let tokens = decoded_tokens(source);
+        let operator_start = "R2 uv = p ".encode_utf16().count() as u32;
         let operator = tokens
             .into_iter()
             .find(|token| {
-                token.3 == TOKEN_TYPE_OPERATOR && token.2 == "×".encode_utf16().count() as u32
+                token.1 == operator_start
+                    && token.3 == TOKEN_TYPE_OPERATOR
+                    && token.2 == "×".encode_utf16().count() as u32
             })
             .expect("operator token should exist");
 
         assert_eq!(operator.0, 0);
-        assert_eq!(operator.1, "R2 uv = p ".encode_utf16().count() as u32);
+        assert_eq!(operator.1, operator_start);
         assert_eq!(operator.2, "×".encode_utf16().count() as u32);
     }
 }
