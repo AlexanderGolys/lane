@@ -34,7 +34,7 @@
 (type_identifier) @lsp.type.type
 
 (input_declaration
-  name: (identifier) @variable.parameter)
+  name: (identifier) @variable)
 
 (product_type_declaration
   category: (category_type (category_identifier) @lsp.type.builtin)

@@ -417,6 +417,37 @@ mod tests {
     }
 
     #[test]
+    fn classifies_provided_names_as_variables_not_parameters() {
+        let source = "provided R time\nconst Hom(R, R) g = x |-> time + x\n";
+        let tokens = decoded_tokens(source);
+
+        let provided_start = source.lines().next().unwrap().find("time").unwrap() as u32;
+        let closure_line = source.lines().nth(1).unwrap();
+        let closure_parameter_start = closure_line.find("x |->").unwrap() as u32;
+
+        assert!(tokens.iter().any(|token| {
+            token.0 == 0
+                && token.1 == provided_start
+                && token.2 == "time".len() as u32
+                && token.3 == TOKEN_TYPE_VARIABLE
+                && token.4 & TOKEN_MODIFIER_DECLARATION != 0
+        }));
+        assert!(!tokens.iter().any(|token| {
+            token.0 == 0
+                && token.1 == provided_start
+                && token.2 == "time".len() as u32
+                && token.3 == TOKEN_TYPE_PARAMETER
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.0 == 1
+                && token.1 == closure_parameter_start
+                && token.2 == "x".len() as u32
+                && token.3 == TOKEN_TYPE_PARAMETER
+                && token.4 & TOKEN_MODIFIER_DECLARATION != 0
+        }));
+    }
+
+    #[test]
     fn preserves_utf16_columns_for_non_ascii_tokens() {
         let source = "R2 uv = p × q\n";
         let tokens = decoded_tokens(source);

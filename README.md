@@ -155,7 +155,8 @@ formatter trims trailing whitespace, collapses repeated blank lines, and
 normalizes spaced ASCII type products such as `R x R` to `R × R`. The semantic
 token legend uses Lane-specific `directive`, `functor`, and `category` token
 kinds, while mapping imported modules to `namespace`, raw GLSL bodies to
-`string`, and type parameters such as `{n}` to `typeParameter`. Standalone type completions stay
+`string`, type parameters such as `{n}` to `typeParameter`, and names declared
+with `provided` to normal variable declarations. Standalone type completions stay
 concrete (for example, `R`, `R2`, `R3`) and avoid generic placeholders such as
 `R{n}` that are not valid as direct `provided` type declarations. The REPL uses
 the same completion, formatting, and submitted-error handling.

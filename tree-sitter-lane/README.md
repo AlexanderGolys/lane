@@ -68,6 +68,8 @@ The grammar includes highlight queries for both the tree-sitter CLI and Neovim:
 
 Neovim captures Lane conditionals with `@keyword.conditional`, so `if` and
 `else` follow the active colorscheme's conditional keyword style.
+Names declared by `provided` use normal variable captures, while closure
+parameters and named call arguments keep parameter-style captures.
 
 After changing grammar, parser, or query files in a running Neovim session, run:
 

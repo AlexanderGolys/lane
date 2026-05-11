@@ -25,7 +25,7 @@
 (unit_type) @type
 
 (input_declaration
-  name: (identifier) @parameter.declaration)
+  name: (identifier) @variable.declaration)
 
 (product_type_declaration
   name: (identifier) @type.declaration)
