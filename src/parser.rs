@@ -849,19 +849,7 @@ fn is_reserved_glsl_field_name(name: &str) -> bool {
 }
 
 fn default_product_field_names(count: usize) -> Vec<String> {
-    match count {
-        0 => Vec::new(),
-        1 => vec!["x".to_string()],
-        2 => vec!["x".to_string(), "y".to_string()],
-        3 => vec!["x".to_string(), "y".to_string(), "z".to_string()],
-        4 => vec![
-            "x".to_string(),
-            "y".to_string(),
-            "z".to_string(),
-            "w".to_string(),
-        ],
-        _ => (0..count).map(|index| format!("x{index}")).collect(),
-    }
+    (0..count).map(|index| format!("x{index}")).collect()
 }
 
 struct ExprParser {

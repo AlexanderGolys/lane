@@ -363,10 +363,9 @@ Ab Pair = R2 x R3
 Pair p = Pair([1, 2], 0)
 ```
 
-Default field names are `x`, `y`, `z`, `w` up to four components and `x0`,
-`x1`, ... after that. Positional aliases are accepted for default fields:
-`x`, `y`, `z`, `w` and `x0`, `x1`, `x2`, `x3` refer to the same first four
-components when present.
+Default field names are `x0`, `x1`, ... for every product arity. For product
+types without explicit `<...>` field names, the legacy positional aliases
+`x`, `y`, `z`, and `w` still refer to `x0`, `x1`, `x2`, and `x3` when present.
 
 Without `const`, product operations are emitted only when used. With `const`,
 all operations for the category are emitted:

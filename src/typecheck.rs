@@ -2289,14 +2289,10 @@ fn positional_product_field_index(field: &str) -> Option<usize> {
 }
 
 fn default_product_field_name(count: usize, index: usize) -> String {
-    match (count, index) {
-        (_, index) if index >= count => unreachable!("field index outside product"),
-        (1..=4, 0) => "x".to_string(),
-        (2..=4, 1) => "y".to_string(),
-        (3..=4, 2) => "z".to_string(),
-        (4, 3) => "w".to_string(),
-        _ => format!("x{index}"),
+    if index >= count {
+        unreachable!("field index outside product");
     }
+    format!("x{index}")
 }
 
 fn infer_value_expr_for_type(

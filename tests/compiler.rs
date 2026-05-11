@@ -571,9 +571,9 @@ fn supports_power_type_product_declarations() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct Triple"));
-    assert!(glsl.contains("float x;"));
-    assert!(glsl.contains("float y;"));
-    assert!(glsl.contains("float z;"));
+    assert!(glsl.contains("float x0;"));
+    assert!(glsl.contains("float x1;"));
+    assert!(glsl.contains("float x2;"));
 }
 
 #[test]
@@ -1453,10 +1453,10 @@ fn supports_product_value_constructors_with_default_fields() {
     let source = "Ab Pair = R2 x R3\nPair p = Pair((1, 2), 0)\nprovided Hom(Pair, R) measure\nR radius = measure(p + p)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("struct Pair {\n    vec2 x;\n    vec3 y;\n};"));
+    assert!(glsl.contains("struct Pair {\n    vec2 x0;\n    vec3 x1;\n};"));
     assert!(glsl.contains("Pair p = Pair(vec2(1.0, 2.0), vec3(0.0));"));
     assert!(glsl.contains(
-        "Pair add_Pair(Pair a, Pair b) {\n    return Pair((a.x + b.x), (a.y + b.y));\n}"
+        "Pair add_Pair(Pair a, Pair b) {\n    return Pair((a.x0 + b.x0), (a.x1 + b.x1));\n}"
     ));
 }
 
@@ -1465,7 +1465,10 @@ fn supports_positional_field_aliases_for_default_product_fields() {
     let source = "Set Four = R x R x R x R\nSet Five = C x R x R x R x R\nFour a = Four(1, 2, 3, 4)\nFive b = Five((5, 6), 7, 8, 9, 10)\nR radius = a.x0 + a.x + a.x3 + a.w + b.x.x + b.x0.x + b.y + b.x1 + b.w + b.x3\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float radius = ((((((((((a).x + (a).x) + (a).w) + (a).w) + ((b).x0).x) + ((b).x0).x) + (b).x1) + (b).x1) + (b).x3) + (b).x3);"));
+    assert!(glsl
+        .contains("struct Four {\n    float x0;\n    float x1;\n    float x2;\n    float x3;\n};"));
+    assert!(glsl.contains("struct Five {\n    vec2 x0;\n    float x1;\n    float x2;\n    float x3;\n    float x4;\n};"));
+    assert!(glsl.contains("float radius = ((((((((((a).x0 + (a).x0) + (a).x3) + (a).x3) + ((b).x0).x) + ((b).x0).x) + (b).x1) + (b).x1) + (b).x3) + (b).x3);"));
 }
 
 #[test]
@@ -1477,11 +1480,19 @@ fn supports_numeric_field_aliases_for_vectors() {
 }
 
 #[test]
+fn explicit_product_fields_do_not_get_positional_aliases() {
+    let source = "Set Pair = R x R <left, right>\nPair p = Pair(1, 2)\nR radius = p.x\nconst Object output = Ball3D(r=radius)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("value has no field 'x'"));
+}
+
+#[test]
 fn supports_product_set_types_without_operations() {
     let source = "Set Pair = R x R3\nPair p = Pair(1, (0, 0, 0))\nprovided Hom(Pair, R) measure\nR radius = measure(p)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("struct Pair {\n    float x;\n    vec3 y;\n};"));
+    assert!(glsl.contains("struct Pair {\n    float x0;\n    vec3 x1;\n};"));
     assert!(!glsl.contains("add_Pair"));
     assert!(!glsl.contains("mult_Pair"));
 }
@@ -1541,11 +1552,10 @@ fn supports_abelian_components_in_group_product_types() {
     let source = "Grp G = Isom3 x R3\nconst Grp Motion = Isom3 x R3 <motion, shift>\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nG identity = e\nG product = a * b\nR radius = measure(product * identity)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("struct G {\n    Isom3 x;\n    vec3 y;\n};"));
+    assert!(glsl.contains("struct G {\n    Isom3 x0;\n    vec3 x1;\n};"));
     assert!(glsl.contains("G e_G = G(Isom3(mat3(1.0), vec3(0.0)), vec3(0.0));"));
-    assert!(
-        glsl.contains("G mult_G(G a, G b) {\n    return G(mult_Isom3(a.x, b.x), (a.y + b.y));\n}")
-    );
+    assert!(glsl
+        .contains("G mult_G(G a, G b) {\n    return G(mult_Isom3(a.x0, b.x0), (a.x1 + b.x1));\n}"));
     assert!(glsl.contains(
         "Motion inv_Motion(Motion value) {\n    return Motion(inv_Isom3(value.motion), (vec3(0.0) - value.shift));\n}"
     ));
