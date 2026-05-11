@@ -74,10 +74,11 @@ Usage:
   linearly in one bottom-anchored, consistently padded transcript, with one
   character of inner left padding and different background colors for user code
   and output code. The current input block leaves one blank terminal row above
-  and below it, and empty input shows gray placeholder text. Submitted Lane entries
-  include source line numbers in their transcript gutter, while the current
-  input remains unnumbered and widens its blank gutter to stay aligned to the
-  same source column as line numbers grow. Matching completions appear as gray
+  and below it, and empty input shows gray placeholder text. Submitted Lane
+  entries include source line numbers in their transcript gutter, and generated
+  GLSL entries include generated line numbers in the same gutter style. The
+  current input remains unnumbered and widens its blank gutter to stay aligned
+  to the same source column as line numbers grow. Matching completions appear as gray
   inline hint text after the current token without changing the submitted input.
   Adjacent submitted Lane entries render inside one shared feed box only when
   no generated GLSL block separates them, and adjacent generated GLSL output

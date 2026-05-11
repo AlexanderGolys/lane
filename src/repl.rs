@@ -608,17 +608,21 @@ impl App {
         Some(group)
     }
 
-    fn push_glsl_output(&mut self, glsl: String, group: Option<usize>) {
+    fn push_glsl_output(&mut self, glsl: GlslOutput, group: Option<usize>) {
         if let Some(entry) = self.transcript.last_mut() {
             if matches!(entry.kind, TranscriptKind::Glsl) && entry.group == group {
                 if !entry.text.ends_with('\n') {
                     entry.text.push('\n');
                 }
-                entry.text.push_str(&glsl);
+                entry.text.push_str(&glsl.text);
                 return;
             }
         }
-        self.transcript.push(TranscriptEntry::glsl(glsl, group));
+        self.transcript.push(TranscriptEntry::glsl(
+            glsl.text,
+            group,
+            Some(glsl.line_start),
+        ));
     }
 
     fn latest_mergeable_lane_entry(&self) -> Option<usize> {
@@ -877,7 +881,13 @@ impl App {
                 entry.text.clone(),
                 Style::default().fg(COMMAND_FG).add_modifier(Modifier::BOLD),
             ))),
-            TranscriptKind::Glsl => self.highlighter.highlight_glsl(&entry.text),
+            TranscriptKind::Glsl => {
+                if let Some(line_start) = entry.line_start {
+                    numbered_source_text(self.highlighter.highlight_glsl(&entry.text), line_start)
+                } else {
+                    self.highlighter.highlight_glsl(&entry.text)
+                }
+            }
             TranscriptKind::Help => highlight_help_text(&entry.text),
             TranscriptKind::Error => error_box_text(&entry.text),
             TranscriptKind::System | TranscriptKind::Welcome => Text::from(entry.text.clone()),
@@ -1165,7 +1175,7 @@ fn placeholder_input_text(gutter_width: u16) -> Text<'static> {
     )
 }
 
-fn numbered_lane_text(mut text: Text<'static>, line_start: usize) -> Text<'static> {
+fn numbered_source_text(mut text: Text<'static>, line_start: usize) -> Text<'static> {
     let line_count = text.lines.len().max(1);
     let line_end = line_start.saturating_add(line_count.saturating_sub(1));
     let width = line_end.to_string().len();
@@ -1176,6 +1186,10 @@ fn numbered_lane_text(mut text: Text<'static>, line_start: usize) -> Text<'stati
             .insert(0, Span::styled(gutter, Style::default().fg(LINE_NUMBER_FG)));
     }
     text
+}
+
+fn numbered_lane_text(text: Text<'static>, line_start: usize) -> Text<'static> {
+    numbered_source_text(text, line_start)
 }
 
 fn line_number_gutter_width(line_number: usize) -> u16 {
@@ -1237,9 +1251,24 @@ fn strip_error_line_reference(line: &str) -> String {
     }
 }
 
-fn new_glsl_since(previous: &str, current: &str) -> String {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct GlslOutput {
+    text: String,
+    line_start: usize,
+}
+
+impl GlslOutput {
+    fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+}
+
+fn new_glsl_since(previous: &str, current: &str) -> GlslOutput {
     if previous.is_empty() {
-        return current.to_string();
+        return GlslOutput {
+            text: current.to_string(),
+            line_start: 1,
+        };
     }
 
     let previous_lines = previous.lines().collect::<Vec<_>>();
@@ -1258,6 +1287,7 @@ fn new_glsl_since(previous: &str, current: &str) -> String {
     }
 
     let mut added = Vec::new();
+    let mut line_start = None;
     let mut previous_index = 0;
     let mut current_index = 0;
     while current_index < current_lines.len() {
@@ -1269,6 +1299,7 @@ fn new_glsl_since(previous: &str, current: &str) -> String {
         } else if previous_index >= previous_lines.len()
             || lcs[previous_index][current_index + 1] >= lcs[previous_index + 1][current_index]
         {
+            line_start.get_or_insert(current_index + 1);
             added.push(current_lines[current_index]);
             current_index += 1;
         } else {
@@ -1278,11 +1309,17 @@ fn new_glsl_since(previous: &str, current: &str) -> String {
 
     while added.first().is_some_and(|line| line.is_empty()) {
         added.remove(0);
+        if let Some(start) = &mut line_start {
+            *start = start.saturating_add(1);
+        }
     }
     while added.last().is_some_and(|line| line.is_empty()) {
         added.pop();
     }
-    added.join("\n")
+    GlslOutput {
+        text: added.join("\n"),
+        line_start: line_start.unwrap_or(1),
+    }
 }
 
 #[derive(Default)]
@@ -1465,12 +1502,12 @@ impl TranscriptEntry {
         }
     }
 
-    fn glsl(text: String, group: Option<usize>) -> Self {
+    fn glsl(text: String, group: Option<usize>, line_start: Option<usize>) -> Self {
         Self {
             kind: TranscriptKind::Glsl,
             text,
             group,
-            line_start: None,
+            line_start,
             errored: false,
             error: None,
         }
@@ -1595,7 +1632,7 @@ pub(crate) struct ReplSession {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SubmitOutcome {
     Accepted,
-    Emitted(String),
+    Emitted(GlslOutput),
     Cleared,
     Restarted,
     Help,
@@ -1955,7 +1992,7 @@ mod tests {
         let SubmitOutcome::Emitted(glsl) = outcome else {
             panic!("expected GLSL output");
         };
-        assert!(glsl.contains("sdf0_Ball3D(p, ParamBall3D(radius))"));
+        assert!(glsl.text.contains("sdf0_Ball3D(p, ParamBall3D(radius))"));
     }
 
     #[test]
@@ -1964,14 +2001,14 @@ mod tests {
         let SubmitOutcome::Emitted(first_glsl) = session.submit("const R radius = 1") else {
             panic!("expected first GLSL output");
         };
-        assert!(first_glsl.contains("const float radius = 1.0f;"));
+        assert!(first_glsl.text.contains("const float radius = 1.0f;"));
         let outcome = session.submit("const Object output = Ball3D(r=radius)");
         let SubmitOutcome::Emitted(glsl) = outcome else {
             panic!("expected GLSL output");
         };
-        assert!(glsl.contains("struct ParamBall3D"));
-        assert!(glsl.contains("float scene_sdf(vec3 p)"));
-        assert!(!glsl.contains("const float radius = 1.0f;"));
+        assert!(glsl.text.contains("struct ParamBall3D"));
+        assert!(glsl.text.contains("float scene_sdf(vec3 p)"));
+        assert!(!glsl.text.contains("const float radius = 1.0f;"));
     }
 
     #[test]
@@ -1991,10 +2028,12 @@ mod tests {
             panic!("expected emitted GLSL");
         };
 
-        assert!(second.contains("struct Triple"));
-        assert!(second.contains("const Triple triple = Triple(1.0f, 2.0f, 3.0f);"));
-        assert!(!second.contains("struct Pair"));
-        assert!(!second.contains("const Pair pair"));
+        assert!(second.text.contains("struct Triple"));
+        assert!(second
+            .text
+            .contains("const Triple triple = Triple(1.0f, 2.0f, 3.0f);"));
+        assert!(!second.text.contains("struct Pair"));
+        assert!(!second.text.contains("const Pair pair"));
     }
 
     #[test]
@@ -2009,10 +2048,22 @@ mod tests {
 
         let added = new_glsl_since(previous, current);
 
-        assert!(added.contains("struct Triple"));
-        assert!(added.contains("const Triple triple = Triple(1.0);"));
-        assert!(!added.contains("struct Pair"));
-        assert!(!added.contains("const Pair pair"));
+        assert!(added.text.contains("struct Triple"));
+        assert!(added.text.contains("const Triple triple = Triple(1.0);"));
+        assert!(!added.text.contains("struct Pair"));
+        assert!(!added.text.contains("const Pair pair"));
+        assert_eq!(added.line_start, 5);
+    }
+
+    #[test]
+    fn first_glsl_emission_starts_at_line_one() {
+        let mut session = ReplSession::default();
+        let SubmitOutcome::Emitted(glsl) = session.submit("const R radius = 1") else {
+            panic!("expected emitted GLSL");
+        };
+
+        assert_eq!(glsl.line_start, 1);
+        assert!(glsl.text.contains("const float radius = 1.0f;"));
     }
 
     #[test]
@@ -2063,6 +2114,7 @@ mod tests {
         app.transcript.push(TranscriptEntry::glsl(
             "float radius = 1.0;".to_string(),
             Some(0),
+            None,
         ));
         app.input = "/split".to_string();
 
@@ -2129,9 +2181,9 @@ mod tests {
         app.split_mode = true;
         app.transcript = vec![
             TranscriptEntry::submitted("R old = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0)),
+            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0), None),
             TranscriptEntry::submitted("R new = 2".to_string(), Some(1), Some(2)),
-            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1)),
+            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1), None),
         ];
 
         app.scroll_split_pane_up(SplitPane::Glsl);
@@ -2152,9 +2204,9 @@ mod tests {
         app.split_mode = true;
         app.transcript = vec![
             TranscriptEntry::submitted("R old = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0)),
+            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0), None),
             TranscriptEntry::submitted("R new = 2".to_string(), Some(1), Some(2)),
-            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1)),
+            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1), None),
         ];
 
         terminal.draw(|frame| app.draw(frame)).unwrap();
@@ -2280,7 +2332,10 @@ mod tests {
         let mut session = ReplSession::default();
         assert_eq!(
             session.submit("const R radius = 1"),
-            SubmitOutcome::Emitted(crate::compile_program_output("const R radius = 1\n").unwrap())
+            SubmitOutcome::Emitted(GlslOutput {
+                text: crate::compile_program_output("const R radius = 1\n").unwrap(),
+                line_start: 1,
+            })
         );
 
         let outcome = session.submit(&format!("/export {}", path.display()));
@@ -2391,7 +2446,9 @@ mod tests {
         assert!(matches!(app.transcript[1].kind, TranscriptKind::Glsl));
         assert!(matches!(app.transcript[2].kind, TranscriptKind::Lane));
         assert!(matches!(app.transcript[3].kind, TranscriptKind::Glsl));
-        assert!(app.transcript[1].text.contains("const float radius = 1.0f;"));
+        assert!(app.transcript[1]
+            .text
+            .contains("const float radius = 1.0f;"));
         assert!(app.transcript[3]
             .text
             .contains("const float diameter = (radius * 2.0f);"));
@@ -2401,8 +2458,20 @@ mod tests {
     fn adjacent_glsl_outputs_share_one_feed_box() {
         let mut app = App::new();
         app.transcript.clear();
-        app.push_glsl_output("float radius = 1.0;".to_string(), Some(0));
-        app.push_glsl_output("float diameter = radius * 2.0;".to_string(), Some(0));
+        app.push_glsl_output(
+            GlslOutput {
+                text: "float radius = 1.0;".to_string(),
+                line_start: 1,
+            },
+            Some(0),
+        );
+        app.push_glsl_output(
+            GlslOutput {
+                text: "float diameter = radius * 2.0;".to_string(),
+                line_start: 2,
+            },
+            Some(0),
+        );
 
         assert_eq!(app.transcript.len(), 1);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Glsl));
@@ -2410,6 +2479,7 @@ mod tests {
             app.transcript[0].text,
             "float radius = 1.0;\nfloat diameter = radius * 2.0;"
         );
+        assert_eq!(app.transcript[0].line_start, Some(1));
     }
 
     #[test]
@@ -2752,7 +2822,7 @@ mod tests {
         let entries = vec![
             TranscriptEntry::system("old"),
             TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0)),
+            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0), None),
         ];
         let mut layout = TranscriptLayout::default();
         layout.record_bottom_to_top(Rect::new(0, 0, 20, 11), &[2, 1, 0], &entries);
@@ -2776,6 +2846,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n"),
             Some(0),
+            None,
         ));
 
         terminal.draw(|frame| app.draw(frame)).unwrap();
@@ -2981,9 +3052,9 @@ mod tests {
     #[test]
     fn selecting_one_submission_group_does_not_highlight_other_groups() {
         let lane_a = TranscriptEntry::submitted("const R a = 1".to_string(), Some(0), Some(1));
-        let glsl_a = TranscriptEntry::glsl("float a = 1.0;".to_string(), Some(0));
+        let glsl_a = TranscriptEntry::glsl("float a = 1.0;".to_string(), Some(0), None);
         let lane_b = TranscriptEntry::submitted("const R b = 2".to_string(), Some(1), Some(2));
-        let glsl_b = TranscriptEntry::glsl("float b = 2.0;".to_string(), Some(1));
+        let glsl_b = TranscriptEntry::glsl("float b = 2.0;".to_string(), Some(1), None);
 
         let lane_a_style = lane_a.style(Some(0));
         let glsl_a_style = glsl_a.style(Some(0));
@@ -3100,6 +3171,23 @@ mod tests {
             text.lines[1].spans[1].content.as_ref(),
             "const R diameter = 2"
         );
+    }
+
+    #[test]
+    fn glsl_entry_rendering_prefixes_each_generated_line() {
+        let mut app = App::new();
+        let entry = TranscriptEntry::glsl(
+            "float radius = 1.0;\nfloat diameter = 2.0;".to_string(),
+            Some(0),
+            Some(41),
+        );
+
+        let text = app.render_entry_text(&entry);
+
+        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), "41 | ");
+        assert_eq!(text.lines[2].spans[0].content.as_ref(), " ");
+        assert_eq!(text.lines[2].spans[1].content.as_ref(), "42 | ");
     }
 
     #[test]
