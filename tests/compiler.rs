@@ -1132,7 +1132,7 @@ fn preview_requirement_detection_uses_parsed_construct_scene() {
 
 #[test]
 fn raytracing_raycolor_accepts_custom_material_types() {
-    let source = "#import raytracing\nconst RVect FancyMaterial = R3 x R3 x R x R <albedo, glow, roughness, metallic>\nprovided Hom(Ray, Hit) hit\nprovided Hom(R3, FancyMaterial) material\nprovided R3 ambient\nconst Hom(FancyMaterial, R3) color = m |-> m.albedo\nconst Hom(FancyMaterial, R3) emission = m |-> m.glow\nconst Hom(FancyMaterial, R) reflectiveness = m |-> m.metallic\nconst Hom(Hit, R3) color_at = color @ material @ hit_position\nconst Hom(Hit, R3) emission_at = emission @ material @ hit_position\nconst Hom(Hit, R) reflectiveness_at = reflectiveness @ material @ hit_position\nconst Hom(Ray, R3) color_ray = raycolor_from_hit_with(default_raycolor_config, ambient, hit, color_at, emission_at, reflectiveness_at)\n";
+    let source = "#import raytracing\nconst RVect FancyMaterial<albedo, glow, roughness, metallic> = R3 x R3 x R x R\nprovided Hom(Ray, Hit) hit\nprovided Hom(R3, FancyMaterial) material\nprovided R3 ambient\nconst Hom(FancyMaterial, R3) color = m |-> m.albedo\nconst Hom(FancyMaterial, R3) emission = m |-> m.glow\nconst Hom(FancyMaterial, R) reflectiveness = m |-> m.metallic\nconst Hom(Hit, R3) color_at = color @ material @ hit_position\nconst Hom(Hit, R3) emission_at = emission @ material @ hit_position\nconst Hom(Hit, R) reflectiveness_at = reflectiveness @ material @ hit_position\nconst Hom(Ray, R3) color_ray = raycolor_from_hit_with(default_raycolor_config, ambient, hit, color_at, emission_at, reflectiveness_at)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct FancyMaterial"));
@@ -1284,7 +1284,7 @@ fn rejects_provided_product_type_declarations_in_modules() {
     fs::create_dir_all(dir.join("modules")).unwrap();
     fs::write(
         dir.join("modules").join("materials.lane"),
-        "#module\nprovided RVect Material = R3 x R3 x R <color, emission, reflectiveness>\n",
+        "#module\nprovided RVect Material<color, emission, reflectiveness> = R3 x R3 x R\n",
     )
     .unwrap();
     let source_path = dir.join("scene.lane");
@@ -1303,7 +1303,7 @@ fn rejects_provided_product_type_declarations_in_modules() {
 
 #[test]
 fn provided_product_type_is_declared_but_not_emitted() {
-    let source = "provided RVect External = R3 x R <color, weight>\nprovided External external\nconst Hom(R, External) copied = external\n";
+    let source = "provided RVect External<color, weight> = R3 x R\nprovided External external\nconst Hom(R, External) copied = external\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(!glsl.contains("struct External"));
@@ -1438,7 +1438,7 @@ fn supports_multiple_provided_category_types_on_one_line() {
 
 #[test]
 fn supports_product_group_types_with_named_fields() {
-    let source = "Grp G = Isom3 x Isom2 <m, n>\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "Grp G<m, n> = Isom3 x Isom2\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct G {\n    Isom3 m;\n    Isom2 n;\n};"));
@@ -1481,7 +1481,7 @@ fn supports_numeric_field_aliases_for_vectors() {
 
 #[test]
 fn explicit_product_fields_do_not_get_positional_aliases() {
-    let source = "Set Pair = R x R <left, right>\nPair p = Pair(1, 2)\nR radius = p.x\nconst Object output = Ball3D(r=radius)\n";
+    let source = "Set Pair<left, right> = R x R\nPair p = Pair(1, 2)\nR radius = p.x\nconst Object output = Ball3D(r=radius)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("value has no field 'x'"));
@@ -1509,7 +1509,7 @@ fn emits_all_product_ops_for_const_product_types() {
 
 #[test]
 fn rejects_product_field_count_mismatches() {
-    let source = "Grp G = Isom3 x Isom2 <m>\nconst Object output = Ball3D(r=1)\n";
+    let source = "Grp G<m> = Isom3 x Isom2\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' has 2 component(s) but 1 field name(s)"));
@@ -1517,7 +1517,7 @@ fn rejects_product_field_count_mismatches() {
 
 #[test]
 fn rejects_duplicate_product_field_names() {
-    let source = "Grp G = Isom3 x Isom2 <m, m>\nconst Object output = Ball3D(r=1)\n";
+    let source = "Grp G<m, m> = Isom3 x Isom2\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' has duplicate field name 'm'"));
@@ -1525,7 +1525,7 @@ fn rejects_duplicate_product_field_names() {
 
 #[test]
 fn rejects_reserved_glsl_product_field_names() {
-    let source = "Set Hit = R3 x R <position, distance>\nconst Object output = Ball3D(r=1)\n";
+    let source = "Set Hit<position, distance> = R3 x R\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'Hit' field name 'distance' is reserved in GLSL"));
@@ -1549,7 +1549,7 @@ fn rejects_real_division_algebra_product_types() {
 
 #[test]
 fn supports_abelian_components_in_group_product_types() {
-    let source = "Grp G = Isom3 x R3\nconst Grp Motion = Isom3 x R3 <motion, shift>\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nG identity = e\nG product = a * b\nR radius = measure(product * identity)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "Grp G = Isom3 x R3\nconst Grp Motion<motion, shift> = Isom3 x R3\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nG identity = e\nG product = a * b\nR radius = measure(product * identity)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct G {\n    Isom3 x0;\n    vec3 x1;\n};"));
@@ -1647,7 +1647,7 @@ fn supports_conditional_value_expressions() {
 
 #[test]
 fn supports_product_conditional_values_without_glsl_ternaries() {
-    let source = "const RVect Swatch = R3 x R <color, weight>\nprovided Bool flag\nconst Swatch warm = Swatch((1, 0, 0), 1)\nconst Swatch cool = Swatch((0, 0, 1), 2)\nconst Swatch selected = if(flag) warm else cool\nconst Object output = Ball3D(r=selected.weight)\n";
+    let source = "const RVect Swatch<color, weight> = R3 x R\nprovided Bool flag\nconst Swatch warm = Swatch((1, 0, 0), 1)\nconst Swatch cool = Swatch((0, 0, 1), 2)\nconst Swatch selected = if(flag) warm else cool\nconst Object output = Ball3D(r=selected.weight)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains(

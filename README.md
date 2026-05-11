@@ -327,7 +327,7 @@ const Object output = Ball3D(r=radius)
 This emits calls such as `mult_G(a, b)`. For neutral literals, Lane expects
 globals such as `zero_G`, `one_G`, and `e_G` when those operations are needed.
 
-### `[const] CATEGORY TypeName = TYPE x TYPE <field, field>`
+### `[const] CATEGORY TypeName<field, field> = TYPE x TYPE`
 
 Constructs a nominal product type and emits a GLSL struct. Every component must
 satisfy the declared category or a subcategory. `DivRing` products are rejected.
@@ -336,7 +336,7 @@ components by interpreting `e` as `0`, multiplication as addition, and inverse
 as negation.
 
 ```lane
-Grp G = Isom3 x Isom2 <m, n>
+Grp G<m, n> = Isom3 x Isom2
 Grp Motion = Isom3 x R3
 provided G a
 provided G b
@@ -1170,7 +1170,7 @@ names such as `p`, `eps`, `dx`, `dy`, or `dz`.
 provided R time
 provided Hom(R3, R) density
 
-Grp Motion = Isom3 x Isom3 <left, right>
+Grp Motion<left, right> = Isom3 x Isom3
 
 R3 axis = [0, 0, 1]
 Isom3 spin = rot(axis, 0, time)

@@ -288,7 +288,7 @@ G product = a * b
 Product Type Declarations
 ==================
 
-Grp G = Isom3 x Isom2 <m, n>
+Grp G<m, n> = Isom3 x Isom2
 const Ab Pair = R2 x R3
 provided G g
 provided Pair p
@@ -300,12 +300,12 @@ provided Pair p
     (category_type
       (category_identifier))
     (identifier)
-    (product_type
-      (type_identifier)
-      (type_identifier))
     (product_field_list
       (identifier)
-      (identifier)))
+      (identifier))
+    (product_type
+      (type_identifier)
+      (type_identifier)))
   (product_type_declaration
     (gen_modifier)
     (category_type

@@ -4,7 +4,7 @@ Tree-sitter grammar for the Lane DSL.
 
 ## Syntax Notes
 
-- Product type field names use angle brackets: `Set Hit = R3 x R <point, distance>`.
+- Product type field names use angle brackets: `Set Hit<point, distance> = R3 x R`.
 - Product map expressions use spaced `x`, as in `f x g`, and highlight the
   `x` as an operator.
 - `Array(...)` constructs arrays. Square brackets are reserved for vector and matrix literals.

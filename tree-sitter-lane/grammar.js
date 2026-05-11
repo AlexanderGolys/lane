@@ -62,9 +62,9 @@ module.exports = grammar({
             optional(field('modifier', $.gen_modifier)),
             field('category', $.category_identifier),
             field('name', $.identifier),
+            optional($.product_field_list),
             '=',
             field('type', $._type),
-            optional($.product_field_list),
         ),
 
         category_identifier: () => choice(...CATEGORY_NAMES),

@@ -1,11 +1,11 @@
 #module
 
-const RVect Ray = R3 x R3 <origin, dir>
-const Set Hit = R3 x R3 x R x Bool <position, normal, travel, hit>
-const RVect Material = R3 x R3 x R <color, emission, reflectiveness>
-const Set Camera = R3 x R3 x R3 x R2 <position, forward, global_up, resolution>
-const Set RaytraceConfig = Z x R x R <max_steps, hit_threshold, max_travel>
-const Set RaycolorConfig = Z x R x R <max_bounces, ray_bias, throughput_threshold>
+const RVect Ray<origin, dir> = R3 x R3
+const Set Hit<position, normal, travel, hit> = R3 x R3 x R x Bool
+const RVect Material<color, emission, reflectiveness> = R3 x R3 x R
+const Set Camera<position, forward, global_up, resolution> = R3 x R3 x R3 x R2
+const Set RaytraceConfig<max_steps, hit_threshold, max_travel> = Z x R x R
+const Set RaycolorConfig<max_bounces, ray_bias, throughput_threshold> = Z x R x R
 
 const RaytraceConfig default_raytrace_config = RaytraceConfig(128, 0.0005, 100)
 const RaycolorConfig default_raycolor_config = RaycolorConfig(6, 0.001, 0.001)

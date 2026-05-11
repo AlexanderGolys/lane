@@ -574,13 +574,21 @@ fn parse_product_type_decl(
     let Some((left, right)) = line.split_once('=') else {
         return Ok(None);
     };
-    let Ok((category_source, name)) = split_type_name(left.trim()) else {
+    let (left, left_field_names) = split_product_type_fields(left.trim())?;
+    let Ok((category_source, name)) = split_type_name(left) else {
         return Ok(None);
     };
     let Some(category) = category_by_name(category_source.trim()) else {
         return Ok(None);
     };
-    let (type_source, explicit_field_names) = split_product_type_fields(right.trim())?;
+    let (type_source, right_field_names) = split_product_type_fields(right.trim())?;
+    if left_field_names.is_some() && right_field_names.is_some() {
+        return Err(Error::new(format!(
+            "product type '{}' has field names on both sides of '='",
+            name
+        )));
+    }
+    let explicit_field_names = left_field_names.or(right_field_names);
     let components = if let Some(component_sources) = split_top_level_product(type_source) {
         let mut components = Vec::new();
         for component_source in component_sources {

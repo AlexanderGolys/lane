@@ -369,14 +369,21 @@ fn is_product_type_assignment_head(head: &str) -> bool {
         .or_else(|| head.strip_prefix("const "))
         .unwrap_or(head)
         .trim();
-    let mut parts = head.split_whitespace();
-    let Some(category) = parts.next() else {
+    let Some((category, name)) = head.split_once(char::is_whitespace) else {
         return false;
     };
-    let Some(_name) = parts.next() else {
+    if !category_by_name(category).is_some() {
         return false;
-    };
-    parts.next().is_none() && category_by_name(category).is_some()
+    }
+    let name = name.trim();
+    if name.is_empty() {
+        return false;
+    }
+    if let Some(fields) = name.strip_suffix('>').and_then(|name| name.rsplit_once('<')) {
+        !fields.0.trim().is_empty()
+    } else {
+        !name.chars().any(char::is_whitespace)
+    }
 }
 
 pub fn compile_preview_fragment_from_path(
@@ -3973,14 +3980,14 @@ const Hom(R × R, R) wave = sin x cos
     #[test]
     fn formats_product_type_definition_without_renaming_x_bindings() {
         let source = "\
-Set Pair = R x R <left, right>
+Set Pair<left, right> = R x R
 const R x = 1
 ";
 
         assert_eq!(
             format_lane_source(source),
             "\
-Set Pair = R × R <left, right>
+Set Pair<left, right> = R × R
 const R x = 1
 "
         );

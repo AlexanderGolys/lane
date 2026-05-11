@@ -47,7 +47,7 @@ fn emits_document_symbols_for_top_level_declarations() {
         "#module\n\
          provided R time, scale\n\
          provided distance : R3 -> R\n\
-         Set Material = R <roughness>\n\
+         Set Material<roughness> = R\n\
          const Object output = Ball3D(r=scale)\n\
          shape = output\n",
     );
