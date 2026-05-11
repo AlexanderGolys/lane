@@ -46,6 +46,7 @@ module.exports = grammar({
 
         _declaration: ($) => choice(
             $.provided_category_declaration,
+            $.category_type_declaration,
             $.product_type_declaration,
             $.input_declaration,
             $.inferred_binding_declaration,
@@ -75,6 +76,25 @@ module.exports = grammar({
             '>',
         ),
 
+        category_type_declaration: ($) => prec(1, seq(
+            field('category', $.category_identifier),
+            field('name', $.identifier),
+            '=',
+            field('base', $._type),
+            $.category_op_list,
+        )),
+
+        category_op_list: ($) => seq(
+            '{',
+            commaSep1($.category_op_binding),
+            '}',
+        ),
+
+        category_op_binding: ($) => seq(
+            field('operator', choice('0', '1', 'e', '+', '-', '*', 'inv', 'scale')),
+            ':',
+            field('name', $.identifier),
+        ),
 
         input_declaration: ($) => choice(
             seq(

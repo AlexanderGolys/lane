@@ -1449,6 +1449,36 @@ fn supports_product_group_types_with_named_fields() {
 }
 
 #[test]
+fn constructs_abelian_category_type_from_set_operations() {
+    let source = "provided Set X\nprovided X zeroX\nprovided End(X) negX\nprovided Hom(X x X, X) addX\nAb A = X {0: zeroX, -: negX, +: addX}\nprovided A a\nprovided A b\nprovided Hom(A, R) measure\nA sum = a + b\nA delta = a - b\nA empty = 0\nR radius = measure(sum + delta + empty)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("struct A {\n    X value;\n};"));
+    assert!(glsl.contains("A zero_A = A(zeroX);"));
+    assert!(glsl.contains("A add_A(A a, A b) {\n    return A(addX(a.value, b.value));\n}"));
+    assert!(glsl.contains("A sub_A(A a, A b) {\n    return A(addX(a.value, negX(b.value)));\n}"));
+}
+
+#[test]
+fn category_type_constructor_can_promote_existing_set_name() {
+    let source = "provided Set X\nprovided X zeroX\nprovided End(X) negX\nprovided Hom(X x X, X) addX\nAb X = X {0: zeroX, -: negX, +: addX}\nprovided X a\nprovided X b\nX sum = a + b\nX delta = a - b\nX empty = 0\nprovided Hom(X, R) measure\nR radius = measure(sum + delta + empty)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(!glsl.contains("struct X"));
+    assert!(glsl.contains("X zero_X = zeroX;"));
+    assert!(glsl.contains("X add_X(X a, X b) {\n    return addX(a, b);\n}"));
+    assert!(glsl.contains("X sub_X(X a, X b) {\n    return addX(a, negX(b));\n}"));
+}
+
+#[test]
+fn rejects_category_type_constructor_missing_required_ops() {
+    let source = "provided Set X\nprovided X zeroX\nAb A = X {0: zeroX}\nconst Object output = Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("category type 'A' requires operation '+'"));
+}
+
+#[test]
 fn supports_product_value_constructors_with_default_fields() {
     let source = "Ab Pair = R2 x R3\nPair p = Pair((1, 2), 0)\nprovided Hom(Pair, R) measure\nR radius = measure(p + p)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();

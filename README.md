@@ -327,6 +327,26 @@ const Object output = Ball3D(r=radius)
 This emits calls such as `mult_G(a, b)`. For neutral literals, Lane expects
 globals such as `zero_G`, `one_G`, and `e_G` when those operations are needed.
 
+### `CATEGORY TypeName = BaseType {op: name, ...}`
+
+Constructs a nominal category type from an existing set-like type and explicit
+operation names. The initial supported constructor is `Ab`, which requires
+`0`, unary `-`, and binary `+` operations over the base type.
+
+```lane
+provided Set X
+provided X zeroX
+provided End(X) negX
+provided Hom(X x X, X) addX
+
+Ab A = X {0: zeroX, -: negX, +: addX}
+```
+
+When `TypeName` differs from `BaseType`, Lane emits a one-field wrapper and
+forwards generated category operations through the provided base operations. If
+the names are the same, as in `Ab X = X {...}`, Lane treats the declaration as
+a promotion and keeps the host representation unchanged.
+
 ### `[const] CATEGORY TypeName<field, field> = TYPE x TYPE`
 
 Constructs a nominal product type and emits a GLSL struct. Every component must

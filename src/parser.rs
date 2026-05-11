@@ -41,6 +41,7 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_program(&self) -> Result<Program, Error> {
         let mut custom_types: HashMap<String, AlgebraicCategory> = HashMap::new();
         let mut product_types = Vec::new();
+        let mut category_types = Vec::new();
         let mut inputs = Vec::new();
         let mut imports = Vec::new();
         let mut funcs = Vec::new();
@@ -221,6 +222,31 @@ impl<'a> Parser<'a> {
                     }
                     product_types.push(product_type);
                 }
+                Decl::CategoryType(category_type) => {
+                    ensure_public_decl_name(&category_type.name, "category type", line_number)?;
+                    if is_known_type_name(&category_type.name)
+                        || is_known_category_name(&category_type.name)
+                    {
+                        return Err(Error::new(format!(
+                            "'{}' cannot be used as a category type name",
+                            category_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                    let existing =
+                        custom_types.insert(category_type.name.clone(), category_type.category);
+                    if existing.is_some_and(|category| {
+                        category != AlgebraicCategory::Set
+                            || category_type.name != category_type.base.type_name()
+                    }) {
+                        return Err(Error::new(format!(
+                            "duplicate provided type '{}'",
+                            category_type.name
+                        ))
+                        .with_line(line_number));
+                    }
+                    category_types.push(category_type);
+                }
                 Decl::Input(input) => {
                     if is_module {
                         return Err(
@@ -281,6 +307,7 @@ impl<'a> Parser<'a> {
             is_module,
             imports,
             product_types,
+            category_types,
             inputs,
             funcs,
             value_bindings,
@@ -299,6 +326,12 @@ impl<'a> Parser<'a> {
         allow_final_output: bool,
         allow_raw_glsl: bool,
     ) -> Result<Decl, Error> {
+        if let Some(category_type) =
+            parse_category_type_decl(line, line_number, custom_types, ambient_dimension)?
+        {
+            return Ok(Decl::CategoryType(category_type));
+        }
+
         if let Some(product_type) =
             parse_product_type_decl(line, line_number, custom_types, ambient_dimension)?
         {
@@ -635,6 +668,94 @@ fn parse_product_type_decl(
         provided,
         line: line_number,
     }))
+}
+
+fn parse_category_type_decl(
+    line: &str,
+    line_number: usize,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+    ambient_dimension: ShapeDimension,
+) -> Result<Option<CategoryTypeDecl>, Error> {
+    let Some((left, right)) = line.split_once('=') else {
+        return Ok(None);
+    };
+    let Ok((category_source, name)) = split_type_name(left.trim()) else {
+        return Ok(None);
+    };
+    let Some(category) = category_by_name(category_source.trim()) else {
+        return Ok(None);
+    };
+    let Some((base_source, ops_source)) = split_category_type_ops(right.trim()) else {
+        return Ok(None);
+    };
+    if category == AlgebraicCategory::Set {
+        return Err(Error::new(
+            "category type constructors must target a non-Set category",
+        ));
+    }
+    let base =
+        parse_type_with_custom_types_for_ambient(base_source, custom_types, ambient_dimension)?;
+    let ops = parse_category_type_ops(name, ops_source)?;
+    Ok(Some(CategoryTypeDecl {
+        name: name.to_string(),
+        category,
+        base,
+        ops,
+        line: line_number,
+    }))
+}
+
+fn split_category_type_ops(source: &str) -> Option<(&str, &str)> {
+    let source = source.strip_suffix('}')?;
+    let (base, ops) = source.rsplit_once('{')?;
+    Some((base.trim(), ops.trim()))
+}
+
+fn parse_category_type_ops(type_name: &str, source: &str) -> Result<CategoryTypeOps, Error> {
+    let mut ops = CategoryTypeOps::default();
+    for item in source.split(',') {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = item.split_once(':') else {
+            return Err(Error::new(format!(
+                "category type '{}' operation '{}' is missing ':'",
+                type_name, item
+            )));
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if !is_identifier(value) {
+            return Err(Error::new(format!(
+                "category type '{}' operation '{}' has invalid name '{}'",
+                type_name, key, value
+            )));
+        }
+        let slot = match key {
+            "0" => &mut ops.zero,
+            "1" => &mut ops.one,
+            "e" => &mut ops.identity,
+            "+" => &mut ops.add,
+            "-" => &mut ops.neg,
+            "*" => &mut ops.mult,
+            "inv" => &mut ops.inv,
+            "scale" => &mut ops.scale,
+            _ => {
+                return Err(Error::new(format!(
+                    "category type '{}' has unsupported operation key '{}'",
+                    type_name, key
+                )));
+            }
+        };
+        if slot.replace(value.to_string()).is_some() {
+            return Err(Error::new(format!(
+                "category type '{}' has duplicate operation key '{}'",
+                type_name, key
+            )));
+        }
+    }
+    Ok(ops)
 }
 
 fn parse_multi_input_decls(
@@ -1432,7 +1553,11 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
             '&' => Token::Amp,
             '.' => Token::Dot,
             '@' => Token::At,
-            _ => return Err(Error::new(format!("unsupported token '{ch}' in expression"))),
+            _ => {
+                return Err(Error::new(format!(
+                    "unsupported token '{ch}' in expression"
+                )))
+            }
         };
         tokens.push(token);
         index += 1;

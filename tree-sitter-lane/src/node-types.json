@@ -547,6 +547,149 @@
     "fields": {}
   },
   {
+    "type": "category_op_binding",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "0",
+            "named": false
+          },
+          {
+            "type": "1",
+            "named": false
+          },
+          {
+            "type": "e",
+            "named": false
+          },
+          {
+            "type": "inv",
+            "named": false
+          },
+          {
+            "type": "scale",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "category_op_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "category_op_binding",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "category_type_declaration",
+    "named": true,
+    "fields": {
+      "base": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_type",
+            "named": true
+          },
+          {
+            "type": "end_type",
+            "named": true
+          },
+          {
+            "type": "generic_type",
+            "named": true
+          },
+          {
+            "type": "hom_type",
+            "named": true
+          },
+          {
+            "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "product_type",
+            "named": true
+          },
+          {
+            "type": "type_identifier",
+            "named": true
+          },
+          {
+            "type": "unit_type",
+            "named": true
+          }
+        ]
+      },
+      "category": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "category_identifier",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "category_op_list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "closure_expression",
     "named": true,
     "fields": {
@@ -1789,6 +1932,10 @@
           "named": true
         },
         {
+          "type": "category_type_declaration",
+          "named": true
+        },
+        {
           "type": "directive",
           "named": true
         },
@@ -2157,6 +2304,14 @@
     "named": false
   },
   {
+    "type": "0",
+    "named": false
+  },
+  {
+    "type": "1",
+    "named": false
+  },
+  {
     "type": ":",
     "named": false
   },
@@ -2274,11 +2429,19 @@
     "named": true
   },
   {
+    "type": "e",
+    "named": false
+  },
+  {
     "type": "else",
     "named": false
   },
   {
     "type": "if",
+    "named": false
+  },
+  {
+    "type": "inv",
     "named": false
   },
   {
@@ -2295,6 +2458,10 @@
   },
   {
     "type": "provided",
+    "named": false
+  },
+  {
+    "type": "scale",
     "named": false
   },
   {

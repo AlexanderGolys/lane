@@ -898,6 +898,11 @@ impl TypedProgram {
                 .map_err(|err| err.with_line(binding.line))?;
         }
 
+        for category_type in &program.category_types {
+            validate_category_type_decl(category_type, &env)
+                .map_err(|err| err.with_line(category_type.line))?;
+        }
+
         for binding in &program.bindings {
             env.insert_value(binding.name.clone(), binding.ty.clone())
                 .map_err(|err| err.with_line(binding.line))?;
@@ -1221,6 +1226,7 @@ impl TypedProgram {
             ambient_dimension: program.ambient_dimension,
             gradient_epsilon: program.gradient_epsilon,
             product_types: program.product_types.clone(),
+            category_types: program.category_types.clone(),
             inputs: program.inputs.clone(),
             funcs: typed_funcs,
             value_bindings: typed_value_bindings,
@@ -1463,6 +1469,112 @@ fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
     Ok(())
 }
 
+fn validate_category_type_decl(decl: &CategoryTypeDecl, env: &Env<'_>) -> Result<(), Error> {
+    validate_user_type(&decl.base)?;
+    if !has_category(&decl.base, AlgebraicCategory::Set) {
+        return Err(Error::new(format!(
+            "category type '{}' base {} does not satisfy Set",
+            decl.name,
+            format_type(&decl.base)
+        )));
+    }
+    match decl.category {
+        AlgebraicCategory::Ab => {
+            let zero = require_category_op(&decl.ops.zero, &decl.name, "0")?;
+            let add = require_category_op(&decl.ops.add, &decl.name, "+")?;
+            let neg = require_category_op(&decl.ops.neg, &decl.name, "-")?;
+            ensure_value_name_type(
+                env,
+                zero,
+                &decl.base,
+                &format!("category type '{}'", decl.name),
+            )?;
+            ensure_func_name_type(
+                env,
+                add,
+                &Type::func(
+                    Type::Product(vec![decl.base.clone(), decl.base.clone()]),
+                    decl.base.clone(),
+                ),
+                &format!("category type '{}'", decl.name),
+            )?;
+            ensure_func_name_type(
+                env,
+                neg,
+                &Type::func(decl.base.clone(), decl.base.clone()),
+                &format!("category type '{}'", decl.name),
+            )?;
+        }
+        _ => {
+            return Err(Error::new(format!(
+                "category type '{}' does not support category {} yet",
+                decl.name,
+                category_name(decl.category)
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn require_category_op<'a>(
+    op: &'a Option<String>,
+    type_name: &str,
+    key: &str,
+) -> Result<&'a str, Error> {
+    op.as_deref().ok_or_else(|| {
+        Error::new(format!(
+            "category type '{}' requires operation '{}'",
+            type_name, key
+        ))
+    })
+}
+
+fn ensure_value_name_type(
+    env: &Env<'_>,
+    name: &str,
+    expected: &Type,
+    context: &str,
+) -> Result<(), Error> {
+    let Some(value) = env.values.get(name) else {
+        return Err(Error::new(format!(
+            "{} references unknown value '{}'",
+            context, name
+        )));
+    };
+    ensure_type(
+        &value.ty,
+        expected,
+        &format!("{} operation '{}'", context, name),
+    )
+}
+
+fn ensure_func_name_type(
+    env: &Env<'_>,
+    name: &str,
+    expected: &Type,
+    context: &str,
+) -> Result<(), Error> {
+    let Some(funcs) = env.funcs.get(name) else {
+        return Err(Error::new(format!(
+            "{} references unknown function '{}'",
+            context, name
+        )));
+    };
+    if funcs
+        .iter()
+        .any(|func| types_compatible_for_expected(&func.ty, expected))
+    {
+        return Ok(());
+    }
+    Err(Error::new(format!(
+        "{} operation '{}' expects {}",
+        context,
+        name,
+        format_type(expected)
+    )))
+}
+
+/// Type-checks helper logic for product_component_satisfies_category.
 fn product_component_satisfies_category(component: &Type, category: AlgebraicCategory) -> bool {
     has_category(component, category)
         || (category == AlgebraicCategory::Grp && has_category(component, AlgebraicCategory::Ab))

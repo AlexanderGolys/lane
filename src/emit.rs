@@ -517,6 +517,11 @@ impl TypedProgram {
             .iter()
             .map(|decl| (decl.name.as_str(), decl))
             .collect::<HashMap<_, _>>();
+        let category_types = self
+            .category_types
+            .iter()
+            .map(|decl| (decl.name.as_str(), decl))
+            .collect::<HashMap<_, _>>();
         for input in &self.inputs {
             collect_type_support(&input.ty, &mut names);
         }
@@ -552,8 +557,20 @@ impl TypedProgram {
         let mut emitted_builtin_support = BTreeSet::new();
         let mut emitted_product_types = BTreeSet::new();
         let mut emitted_product_ops = BTreeSet::new();
+        let mut emitted_category_types = BTreeSet::new();
+        let mut emitted_category_ops = BTreeSet::new();
         for name in names {
             if let Some((product_name, support)) = parse_product_support_name(&name) {
+                if let Some(category_type) = category_types.get(product_name) {
+                    emit_category_type_support(
+                        category_type,
+                        support,
+                        &mut emitted_category_types,
+                        &mut emitted_category_ops,
+                        &mut blocks,
+                    );
+                    continue;
+                }
                 if let Some(product_type) = product_types.get(product_name) {
                     emit_product_support(
                         product_type,
@@ -1231,6 +1248,115 @@ fn emit_product_support(
             emitted_product_ops,
             blocks,
         ),
+    }
+}
+
+fn emit_category_type_support(
+    decl: &CategoryTypeDecl,
+    support: ProductSupport,
+    emitted_category_types: &mut BTreeSet<String>,
+    emitted_category_ops: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    match support {
+        ProductSupport::Type => emit_category_type_decl(decl, emitted_category_types, blocks),
+        ProductSupport::Op(op) => {
+            let op_key = format!("{}:{}", decl.name, op.as_str());
+            if !emitted_category_ops.insert(op_key) {
+                return;
+            }
+            emit_category_type_decl(decl, emitted_category_types, blocks);
+            if let Some(block) = emit_category_type_op(decl, op) {
+                blocks.push(block);
+            }
+        }
+    }
+}
+
+fn emit_category_type_decl(
+    decl: &CategoryTypeDecl,
+    emitted_category_types: &mut BTreeSet<String>,
+    blocks: &mut Vec<String>,
+) {
+    if !emitted_category_types.insert(decl.name.clone()) || category_type_is_promotion(decl) {
+        return;
+    }
+    blocks.push(format!(
+        "struct {} {{\n    {} value;\n}};",
+        decl.name,
+        decl.base.glsl_name()
+    ));
+}
+
+fn category_type_is_promotion(decl: &CategoryTypeDecl) -> bool {
+    decl.name == decl.base.type_name()
+}
+
+fn emit_category_type_op(decl: &CategoryTypeDecl, op: ProductOp) -> Option<String> {
+    match op {
+        ProductOp::Zero => decl.ops.zero.as_deref().map(|name| {
+            format!(
+                "{} zero_{} = {};",
+                decl.name,
+                decl.name,
+                wrap_category_value(decl, name)
+            )
+        }),
+        ProductOp::Add => decl.ops.add.as_deref().map(|name| {
+            format!(
+                "{} add_{}({} a, {} b) {{\n    return {};\n}}",
+                decl.name,
+                decl.name,
+                decl.name,
+                decl.name,
+                wrap_category_value(
+                    decl,
+                    &format!(
+                        "{}({}, {})",
+                        name,
+                        unwrap_category_value(decl, "a"),
+                        unwrap_category_value(decl, "b")
+                    )
+                )
+            )
+        }),
+        ProductOp::Sub => match (decl.ops.add.as_deref(), decl.ops.neg.as_deref()) {
+            (Some(add), Some(neg)) => Some(format!(
+                "{} sub_{}({} a, {} b) {{\n    return {};\n}}",
+                decl.name,
+                decl.name,
+                decl.name,
+                decl.name,
+                wrap_category_value(
+                    decl,
+                    &format!(
+                        "{}({}, {}({}))",
+                        add,
+                        unwrap_category_value(decl, "a"),
+                        neg,
+                        unwrap_category_value(decl, "b")
+                    )
+                )
+            )),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn wrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
+    if category_type_is_promotion(decl) {
+        value.to_string()
+    } else {
+        format!("{}({})", decl.name, value)
+    }
+}
+
+fn unwrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
+    if category_type_is_promotion(decl) {
+        value.to_string()
+    } else {
+        format!("{value}.value")
     }
 }
 

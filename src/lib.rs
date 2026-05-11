@@ -379,7 +379,10 @@ fn is_product_type_assignment_head(head: &str) -> bool {
     if name.is_empty() {
         return false;
     }
-    if let Some(fields) = name.strip_suffix('>').and_then(|name| name.rsplit_once('<')) {
+    if let Some(fields) = name
+        .strip_suffix('>')
+        .and_then(|name| name.rsplit_once('<'))
+    {
         !fields.0.trim().is_empty()
     } else {
         !name.chars().any(char::is_whitespace)
@@ -1317,6 +1320,7 @@ fn empty_program_like(program: &Program) -> Program {
         is_module: false,
         imports: Vec::new(),
         product_types: Vec::new(),
+        category_types: Vec::new(),
         inputs: Vec::new(),
         funcs: Vec::new(),
         value_bindings: Vec::new(),
@@ -1329,6 +1333,7 @@ fn empty_program_like(program: &Program) -> Program {
 fn append_program(target: &mut Program, mut source: Program, line_offset: usize) {
     bump_program_lines(&mut source, line_offset);
     target.product_types.extend(source.product_types);
+    target.category_types.extend(source.category_types);
     target.inputs.extend(source.inputs);
     target.funcs.extend(source.funcs);
     target.value_bindings.extend(source.value_bindings);
@@ -1341,6 +1346,9 @@ fn append_program(target: &mut Program, mut source: Program, line_offset: usize)
 
 fn bump_program_lines(program: &mut Program, offset: usize) {
     for item in &mut program.product_types {
+        item.line += offset;
+    }
+    for item in &mut program.category_types {
         item.line += offset;
     }
     for item in &mut program.inputs {
@@ -1369,6 +1377,13 @@ fn reject_duplicate_product_types(program: &Program) -> Result<(), Error> {
         if !names.insert(decl.name.clone()) {
             return Err(
                 Error::new(format!("duplicate product type '{}'", decl.name)).with_line(decl.line),
+            );
+        }
+    }
+    for decl in &program.category_types {
+        if !names.insert(decl.name.clone()) {
+            return Err(
+                Error::new(format!("duplicate category type '{}'", decl.name)).with_line(decl.line),
             );
         }
     }
@@ -2477,6 +2492,27 @@ struct ProductTypeDecl {
 }
 
 #[derive(Clone, Debug)]
+struct CategoryTypeDecl {
+    name: String,
+    category: AlgebraicCategory,
+    base: Type,
+    ops: CategoryTypeOps,
+    line: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CategoryTypeOps {
+    zero: Option<String>,
+    one: Option<String>,
+    identity: Option<String>,
+    add: Option<String>,
+    neg: Option<String>,
+    mult: Option<String>,
+    inv: Option<String>,
+    scale: Option<String>,
+}
+
+#[derive(Clone, Debug)]
 struct FuncDecl {
     name: String,
     ty: Type,
@@ -2535,6 +2571,7 @@ struct Program {
     is_module: bool,
     imports: Vec<ImportDecl>,
     product_types: Vec<ProductTypeDecl>,
+    category_types: Vec<CategoryTypeDecl>,
     inputs: Vec<InputDecl>,
     funcs: Vec<FuncDecl>,
     value_bindings: Vec<ValueBindingDecl>,
@@ -2553,6 +2590,7 @@ struct ImportDecl {
 enum Decl {
     ProvidedType(ProvidedTypeDecl),
     ProductType(ProductTypeDecl),
+    CategoryType(CategoryTypeDecl),
     Input(InputDecl),
     Func(FuncDecl),
     ValueBinding(ValueBindingDecl),
@@ -3077,6 +3115,7 @@ struct TypedProgram {
     ambient_dimension: ShapeDimension,
     gradient_epsilon: f64,
     product_types: Vec<ProductTypeDecl>,
+    category_types: Vec<CategoryTypeDecl>,
     inputs: Vec<InputDecl>,
     funcs: Vec<TypedFunc>,
     value_bindings: Vec<TypedValueBinding>,

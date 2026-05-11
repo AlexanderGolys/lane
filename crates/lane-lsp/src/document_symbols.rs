@@ -37,6 +37,9 @@ fn symbols_for_declaration(
         "provided_category_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::INTERFACE)
         }
+        "category_type_declaration" => {
+            named_field_symbols(source, line_start_bytes, node, SymbolKind::STRUCT)
+        }
         "product_type_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::STRUCT)
         }
@@ -136,6 +139,7 @@ fn detail_for_node(node: Node<'_>) -> &'static str {
     match node.kind() {
         "directive" => "directive",
         "provided_category_declaration" => "provided category",
+        "category_type_declaration" => "category type",
         "product_type_declaration" => "product type",
         "input_declaration" => "provided input",
         "arrow_function_declaration" => "provided function",

@@ -47,6 +47,7 @@ fn emits_document_symbols_for_top_level_declarations() {
         "#module\n\
          provided R time, scale\n\
          provided distance : R3 -> R\n\
+         Ab Distance = R {0: zero_R, -: neg_R, +: add_R}\n\
          Set Material<roughness> = R\n\
          const Object output = Ball3D(r=scale)\n\
          shape = output\n",
@@ -59,14 +60,15 @@ fn emits_document_symbols_for_top_level_declarations() {
 
     assert_eq!(
         names,
-        vec!["#module", "time", "scale", "distance", "Material", "output", "shape"]
+        vec!["#module", "time", "scale", "distance", "Distance", "Material", "output", "shape"]
     );
     assert_eq!(symbols[0].kind, tower_lsp::lsp_types::SymbolKind::MODULE);
     assert_eq!(symbols[3].kind, tower_lsp::lsp_types::SymbolKind::FUNCTION);
     assert_eq!(symbols[4].kind, tower_lsp::lsp_types::SymbolKind::STRUCT);
-    assert_eq!(symbols[5].kind, tower_lsp::lsp_types::SymbolKind::CONSTANT);
-    assert_eq!(symbols[6].kind, tower_lsp::lsp_types::SymbolKind::VARIABLE);
-    assert_eq!(symbols[5].selection_range.start, Position::new(4, 13));
+    assert_eq!(symbols[5].kind, tower_lsp::lsp_types::SymbolKind::STRUCT);
+    assert_eq!(symbols[6].kind, tower_lsp::lsp_types::SymbolKind::CONSTANT);
+    assert_eq!(symbols[7].kind, tower_lsp::lsp_types::SymbolKind::VARIABLE);
+    assert_eq!(symbols[6].selection_range.start, Position::new(5, 13));
 }
 
 #[test]
