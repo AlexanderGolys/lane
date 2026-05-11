@@ -1056,6 +1056,54 @@ fn strip_error_line_reference(line: &str) -> String {
     }
 }
 
+fn new_glsl_since(previous: &str, current: &str) -> String {
+    if previous.is_empty() {
+        return current.to_string();
+    }
+
+    let previous_lines = previous.lines().collect::<Vec<_>>();
+    let current_lines = current.lines().collect::<Vec<_>>();
+    let mut lcs = vec![vec![0; current_lines.len() + 1]; previous_lines.len() + 1];
+    for previous_index in (0..previous_lines.len()).rev() {
+        for current_index in (0..current_lines.len()).rev() {
+            lcs[previous_index][current_index] =
+                if previous_lines[previous_index] == current_lines[current_index] {
+                    lcs[previous_index + 1][current_index + 1] + 1
+                } else {
+                    lcs[previous_index + 1][current_index]
+                        .max(lcs[previous_index][current_index + 1])
+                };
+        }
+    }
+
+    let mut added = Vec::new();
+    let mut previous_index = 0;
+    let mut current_index = 0;
+    while current_index < current_lines.len() {
+        if previous_index < previous_lines.len()
+            && previous_lines[previous_index] == current_lines[current_index]
+        {
+            previous_index += 1;
+            current_index += 1;
+        } else if previous_index >= previous_lines.len()
+            || lcs[previous_index][current_index + 1] >= lcs[previous_index + 1][current_index]
+        {
+            added.push(current_lines[current_index]);
+            current_index += 1;
+        } else {
+            previous_index += 1;
+        }
+    }
+
+    while added.first().is_some_and(|line| line.is_empty()) {
+        added.remove(0);
+    }
+    while added.last().is_some_and(|line| line.is_empty()) {
+        added.pop();
+    }
+    added.join("\n")
+}
+
 #[derive(Default)]
 struct TranscriptLayout {
     entries: Vec<RenderedEntry>,
@@ -1325,7 +1373,7 @@ impl TranscriptEntry {
 #[derive(Default)]
 pub(crate) struct ReplSession {
     source: String,
-    emitted_glsl_lines: usize,
+    emitted_glsl: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1364,12 +1412,8 @@ impl ReplSession {
             Ok(glsl) => {
                 self.source = candidate;
                 if is_const_declaration(line) {
-                    let emitted = glsl
-                        .lines()
-                        .skip(self.emitted_glsl_lines)
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    self.emitted_glsl_lines = glsl.lines().count();
+                    let emitted = new_glsl_since(&self.emitted_glsl, &glsl);
+                    self.emitted_glsl = glsl;
                     SubmitOutcome::Emitted(emitted)
                 } else {
                     SubmitOutcome::Accepted
@@ -1392,7 +1436,7 @@ impl ReplSession {
             "/split" => SubmitOutcome::ToggleSplit,
             "/restart" => {
                 self.source.clear();
-                self.emitted_glsl_lines = 0;
+                self.emitted_glsl.clear();
                 SubmitOutcome::Restarted
             }
             "/exit" => SubmitOutcome::Exit,
@@ -1659,20 +1703,54 @@ mod tests {
         let SubmitOutcome::Emitted(first_glsl) = session.submit("const R radius = 1") else {
             panic!("expected first GLSL output");
         };
+        assert!(first_glsl.contains("const float radius = 1.0f;"));
         let outcome = session.submit("const Object output = Ball3D(r=radius)");
         let SubmitOutcome::Emitted(glsl) = outcome else {
             panic!("expected GLSL output");
         };
-        let full_glsl = crate::compile_program_output(
-            "const R radius = 1\nconst Object output = Ball3D(r=radius)\n",
-        )
-        .unwrap();
-        let expected = full_glsl
-            .lines()
-            .skip(first_glsl.lines().count())
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert_eq!(glsl, expected);
+        assert!(glsl.contains("struct ParamBall3D"));
+        assert!(glsl.contains("float scene_sdf(vec3 p)"));
+        assert!(!glsl.contains("const float radius = 1.0f;"));
+    }
+
+    #[test]
+    fn later_const_emits_new_product_structs_inserted_before_old_output() {
+        let mut session = ReplSession::default();
+        assert_eq!(session.submit("Set Pair = R x R"), SubmitOutcome::Accepted);
+        let first = session.submit("const Pair pair = Pair(1, 2)");
+        assert!(matches!(first, SubmitOutcome::Emitted(_)));
+
+        assert_eq!(
+            session.submit("Set Triple = R x R x R"),
+            SubmitOutcome::Accepted
+        );
+        let SubmitOutcome::Emitted(second) = session.submit("const Triple triple = Triple(1, 2, 3)")
+        else {
+            panic!("expected emitted GLSL");
+        };
+
+        assert!(second.contains("struct Triple"));
+        assert!(second.contains("const Triple triple = Triple(1.0f, 2.0f, 3.0f);"));
+        assert!(!second.contains("struct Pair"));
+        assert!(!second.contains("const Pair pair"));
+    }
+
+    #[test]
+    fn new_glsl_since_keeps_insertions_before_existing_lines() {
+        let previous = "struct Pair {\n    float x;\n};\n\nconst Pair pair = Pair(1.0);";
+        let current = concat!(
+            "struct Pair {\n    float x;\n};\n\n",
+            "struct Triple {\n    float x;\n};\n\n",
+            "const Pair pair = Pair(1.0);\n",
+            "const Triple triple = Triple(1.0);"
+        );
+
+        let added = new_glsl_since(previous, current);
+
+        assert!(added.contains("struct Triple"));
+        assert!(added.contains("const Triple triple = Triple(1.0);"));
+        assert!(!added.contains("struct Pair"));
+        assert!(!added.contains("const Pair pair"));
     }
 
     #[test]

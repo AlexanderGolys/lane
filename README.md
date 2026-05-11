@@ -68,7 +68,8 @@ Usage:
 - `lane repl` opens the interactive shell explicitly. The shell accumulates
   valid Lane declarations, rejects `#module`, and emits GLSL when a submitted
   line is a `const` declaration. After the first emission, later `const` lines
-  show only GLSL lines added since the previous emission. The REPL displays
+  show only GLSL lines added since the previous emission, including support
+  structs inserted before older output. The REPL displays
   submitted Lane code, REPL messages, generated GLSL, and the current input
   linearly in one bottom-anchored, consistently padded transcript, with one
   character of inner left padding and different background colors for user code
