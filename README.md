@@ -99,7 +99,9 @@ Usage:
   are shown as REPL error blocks without exiting the shell), `/split` toggles
   a split view where submitted Lane code and generated GLSL are rendered in
   separate panes without adding toggle messages to the transcript, `/clear` clears the transcript but keeps the session,
-  `/restart` starts from an empty session, and `/exit` leaves the shell.
+  `/code` shows the full session source as one code block, `/save <filename>`
+  writes that source to a file, `/export <filename>` writes generated GLSL to
+  a file, `/restart` starts from an empty session, and `/exit` leaves the shell.
   Toggling `/split` off restores the full linear transcript, including generated
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
   both parts of that submission, right-clicking a transcript block copies

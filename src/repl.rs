@@ -377,6 +377,17 @@ impl App {
                     .push(TranscriptEntry::command(input.clone(), None));
                 self.transcript.push(TranscriptEntry::system(info));
             }
+            SubmitOutcome::Code(source) => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
+                self.transcript
+                    .push(TranscriptEntry::submitted(source, None, Some(1)));
+            }
+            SubmitOutcome::Saved(message) | SubmitOutcome::Exported(message) => {
+                self.transcript
+                    .push(TranscriptEntry::command(input.clone(), None));
+                self.transcript.push(TranscriptEntry::system(message));
+            }
             SubmitOutcome::Show(source) => return Some(ReplAction::Show(source)),
             SubmitOutcome::ToggleSplit => {
                 self.toggle_split();
@@ -1040,6 +1051,9 @@ fn repl_command_completion_items() -> Vec<lane::LaneCompletionItem> {
     [
         ("/help", "Show REPL command help"),
         ("/info", "Show loaded modules, directives, and provided objects"),
+        ("/code", "Show the full session source"),
+        ("/save", "Save the full session source to a file"),
+        ("/export", "Write generated GLSL for the session to a file"),
         ("/show", "Open native preview for current session"),
         ("/split", "Toggle split transcript mode"),
         ("/clear", "Clear transcript and keep session"),
@@ -1460,6 +1474,9 @@ pub(crate) enum SubmitOutcome {
     Restarted,
     Help,
     Info(String),
+    Code(String),
+    Saved(String),
+    Exported(String),
     Show(String),
     ToggleSplit,
     Exit,
@@ -1501,8 +1518,17 @@ impl ReplSession {
 
     fn run_command(&mut self, command: &str) -> SubmitOutcome {
         let command = command.trim_end();
+        if let Some(path) = command.strip_prefix("/save ") {
+            return self.save_source(path.trim());
+        }
+        if let Some(path) = command.strip_prefix("/export ") {
+            return self.export_glsl(path.trim());
+        }
         match command {
             "/clear" => SubmitOutcome::Cleared,
+            "/code" => SubmitOutcome::Code(self.source.trim_end().to_string()),
+            "/save" => SubmitOutcome::Error("usage: /save <filename>".to_string()),
+            "/export" => SubmitOutcome::Error("usage: /export <filename>".to_string()),
             "/help" => SubmitOutcome::Help,
             "/info" => match lane::program_info(&self.source) {
                 Ok(info) => SubmitOutcome::Info(format_program_info(&info)),
@@ -1519,6 +1545,29 @@ impl ReplSession {
             _ => SubmitOutcome::Error(format!("unknown shell command '{command}'")),
         }
     }
+
+    fn save_source(&self, path: &str) -> SubmitOutcome {
+        if path.is_empty() {
+            return SubmitOutcome::Error("usage: /save <filename>".to_string());
+        }
+        match fs::write(path, &self.source) {
+            Ok(()) => SubmitOutcome::Saved(format!("Saved session source to {path}.")),
+            Err(err) => SubmitOutcome::Error(format!("save error: {err}")),
+        }
+    }
+
+    fn export_glsl(&self, path: &str) -> SubmitOutcome {
+        if path.is_empty() {
+            return SubmitOutcome::Error("usage: /export <filename>".to_string());
+        }
+        match crate::compile_program_output(&self.source) {
+            Ok(glsl) => match fs::write(path, glsl) {
+                Ok(()) => SubmitOutcome::Exported(format!("Exported GLSL to {path}.")),
+                Err(err) => SubmitOutcome::Error(format!("export error: {err}")),
+            },
+            Err(err) => SubmitOutcome::Error(err.to_string()),
+        }
+    }
 }
 
 fn help_text() -> String {
@@ -1528,6 +1577,9 @@ fn help_text() -> String {
         "Left/Right move through the current input.",
         "Right-click a transcript block to copy its text.",
         "/info shows loaded modules, used directives, and provided objects.",
+        "/code shows the full session source.",
+        "/save <filename> writes the session source to a file.",
+        "/export <filename> writes generated GLSL to a file.",
         "/show opens a native preview window for the current session.",
         "/split toggles split mode.",
         "/clear clears the transcript but keeps the session.",
@@ -2022,6 +2074,64 @@ mod tests {
         assert_eq!(
             session.submit("/show"),
             SubmitOutcome::Show("R radius = 1\n".to_string())
+        );
+    }
+
+    #[test]
+    fn code_command_returns_full_session_source() {
+        let mut session = ReplSession::default();
+        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
+        assert_eq!(
+            session.submit("/code"),
+            SubmitOutcome::Code("R radius = 1".to_string())
+        );
+    }
+
+    #[test]
+    fn save_command_writes_full_session_source() {
+        let path = temp_history_file();
+        let mut session = ReplSession::default();
+        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
+
+        let outcome = session.submit(&format!("/save {}", path.display()));
+
+        assert!(matches!(outcome, SubmitOutcome::Saved(_)));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "R radius = 1\n");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_writes_generated_glsl() {
+        let path = temp_history_file();
+        let mut session = ReplSession::default();
+        assert_eq!(session.submit("const R radius = 1"), SubmitOutcome::Emitted(
+            crate::compile_program_output("const R radius = 1\n").unwrap()
+        ));
+
+        let outcome = session.submit(&format!("/export {}", path.display()));
+
+        assert!(matches!(outcome, SubmitOutcome::Exported(_)));
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("const float radius = 1.0f;"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn file_commands_require_a_filename() {
+        let mut session = ReplSession::default();
+
+        assert_eq!(
+            session.submit("/save"),
+            SubmitOutcome::Error("usage: /save <filename>".to_string())
+        );
+        assert_eq!(
+            session.submit("/save   "),
+            SubmitOutcome::Error("usage: /save <filename>".to_string())
+        );
+        assert_eq!(
+            session.submit("/export   "),
+            SubmitOutcome::Error("usage: /export <filename>".to_string())
         );
     }
 
