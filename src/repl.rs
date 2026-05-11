@@ -528,20 +528,43 @@ impl App {
             return None;
         }
         if allow_merge {
-            if let Some(entry) = self.transcript.last_mut() {
-                if matches!(entry.kind, TranscriptKind::Lane) && !entry.errored {
-                    if !entry.text.ends_with('\n') {
-                        entry.text.push('\n');
-                    }
-                    entry.text.push_str(&input);
-                    return entry.group;
+            if let Some(index) = self.latest_mergeable_lane_entry() {
+                let entry = &mut self.transcript[index];
+                if !entry.text.ends_with('\n') {
+                    entry.text.push('\n');
                 }
+                entry.text.push_str(&input);
+                return entry.group;
             }
         }
         let group = self.allocate_group();
         self.transcript
             .push(TranscriptEntry::submitted(input, Some(group), line_start));
         Some(group)
+    }
+
+    fn latest_mergeable_lane_entry(&self) -> Option<usize> {
+        let mut trailing_group = None;
+        for (index, entry) in self.transcript.iter().enumerate().rev() {
+            match entry.kind {
+                TranscriptKind::Lane if !entry.errored => {
+                    return match trailing_group {
+                        Some(group) if entry.group == Some(group) => Some(index),
+                        Some(_) => None,
+                        None => Some(index),
+                    };
+                }
+                TranscriptKind::Glsl => {
+                    let group = entry.group?;
+                    if trailing_group.is_some_and(|trailing_group| trailing_group != group) {
+                        return None;
+                    }
+                    trailing_group = Some(group);
+                }
+                _ => return None,
+            }
+        }
+        None
     }
 
     fn attach_group_error(&mut self, group: usize, error: String) {
@@ -2200,6 +2223,26 @@ mod tests {
             "R radius = 1\nR diameter = radius * 2"
         );
         assert_eq!(app.transcript[0].line_start, Some(1));
+    }
+
+    #[test]
+    fn consecutive_lane_submissions_merge_across_generated_glsl() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.input = "const R radius = 1".to_string();
+        app.submit_input();
+        app.input = "R diameter = radius * 2".to_string();
+        app.submit_input();
+
+        assert_eq!(app.transcript.len(), 2);
+        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
+        assert!(matches!(app.transcript[1].kind, TranscriptKind::Glsl));
+        assert_eq!(
+            app.transcript[0].text,
+            "const R radius = 1\nR diameter = radius * 2"
+        );
+        assert_eq!(app.transcript[0].line_start, Some(1));
+        assert_eq!(app.transcript[0].group, app.transcript[1].group);
     }
 
     #[test]

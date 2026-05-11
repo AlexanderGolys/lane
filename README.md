@@ -79,8 +79,9 @@ Usage:
   input remains unnumbered and widens its blank gutter to stay aligned to the
   same source column as line numbers grow. Matching completions appear as gray
   inline hint text after the current token without changing the submitted input.
-  Adjacent submitted Lane entries render inside one shared feed box, while
-  separate boxes still have a blank row between them. Errors are decided after
+  Adjacent submitted Lane entries render inside one shared feed box, even when
+  generated GLSL output from the same submission group appears after the code,
+  while separate boxes still have a blank row between them. Errors are decided after
   submission: only the
   submitted Lane block for that failed submission is marked red, and the error
   message is shown above that code inside the same red block with aligned left
