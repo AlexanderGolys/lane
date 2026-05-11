@@ -1,4 +1,5 @@
 #module
 
-const Hom(R{n}, R) projection_{i} = v |-> v.x{i}
-const Hom(R, R{n}) diagonal{n} = "return vec{n}(_t);"
+const Hom(R{n}, R) p{i} = v |-> v[i]
+const Hom(R, R{n}) diag{n} = "return vec{n}(_t);"
+const Hom({A}, {A} x {A}) diag{A} = (id{A}, id{A})

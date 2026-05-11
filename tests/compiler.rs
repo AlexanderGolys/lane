@@ -975,6 +975,17 @@ fn diagnostics_validate_module_documents_as_modules() {
 }
 
 #[test]
+fn diagnostics_report_unsupported_expression_tokens() {
+    let diagnostics = lane_diagnostics_with_base_dir("const Object output = }\n", ".");
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].line, 1);
+    assert!(diagnostics[0]
+        .message
+        .contains("unsupported token '}' in expression"));
+}
+
+#[test]
 fn imports_module_raw_glsl_functions() {
     let dir = unique_temp_dir("module_raw");
     fs::create_dir_all(dir.join("modules")).unwrap();

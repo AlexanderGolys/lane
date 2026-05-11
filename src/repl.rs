@@ -82,17 +82,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         terminal.leave()?;
         match action? {
             ReplAction::Exit => return Ok(()),
-            ReplAction::Show(source) => {
-                match crate::run_preview_source(&source) {
-                    Ok(()) => app
-                        .transcript
-                        .push(TranscriptEntry::system("Preview closed.")),
-                    Err(err) => app.transcript.push(TranscriptEntry::error(
-                        format!("preview error: {}", err),
-                        None,
-                    )),
-                }
-            }
+            ReplAction::Show(source) => match crate::run_preview_source(&source) {
+                Ok(()) => app
+                    .transcript
+                    .push(TranscriptEntry::system("Preview closed.")),
+                Err(err) => app.transcript.push(TranscriptEntry::error(
+                    format!("preview error: {}", err),
+                    None,
+                )),
+            },
         }
     }
 }
@@ -289,8 +287,7 @@ impl App {
     }
 
     fn backspace_input_char(&mut self) {
-        let Some((previous, _)) = self.input[..self.input_cursor].char_indices().next_back()
-        else {
+        let Some((previous, _)) = self.input[..self.input_cursor].char_indices().next_back() else {
             return;
         };
         self.input.drain(previous..self.input_cursor);
@@ -442,7 +439,8 @@ impl App {
         let Some(completed) = completion_target(&prefix, &self.completion_matches) else {
             return;
         };
-        self.input.replace_range(start..self.input_cursor, &completed);
+        self.input
+            .replace_range(start..self.input_cursor, &completed);
         self.input_cursor = start + completed.len();
     }
 
@@ -670,7 +668,9 @@ impl App {
             let visible_start = total_lines.saturating_sub(area.height as usize);
             cursor_line.saturating_sub(visible_start) as u16
         };
-        let cursor_y = area.y.saturating_add(cursor_row.min(area.height.saturating_sub(1)));
+        let cursor_y = area
+            .y
+            .saturating_add(cursor_row.min(area.height.saturating_sub(1)));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
     }
 
@@ -828,7 +828,9 @@ fn default_history_file() -> Option<PathBuf> {
     }
     let state_base = std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))?;
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
+        })?;
     Some(state_base.join("lane/repl_history"))
 }
 
@@ -923,9 +925,7 @@ fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) 
     if matches!(previous, TranscriptKind::Command) {
         return matches!(
             current,
-            TranscriptKind::Command
-                | TranscriptKind::Help
-                | TranscriptKind::System
+            TranscriptKind::Command | TranscriptKind::Help | TranscriptKind::System
         );
     }
     matches!(
@@ -1050,7 +1050,10 @@ fn is_completion_char(ch: char) -> bool {
 fn repl_command_completion_items() -> Vec<lane::LaneCompletionItem> {
     [
         ("/help", "Show REPL command help"),
-        ("/info", "Show loaded modules, directives, and provided objects"),
+        (
+            "/info",
+            "Show loaded modules, directives, and provided objects",
+        ),
         ("/code", "Show the full session source"),
         ("/save", "Save the full session source to a file"),
         ("/export", "Write generated GLSL for the session to a file"),
@@ -1156,13 +1159,13 @@ fn new_glsl_since(previous: &str, current: &str) -> String {
     let mut lcs = vec![vec![0; current_lines.len() + 1]; previous_lines.len() + 1];
     for previous_index in (0..previous_lines.len()).rev() {
         for current_index in (0..current_lines.len()).rev() {
-            lcs[previous_index][current_index] =
-                if previous_lines[previous_index] == current_lines[current_index] {
-                    lcs[previous_index + 1][current_index + 1] + 1
-                } else {
-                    lcs[previous_index + 1][current_index]
-                        .max(lcs[previous_index][current_index + 1])
-                };
+            lcs[previous_index][current_index] = if previous_lines[previous_index]
+                == current_lines[current_index]
+            {
+                lcs[previous_index + 1][current_index + 1] + 1
+            } else {
+                lcs[previous_index + 1][current_index].max(lcs[previous_index][current_index + 1])
+            };
         }
     }
 
@@ -1859,7 +1862,8 @@ mod tests {
             session.submit("Set Triple = R x R x R"),
             SubmitOutcome::Accepted
         );
-        let SubmitOutcome::Emitted(second) = session.submit("const Triple triple = Triple(1, 2, 3)")
+        let SubmitOutcome::Emitted(second) =
+            session.submit("const Triple triple = Triple(1, 2, 3)")
         else {
             panic!("expected emitted GLSL");
         };
@@ -1933,8 +1937,10 @@ mod tests {
             Some(0),
             Some(1),
         ));
-        app.transcript
-            .push(TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0)));
+        app.transcript.push(TranscriptEntry::glsl(
+            "float radius = 1.0;".to_string(),
+            Some(0),
+        ));
         app.input = "/split".to_string();
 
         app.submit_input();
@@ -2104,9 +2110,10 @@ mod tests {
     fn export_command_writes_generated_glsl() {
         let path = temp_history_file();
         let mut session = ReplSession::default();
-        assert_eq!(session.submit("const R radius = 1"), SubmitOutcome::Emitted(
-            crate::compile_program_output("const R radius = 1\n").unwrap()
-        ));
+        assert_eq!(
+            session.submit("const R radius = 1"),
+            SubmitOutcome::Emitted(crate::compile_program_output("const R radius = 1\n").unwrap())
+        );
 
         let outcome = session.submit(&format!("/export {}", path.display()));
 
@@ -2138,7 +2145,10 @@ mod tests {
     #[test]
     fn slash_command_only_works_when_it_starts_the_input_block() {
         let mut session = ReplSession::default();
-        assert_eq!(session.submit("/help\nR radius = 1"), SubmitOutcome::Error("unknown shell command '/help\nR radius = 1'".to_string()));
+        assert_eq!(
+            session.submit("/help\nR radius = 1"),
+            SubmitOutcome::Error("unknown shell command '/help\nR radius = 1'".to_string())
+        );
         assert!(matches!(
             session.submit("R radius = 1\n/help"),
             SubmitOutcome::Error(_)
@@ -2644,7 +2654,9 @@ mod tests {
 
         assert_eq!(app.transcript.len(), 1);
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Error));
-        assert!(app.transcript[0].text.contains("unknown shell command '/wat'"));
+        assert!(app.transcript[0]
+            .text
+            .contains("unknown shell command '/wat'"));
     }
 
     #[test]
@@ -2676,12 +2688,10 @@ mod tests {
         assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
         assert!(!app.transcript[0].errored);
         assert_eq!(app.transcript[0].base_style().bg, Some(USER_BG));
-        assert!(
-            app.transcript[1]
-                .error
-                .as_deref()
-                .is_some_and(|error| !error.is_empty())
-        );
+        assert!(app.transcript[1]
+            .error
+            .as_deref()
+            .is_some_and(|error| !error.is_empty()));
         assert!(app.transcript[1].errored);
     }
 
@@ -2704,7 +2714,11 @@ mod tests {
         let mut app = App::new();
         app.transcript.clear();
         app.push_submitted_input("R radius = 1".to_string(), Some(1), true);
-        app.push_submitted_input("const Object output = Missing3D(r=1)".to_string(), Some(2), true);
+        app.push_submitted_input(
+            "const Object output = Missing3D(r=1)".to_string(),
+            Some(2),
+            true,
+        );
 
         assert_eq!(app.transcript.len(), 1);
         let shared_group = app.transcript[0].group.expect("expected lane group");

@@ -70,7 +70,7 @@ const Object output = spin(time) * moved
         (number)
         (number))))
   (binding_declaration
-    (function_type
+    (hom_type
       (type_identifier)
       (type_identifier))
     (identifier)
@@ -229,7 +229,7 @@ provided Hom(Ray, {Color}) color_ray
         (number)
         (number))))
   (binding_declaration
-    (function_type
+    (hom_type
       (type_identifier)
       (array_type
         (type_identifier)))

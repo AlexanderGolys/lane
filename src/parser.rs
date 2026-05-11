@@ -354,7 +354,7 @@ impl<'a> Parser<'a> {
         }
         let left = left.trim();
         if !left.contains(char::is_whitespace) {
-            let expr = ExprParser::new(expr_source.trim()).parse()?;
+            let expr = ExprParser::new(expr_source.trim())?.parse()?;
             return Ok(Decl::InferredBinding(InferredBindingDecl {
                 name: left.to_string(),
                 expr,
@@ -375,7 +375,7 @@ impl<'a> Parser<'a> {
             custom_types,
             ambient_dimension,
         )?;
-        let expr = ExprParser::new(expr_source.trim()).parse()?;
+        let expr = ExprParser::new(expr_source.trim())?.parse()?;
         if matches!(ty, Type::Func(_, _)) {
             if is_construct {
                 return Err(Error::new(
@@ -870,11 +870,11 @@ struct ExprParser {
 }
 
 impl ExprParser {
-    pub(super) fn new(source: &str) -> Self {
-        Self {
-            tokens: tokenize(source),
+    pub(super) fn new(source: &str) -> Result<Self, Error> {
+        Ok(Self {
+            tokens: tokenize(source)?,
             index: 0,
-        }
+        })
     }
 
     fn parse(mut self) -> Result<Expr, Error> {
@@ -1320,7 +1320,7 @@ impl ExprParser {
     }
 }
 
-fn tokenize(source: &str) -> Vec<Token> {
+fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = source.chars().collect();
     let mut index = 0;
@@ -1436,13 +1436,13 @@ fn tokenize(source: &str) -> Vec<Token> {
             '&' => Token::Amp,
             '.' => Token::Dot,
             '@' => Token::At,
-            _ => panic!("unsupported token: {ch}"),
+            _ => return Err(Error::new(format!("unsupported token '{ch}' in expression"))),
         };
         tokens.push(token);
         index += 1;
     }
 
-    tokens
+    Ok(tokens)
 }
 
 fn parse_type_with_custom_types(

@@ -3,6 +3,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+echo "==> Regenerating tree-sitter-lane parser sources"
+(
+    cd "$ROOT/tree-sitter-lane"
+    if command -v tree-sitter >/dev/null 2>&1; then
+        tree-sitter generate
+    else
+        echo "tree-sitter CLI not found; using existing generated parser sources"
+    fi
+)
+
 echo "==> Building Lane workspace"
 cargo build --workspace --manifest-path "$ROOT/Cargo.toml"
 
@@ -15,10 +25,6 @@ cargo install --path "$ROOT/crates/lane-lsp"
 echo "==> Rebuilding tree-sitter-lane parser"
 (
     cd "$ROOT/tree-sitter-lane"
-    if command -v tree-sitter >/dev/null 2>&1; then
-        tree-sitter generate
-    fi
-
     cc_bin="${CC:-cc}"
     case "$(uname -s)" in
         Darwin)

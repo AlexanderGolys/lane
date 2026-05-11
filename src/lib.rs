@@ -69,13 +69,20 @@ pub fn lane_diagnostics_with_base_dir(
     source: &str,
     base_dir: impl AsRef<Path>,
 ) -> Vec<LaneDiagnostic> {
-    match compile_program_with_base_dir(source, base_dir) {
+    match check_diagnostic_document(source, base_dir.as_ref()) {
         Ok(_) => Vec::new(),
         Err(error) => vec![LaneDiagnostic {
             line: error.line().unwrap_or(1),
             message: error.to_string(),
         }],
     }
+}
+
+fn check_diagnostic_document(source: &str, base_dir: &Path) -> Result<(), Error> {
+    let registry = Registry::default();
+    let program = ModuleLoader::new(base_dir).load_document(source)?;
+    TypedProgram::from_program(&program, &registry)?;
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -464,15 +471,14 @@ fn validate_preview_requirements(source: &str) -> Result<(), Error> {
         missing.push("`const Object scene = ...`".to_string());
     }
     if !has_scene_material_function(source) {
-        missing.push(
-            "`const Hom(R3, Material) scene_material = ...`".to_string(),
-        );
+        missing.push("`const Hom(R3, Material) scene_material = ...`".to_string());
     }
     if missing.is_empty() {
         return Ok(());
     }
-    let mut details =
-        String::from("preview generation requirements were not met. Add an explicit `main`, or define:\n");
+    let mut details = String::from(
+        "preview generation requirements were not met. Add an explicit `main`, or define:\n",
+    );
     for item in &missing {
         details.push_str("- ");
         details.push_str(&item);
@@ -595,9 +601,8 @@ fn has_scene_material_function(source: &str) -> bool {
 }
 
 fn has_provided_value(source: &str, value_name: &str) -> bool {
-    parse_preview_program(source).is_some_and(|program| {
-        program.inputs.iter().any(|input| input.name == value_name)
-    })
+    parse_preview_program(source)
+        .is_some_and(|program| program.inputs.iter().any(|input| input.name == value_name))
 }
 
 fn has_object_binding(source: &str, object_name: &str) -> bool {
@@ -695,6 +700,20 @@ impl ModuleLoader {
             return Err(Error::new("#module is only valid in imported module files"));
         }
         let mut merged = self.expand_program(parsed, false, "main", &mut stack)?;
+        expand_referenced_name_templates(&mut merged);
+        reject_duplicate_product_types(&merged)?;
+        merged.imports.clear();
+        Ok(merged)
+    }
+
+    fn load_document(&self, source: &str) -> Result<Program, Error> {
+        let mut stack = Vec::new();
+        let parsed = parser::Parser::new(source).parse_program()?;
+        let mut merged = if parsed.is_module {
+            self.expand_program(parsed, true, "document", &mut stack)?
+        } else {
+            self.expand_program(parsed, false, "main", &mut stack)?
+        };
         expand_referenced_name_templates(&mut merged);
         reject_duplicate_product_types(&merged)?;
         merged.imports.clear();

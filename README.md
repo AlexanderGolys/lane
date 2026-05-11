@@ -119,9 +119,7 @@ Usage:
   vertex shaders. `--target=vulkan` emits Vulkan GLSL.
 - Auto-generated preview shading (when `main` is not explicitly defined) needs
   a scene object and material lookup: define `const Object scene = ...` and
-  define `const Hom(R3, Material) scene_material = ...`. Preview requirement
-  detection uses parsed Lane declarations, so object declarations such as
-  `construct Object scene = ...` are recognized without string-prefix checks.
+  define `const Hom(R3, Material) scene_material = ...`.
   When these requirements are missing, preview generation reports a clear
   requirement error instead of failing with a lower-level unknown-function
   message.
@@ -1186,17 +1184,17 @@ lane list Isom3
 
 The repository includes compile-valid feature samples:
 
-- `all_features.lane` uses the 3D language surface: provided inputs, provided
+- `examples/all_features.lane` uses the 3D language surface: provided inputs, provided
   category types, constructed product types, typed and inferred bindings,
   `construct`, `const Object`, arrays, product domains, categories,
   neutral casts, differential builtins, value-level rotations, object-level
   rotations, primitive constructors, object operators, revolution, extrusion,
   and ambient actions.
-- `all_features_2d.lane` covers the `#2D` ambient mode and 2D object actions.
+- `examples/all_features_2d.lane` covers the `#2D` ambient mode and 2D object actions.
 
 Compile them directly:
 
 ```sh
-cargo run -- all_features.lane
-cargo run -- all_features_2d.lane
+cargo run -- examples/all_features.lane
+cargo run -- examples/all_features_2d.lane
 ```

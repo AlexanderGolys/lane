@@ -95,7 +95,7 @@ vec3 scene_grad(vec3 p) {
 
 #[test]
 fn compiles_showcase_program_to_glsl() {
-    let source = fs::read_to_string("showcase.lane").unwrap();
+    let source = fs::read_to_string("examples/showcase.lane").unwrap();
     let glsl = compile_program(&source).unwrap();
 
     assert!(glsl.contains("float _op_union(float _a, float _b) {"));
@@ -107,7 +107,7 @@ fn compiles_showcase_program_to_glsl() {
 
 #[test]
 fn compiles_example1_orbit_scene_to_glsl() {
-    let source = fs::read_to_string("example1.lane").unwrap();
+    let source = fs::read_to_string("examples/example1.lane").unwrap();
     let glsl = compile_program(&source).unwrap();
 
     assert!(glsl.contains("struct Isom3"));
@@ -119,13 +119,13 @@ fn compiles_example1_orbit_scene_to_glsl() {
 
 #[test]
 fn compiles_all_features_samples_to_glsl() {
-    let source = fs::read_to_string("all_features.lane").unwrap();
+    let source = fs::read_to_string("examples/all_features.lane").unwrap();
     let glsl = compile_program(&source).unwrap();
 
     assert!(glsl.contains("struct Motion"));
     assert!(glsl.contains("float scene_sdf(vec3 p"));
 
-    let source_2d = fs::read_to_string("all_features_2d.lane").unwrap();
+    let source_2d = fs::read_to_string("examples/all_features_2d.lane").unwrap();
     let glsl_2d = compile_program(&source_2d).unwrap();
 
     assert!(glsl_2d.contains("float scene_sdf(vec2"));

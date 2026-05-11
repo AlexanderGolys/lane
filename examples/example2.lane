@@ -1,0 +1,14 @@
+#2D
+provided R time
+
+color1 = (.5, .5, .9, 1)
+color2 = (.9, .5, .5, 1)
+const rect = Box2D(a=1, b=2)
+Hom(R, R2) center = (sin*2, cos*2)
+Object ball1 = Ball2D(r=1.2 + cos(time)/10) + center(time)
+Object ball2 = Ball2D(r=1.2 + sin(time)/10) + center(time)*(-1)
+const Object ball = union(ball1, ball2)
+blend = clamp(rect.sdf, 0, 1)*color2 + (1-clamp(rect.sdf, 0, 1))*color1
+const scene = smoothUnion(.5)(rect, ball)
+
+const Hom(R2, R4) color = if (scene.sdf < 0) blend else (.1, .1, .1, 1)

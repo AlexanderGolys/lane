@@ -3,7 +3,9 @@
 (string_content) @string
 
 (directive_token) @directive
-(directive (identifier) @namespace)
+
+(directive
+  (identifier) @namespace)
 
 ["provided" "construct" "const"] @keyword
 
@@ -12,7 +14,7 @@
 
 (gen_modifier) @keyword
 
-["+" "-" "*" "/" "@" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "|->"] @operator
+["+" "-" "*" "/" "@" "^" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "|->" "and" "or" "not"] @operator
 
 (generic_type
   name: (identifier) @typeParameter)
@@ -20,8 +22,10 @@
 (name_template_slot
   name: (template_slot_content) @typeParameter)
 
-(category_identifier) @type
+(category_identifier) @category
+
 (type_identifier) @type
+
 (unit_type) @type
 
 (input_declaration
@@ -42,7 +46,6 @@
 (binding_declaration
   type: [
     (end_type)
-    (function_type)
     (hom_type)
     (array_type)
   ]
@@ -63,21 +66,18 @@
   name: (identifier) @variable.declaration)
 
 (closure_expression
-  parameters: (identifier) @parameter.declaration)
+  parameter: (identifier) @parameter.declaration)
 
 (closure_parameter_list
   parameter: (identifier) @parameter.declaration)
 
-(function_type
-  "Func" @functor)
-
 (hom_type
-  "Hom" @functor)
+  ["Hom" "Func"] @functor)
 
 (function_arrow_type
   "->" @functor)
 
-[(end_type "End") (array_type "Array")] @type
+[(end_type "End") (array_type "Array")] @functor
 
 (call_expression
   function: (identifier) @function)

@@ -1,8 +1,13 @@
 target/
 .clodex/
+.codex/
+.agents/
 
 # Editors and OS noise
 .DS_Store
 *.swp
 *.swo
-notes.typ
+*.typ
+*ROADMAP.md
+AGENTS.md
+tmp/

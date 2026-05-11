@@ -7,7 +7,7 @@ provided RVect X, Y, U, W
 provided f, f1: X -> Y
 provided Hom(X, U) g
 provided Hom(U, W) h
-provided Grp G, H
+provided Grp G, G1 
 
 
 Hom(X, Y x U) fg = (f, g)

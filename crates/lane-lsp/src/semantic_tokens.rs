@@ -164,6 +164,7 @@ fn token_spec(capture_name: &str, capture: QueryCapture<'_>, source: &str) -> Op
         "directive" => TOKEN_TYPE_DIRECTIVE,
         "namespace" => TOKEN_TYPE_NAMESPACE,
         "functor" => TOKEN_TYPE_FUNCTOR,
+        "category" => TOKEN_TYPE_CATEGORY,
         "type" if is_category_token_text(text) => TOKEN_TYPE_CATEGORY,
         "type" => TOKEN_TYPE_TYPE,
         "type.declaration" => {

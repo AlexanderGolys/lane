@@ -109,7 +109,7 @@ local function register_nvim_treesitter_parser(root)
   parsers.lane = {
     install_info = {
       path = root,
-      queries = "queries/lane",
+      queries = "queries",
     },
     tier = 3,
   }
@@ -211,7 +211,7 @@ local function load_highlight_query(root)
     return false
   end
 
-  local query = read_file(root .. "/queries/lane/highlights.scm")
+  local query = read_file(root .. "/queries/highlights.scm")
   if not query then
     return false
   end

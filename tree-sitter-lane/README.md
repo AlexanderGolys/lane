@@ -63,10 +63,9 @@ vim.api.nvim_create_autocmd("FileType", {
 })
 ```
 
-The grammar includes highlight queries for both the tree-sitter CLI and Neovim:
-
-- `queries/highlights.scm` is used by the tree-sitter CLI.
-- `queries/lane/highlights.scm` is used by Neovim's runtime query loader.
+The grammar uses one canonical highlight query at `queries/highlights.scm`.
+The tree-sitter CLI reads that path from `tree-sitter.json`, and Neovim's Lane
+setup loads the same file with `vim.treesitter.query.set()`.
 
 Neovim captures Lane conditionals with `@keyword.conditional`, so `if` and
 `else` follow the active colorscheme's conditional keyword style.
