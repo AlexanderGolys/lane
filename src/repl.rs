@@ -1362,11 +1362,18 @@ impl TranscriptLayout {
             if next_bottom <= area.y {
                 break;
             }
-            let next_kind = entries
+            let adjacent_without_gap = entries
                 .get(position + 1)
-                .and_then(|next_index| transcript.get(*next_index))
-                .map(|entry| entry.kind);
-            if !next_kind.is_some_and(|kind| adjacent_without_feed_gap(entry.kind, kind)) {
+                .and_then(|next_index| {
+                    transcript
+                        .get(*next_index)
+                        .map(|next_entry| (*next_index, next_entry))
+                })
+                .is_some_and(|(next_index, next_entry)| {
+                    index.abs_diff(next_index) == 1
+                        && adjacent_without_feed_gap(entry.kind, next_entry.kind)
+                });
+            if !adjacent_without_gap {
                 next_bottom = next_bottom.saturating_sub(FEED_ENTRY_GAP);
             }
             if next_bottom <= area.y {
@@ -2832,6 +2839,37 @@ mod tests {
         assert_eq!(layout.entry_at(0, 6), Some(1));
         assert_eq!(layout.entry_at(0, 3), None);
         assert_eq!(layout.entry_at(0, 2), Some(0));
+    }
+
+    #[test]
+    fn split_layout_keeps_gap_between_lane_entries_separated_by_glsl() {
+        let entries = vec![
+            TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1)),
+            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0), None),
+            TranscriptEntry::submitted("R diameter = 2".to_string(), Some(1), Some(2)),
+        ];
+        let mut layout = TranscriptLayout::default();
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[2, 0], &entries);
+
+        assert_eq!(layout.entry_at(0, 6), Some(2));
+        assert_eq!(layout.entry_at(0, 3), None);
+        assert_eq!(layout.entry_at(0, 2), Some(0));
+    }
+
+    #[test]
+    fn split_layout_keeps_gap_between_glsl_entries_separated_by_lane() {
+        let entries = vec![
+            TranscriptEntry::submitted("const R radius = 1".to_string(), Some(0), Some(1)),
+            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0), None),
+            TranscriptEntry::submitted("const R diameter = 2".to_string(), Some(1), Some(2)),
+            TranscriptEntry::glsl("float diameter = 2.0;".to_string(), Some(1), None),
+        ];
+        let mut layout = TranscriptLayout::default();
+        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[3, 1], &entries);
+
+        assert_eq!(layout.entry_at(0, 6), Some(3));
+        assert_eq!(layout.entry_at(0, 3), None);
+        assert_eq!(layout.entry_at(0, 2), Some(1));
     }
 
     #[test]

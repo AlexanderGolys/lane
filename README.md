@@ -82,10 +82,11 @@ Usage:
   inline hint text after the current token without changing the submitted input.
   Adjacent submitted Lane entries render inside one shared feed box only when
   no generated GLSL block separates them, and adjacent generated GLSL output
-  also renders as one continuous block in split mode, while separate boxes still
-  have a blank row between them. Oversized generated GLSL blocks are clipped to
-  the available transcript pane instead of being hidden until the whole block
-  fits. Errors are decided after submission: only the submitted Lane block for
+  renders as one continuous block only when the original transcript entries are
+  truly adjacent; split mode keeps blank rows where hidden opposite-pane entries
+  separate visible blocks. Oversized generated GLSL blocks are clipped to the
+  available transcript pane instead of being hidden until the whole block fits.
+  Errors are decided after submission: only the submitted Lane block for
   that failed submission is marked red, and the error message is shown above
   that code inside the same red block with aligned left padding. Failing submitted code
   uses an error marker in the gutter instead of source line numbers, and inline
