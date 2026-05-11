@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, Stdout};
+use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -246,14 +246,31 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) {
-        if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
-            return;
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.select_entry_at(mouse.column, mouse.row)
+            }
+            MouseEventKind::Down(MouseButton::Right) => {
+                if let Some(text) = self.copyable_text_at(mouse.column, mouse.row) {
+                    let _ = copy_text_to_clipboard(&text);
+                }
+            }
+            _ => {}
         }
+    }
+
+    fn select_entry_at(&mut self, x: u16, y: u16) {
         self.selected_group = self
             .layout
-            .entry_at(mouse.column, mouse.row)
+            .entry_at(x, y)
             .and_then(|index| self.transcript.get(index))
             .and_then(|entry| entry.group);
+    }
+
+    fn copyable_text_at(&self, x: u16, y: u16) -> Option<String> {
+        let index = self.layout.entry_at(x, y)?;
+        let entry = self.transcript.get(index)?;
+        entry.copyable_text().map(str::to_string)
     }
 
     fn submit_input(&mut self) -> Option<ReplAction> {
@@ -1116,6 +1133,39 @@ fn contains(area: Rect, x: u16, y: u16) -> bool {
         && y < area.y.saturating_add(area.height)
 }
 
+fn copy_text_to_clipboard(text: &str) -> io::Result<()> {
+    let mut stdout = io::stdout();
+    write_osc52_clipboard(&mut stdout, text)
+}
+
+fn write_osc52_clipboard(writer: &mut impl Write, text: &str) -> io::Result<()> {
+    write!(writer, "\x1b]52;c;{}\x07", base64_encode(text.as_bytes()))?;
+    writer.flush()
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut encoded = String::with_capacity(bytes.len().div_ceil(3).saturating_mul(4));
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or(0);
+        let third = chunk.get(2).copied().unwrap_or(0);
+        encoded.push(TABLE[(first >> 2) as usize] as char);
+        encoded.push(TABLE[(((first & 0b0000_0011) << 4) | (second >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            encoded.push(TABLE[(((second & 0b0000_1111) << 2) | (third >> 6)) as usize] as char);
+        } else {
+            encoded.push('=');
+        }
+        if chunk.len() > 2 {
+            encoded.push(TABLE[(third & 0b0011_1111) as usize] as char);
+        } else {
+            encoded.push('=');
+        }
+    }
+    encoded
+}
+
 #[derive(Clone)]
 struct TranscriptEntry {
     kind: TranscriptKind,
@@ -1216,6 +1266,13 @@ impl TranscriptEntry {
             line_start: None,
             errored: false,
             error: None,
+        }
+    }
+
+    fn copyable_text(&self) -> Option<&str> {
+        match self.kind {
+            TranscriptKind::Welcome => None,
+            _ => Some(self.text.as_str()),
         }
     }
 
@@ -1356,6 +1413,7 @@ impl ReplSession {
 fn help_text() -> String {
     [
         "Ctrl-F formats the current input.",
+        "Right-click a transcript block to copy its text.",
         "/info shows loaded modules, used directives, and provided objects.",
         "/show opens a native preview window for the current session.",
         "/split toggles split mode.",
@@ -1682,6 +1740,7 @@ mod tests {
         assert!(!text.contains("Up and Down recall submitted input history."));
         assert!(!text.contains("Tab completes to the longest unambiguous prefix"));
         assert!(text.contains("Ctrl-F formats the current input."));
+        assert!(text.contains("Right-click a transcript block to copy its text."));
     }
 
     #[test]
@@ -2337,6 +2396,49 @@ mod tests {
         assert_eq!(glsl_a_style.bg, Some(SELECTED_OUTPUT_BG));
         assert_eq!(lane_b_style.bg, Some(USER_BG));
         assert_eq!(glsl_b_style.bg, Some(OUTPUT_BG));
+    }
+
+    #[test]
+    fn right_click_copy_uses_raw_transcript_entry_text() {
+        let mut app = App::new();
+        app.transcript = vec![TranscriptEntry::submitted(
+            "const R radius = 1".to_string(),
+            Some(0),
+            Some(1),
+        )];
+        app.layout.entries = vec![RenderedEntry {
+            index: 0,
+            area: Rect::new(4, 5, 30, 3),
+        }];
+
+        assert_eq!(
+            app.copyable_text_at(10, 6).as_deref(),
+            Some("const R radius = 1")
+        );
+        assert_eq!(app.copyable_text_at(1, 1), None);
+    }
+
+    #[test]
+    fn welcome_entry_is_not_copied() {
+        let mut app = App::new();
+        app.layout.entries = vec![RenderedEntry {
+            index: 0,
+            area: Rect::new(0, 0, 20, 1),
+        }];
+
+        assert_eq!(app.copyable_text_at(0, 0), None);
+    }
+
+    #[test]
+    fn osc52_clipboard_payload_base64_encodes_text() {
+        let mut output = Vec::new();
+
+        write_osc52_clipboard(&mut output, "R radius = 1").unwrap();
+
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "\x1b]52;c;UiByYWRpdXMgPSAx\x07"
+        );
     }
 
     #[test]

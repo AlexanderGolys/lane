@@ -101,7 +101,8 @@ Usage:
   `/restart` starts from an empty session, and `/exit` leaves the shell.
   Toggling `/split` off restores the full linear transcript, including generated
   GLSL chunks. Clicking a submitted Lane entry or its generated GLSL highlights
-  both parts of that submission. Enter submits the current input, Shift-Enter
+  both parts of that submission, and right-clicking a transcript block copies
+  that block's text to the terminal clipboard. Enter submits the current input, Shift-Enter
   (or Alt-Enter fallback) inserts a newline when supported by the terminal, Up and Down recall submitted
   input history across sessions, Tab completes to the longest unambiguous prefix using `lane-lsp` language items
   for Lane source and REPL command items for slash commands, Ctrl-F formats the
