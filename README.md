@@ -81,14 +81,15 @@ Usage:
   inline hint text after the current token without changing the submitted input.
   Adjacent submitted Lane entries render inside one shared feed box, even when
   generated GLSL output from the same submission group appears after the code,
-  while separate boxes still have a blank row between them. Oversized generated
-  GLSL blocks are clipped to the available transcript pane instead of being
-  hidden until the whole block fits. Errors are decided after submission: only the
-  submitted Lane block for that failed submission is marked red, and the error
-  message is shown above that code inside the same red block with aligned left
-  padding. Failing submitted code uses an error marker in the gutter instead
-  of source line numbers, and inline REPL error messages omit compiler line
-  prefixes. Shell commands are
+  and adjacent generated GLSL output from that group also renders as one
+  continuous block in split mode, while separate boxes still have a blank row
+  between them. Oversized generated GLSL blocks are clipped to the available
+  transcript pane instead of being hidden until the whole block fits. Errors are
+  decided after submission: only the submitted Lane block for that failed
+  submission is marked red, and the error message is shown above that code
+  inside the same red block with aligned left padding. Failing submitted code
+  uses an error marker in the gutter instead of source line numbers, and inline
+  REPL error messages omit compiler line prefixes. Shell commands are
   recognized only at the start of a line and render as plain one-line messages
   (the initial welcome banner also renders as a plain line without box margins)
   that stay attached to their command response while leaving one blank row

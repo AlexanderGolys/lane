@@ -349,7 +349,7 @@ impl App {
                 if glsl.is_empty() {
                     return None;
                 }
-                self.transcript.push(TranscriptEntry::glsl(glsl, group));
+                self.push_glsl_output(glsl, group);
             }
             SubmitOutcome::Cleared => {
                 self.transcript
@@ -543,6 +543,19 @@ impl App {
         self.transcript
             .push(TranscriptEntry::submitted(input, Some(group), line_start));
         Some(group)
+    }
+
+    fn push_glsl_output(&mut self, glsl: String, group: Option<usize>) {
+        if let Some(entry) = self.transcript.last_mut() {
+            if matches!(entry.kind, TranscriptKind::Glsl) && entry.group == group {
+                if !entry.text.ends_with('\n') {
+                    entry.text.push('\n');
+                }
+                entry.text.push_str(&glsl);
+                return;
+            }
+        }
+        self.transcript.push(TranscriptEntry::glsl(glsl, group));
     }
 
     fn latest_mergeable_lane_entry(&self) -> Option<usize> {
@@ -2234,6 +2247,26 @@ mod tests {
         );
         assert_eq!(app.transcript[0].line_start, Some(1));
         assert_eq!(app.transcript[0].group, app.transcript[1].group);
+    }
+
+    #[test]
+    fn consecutive_glsl_outputs_share_one_feed_box() {
+        let mut app = App::new();
+        app.transcript.clear();
+        app.split_mode = true;
+        app.input = "const R radius = 1".to_string();
+        app.submit_input();
+        app.input = "const R diameter = radius * 2".to_string();
+        app.submit_input();
+
+        assert_eq!(app.transcript.len(), 2);
+        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
+        assert!(matches!(app.transcript[1].kind, TranscriptKind::Glsl));
+        assert!(app.transcript[1].text.contains("const float radius = 1.0f;"));
+        assert!(app
+            .transcript[1]
+            .text
+            .contains("const float diameter = (radius * 2.0f);"));
     }
 
     #[test]
