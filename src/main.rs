@@ -763,13 +763,11 @@ mod tests {
     #[test]
     fn highlights_builtin_type_names_as_types() {
         let highlighted =
-            highlight_builtin_object_line("H", "DivRing, RAlg", lane::KnownBuiltinObjectKind::Type);
+            highlight_builtin_object_line("H", "RDivAlg", lane::KnownBuiltinObjectKind::Type);
 
         assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
-        assert!(highlighted.contains("\x1b[92mDivRing\x1b[0m"));
-        assert!(highlighted.contains("\x1b[92mRAlg\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[33mDivRing\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[33mRAlg\x1b[0m"));
+        assert!(highlighted.contains("\x1b[92mRDivAlg\x1b[0m"));
+        assert!(!highlighted.contains("\x1b[33mRDivAlg\x1b[0m"));
     }
 
     #[test]

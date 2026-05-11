@@ -17,6 +17,7 @@ const CATEGORY_NAMES = [
     'DivRing',
     'RVect',
     'RAlg',
+    'RDivAlg',
     'Set',
 ];
 

@@ -1877,6 +1877,7 @@ enum AlgebraicCategory {
     DivRing,
     RVect,
     RAlg,
+    RDivAlg,
     Set,
 }
 
@@ -1885,7 +1886,7 @@ struct AlgebraicCategoryDef {
     name: &'static str,
 }
 
-const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 8] = [
+const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 9] = [
     AlgebraicCategoryDef {
         category: AlgebraicCategory::Ab,
         name: "Ab",
@@ -1913,6 +1914,10 @@ const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 8] = [
     AlgebraicCategoryDef {
         category: AlgebraicCategory::RAlg,
         name: "RAlg",
+    },
+    AlgebraicCategoryDef {
+        category: AlgebraicCategory::RDivAlg,
+        name: "RDivAlg",
     },
     AlgebraicCategoryDef {
         category: AlgebraicCategory::Set,
@@ -2007,9 +2012,8 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         display_name: "R",
         support_glsl: None,
         categories: &[
-            AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
-            AlgebraicCategory::RAlg,
+            AlgebraicCategory::RDivAlg,
             AlgebraicCategory::RVect,
         ],
     },
@@ -2026,9 +2030,8 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         display_name: "C",
         support_glsl: Some(COMPLEX_FIELD_SUPPORT_GLSL),
         categories: &[
-            AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
-            AlgebraicCategory::RAlg,
+            AlgebraicCategory::RDivAlg,
             AlgebraicCategory::RVect,
         ],
     },
@@ -2059,9 +2062,8 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         display_name: "H",
         support_glsl: Some(QUAT_FIELD_SUPPORT_GLSL),
         categories: &[
-            AlgebraicCategory::DivRing,
             AlgebraicCategory::Grp,
-            AlgebraicCategory::RAlg,
+            AlgebraicCategory::RDivAlg,
             AlgebraicCategory::RVect,
         ],
     },
@@ -2386,7 +2388,14 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
 fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> bool {
     matches!(
         (source, target),
-        (AlgebraicCategory::RAlg, AlgebraicCategory::Ring)
+        (AlgebraicCategory::RDivAlg, AlgebraicCategory::DivRing)
+            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::RAlg)
+            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Grp)
+            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Ring)
+            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::RVect)
+            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Ab)
+            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Mon)
+            | (AlgebraicCategory::RAlg, AlgebraicCategory::Ring)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::RVect)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Ab)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Mon)
@@ -2405,6 +2414,7 @@ fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> boo
             | (AlgebraicCategory::DivRing, AlgebraicCategory::Set)
             | (AlgebraicCategory::RVect, AlgebraicCategory::Set)
             | (AlgebraicCategory::RAlg, AlgebraicCategory::Set)
+            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Set)
     )
 }
 

@@ -577,10 +577,13 @@ Categories classify which algebraic operations are available.
 | `DivRing` | division ring | ring operations and `/` |
 | `RVect` | real vector space | `0`, `+`, `-`, scalar `*` and `/` |
 | `RAlg` | real algebra | ring operations and scalar multiplication |
+| `RDivAlg` | real division algebra | real algebra operations and `/` |
 
 The category order used by Lane is:
 
 ```text
+RDivAlg < DivRing
+RDivAlg < RAlg
 DivRing < Grp < Mon < Set
 DivRing < Ring
 Ring < Mon

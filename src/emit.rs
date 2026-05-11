@@ -1176,7 +1176,7 @@ fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
             ProductOp::Mult,
             ProductOp::Scale,
         ],
-        AlgebraicCategory::DivRing | AlgebraicCategory::Set => &[],
+        AlgebraicCategory::DivRing | AlgebraicCategory::RDivAlg | AlgebraicCategory::Set => &[],
     }
 }
 

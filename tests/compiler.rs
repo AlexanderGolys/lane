@@ -315,10 +315,13 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "Bool" && object.ty == "DivRing"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "C" && object.ty == "DivRing, RAlg"));
+        .any(|object| object.name == "RDivAlg" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "H" && object.ty == "DivRing, RAlg"));
+        .any(|object| object.name == "C" && object.ty == "RDivAlg"));
+    assert!(objects
+        .iter()
+        .any(|object| object.name == "H" && object.ty == "RDivAlg"));
     assert!(objects
         .iter()
         .any(|object| object.name == "Isom2" && object.ty == "Grp"));
@@ -435,10 +438,10 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(bool_ty.body, "");
     assert_eq!(bool_xor.ty, "Hom(Bool × Bool, Bool)");
     assert!(bool_xor.body.contains("bool xor(bool a, bool b)"));
-    assert_eq!(complex.ty, "DivRing, RAlg");
+    assert_eq!(complex.ty, "RDivAlg");
     assert!(complex.body.contains("#define Complex vec2"));
     assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert_eq!(quat.ty, "DivRing, RAlg");
+    assert_eq!(quat.ty, "RDivAlg");
     assert!(quat.body.contains("#define H vec4"));
     assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
     let e2 = known_builtin_object("Isom2").unwrap();
@@ -1488,6 +1491,14 @@ fn rejects_product_field_types() {
 }
 
 #[test]
+fn rejects_real_division_algebra_product_types() {
+    let source = "RDivAlg G = C x H\nconst Object output = Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("product type 'G' does not support category RDivAlg"));
+}
+
+#[test]
 fn rejects_product_components_outside_category() {
     let source = "Grp G = Isom3 x R3\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
@@ -1510,6 +1521,14 @@ fn supports_provided_vector_space_category_types() {
 
     assert!(glsl.contains("float scene_sdf(vec3 p) {"));
     assert!(glsl.contains("float radius = norm(scale_V(scale_V(v, (1.0 / 3.0)), 2.0));"));
+}
+
+#[test]
+fn supports_provided_real_division_algebra_category_types() {
+    let source = "provided RDivAlg A\nprovided A a\nprovided A b\nprovided Hom(A, R) measure\nR radius = measure(2 * (a / b))\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = measure(scale_A(mult_A(a, inv_A(b)), 2.0));"));
 }
 
 #[test]
