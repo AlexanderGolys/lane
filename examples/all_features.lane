@@ -1,0 +1,14 @@
+#import std
+#prec 0.002
+
+provided R t
+provided R3 p, p1, p2, p3
+provided RVect X, Y, U, W
+provided f, f1: X -> Y
+provided Hom(X, U) g
+provided Hom(U, W) h
+provided Grp G, H
+
+
+Hom(X, Y x U) fg = (f, g)
+Hom(X x U, Y x W) fxh = f x h

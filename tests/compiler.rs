@@ -1,9 +1,9 @@
 use lane::{
     compile_program as compile_program_with_float_suffixes, compile_program_from_path,
-    compile_vulkan_preview_fragment,
-    known_builtin_object, known_builtin_objects, known_preregistered_objects, known_primitive,
-    known_primitives, known_primitives_by_dimension, preregistered_object, Error,
-    PreregisteredObjectKind, ShapeDimension,
+    compile_vulkan_preview_fragment, known_builtin_object, known_builtin_objects,
+    known_preregistered_objects, known_primitive, known_primitives, known_primitives_by_dimension,
+    lane_diagnostics_with_base_dir, preregistered_object, Error, PreregisteredObjectKind,
+    ShapeDimension,
 };
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -833,7 +833,7 @@ fn supports_tensor_function_products() {
 
 #[test]
 fn supports_structural_function_products() {
-    let source = "provided VectR X, Y, Z, W\nprovided f: X -> Y\nprovided Hom(X, Z) g\nprovided Hom(Z, W) h\nHom(X, Y x Z) fg = (f, g)\nHom(X x Z, Y x W) fxh = f x h\n";
+    let source = "provided RVect X, Y, U, W\nprovided f: X -> Y\nprovided Hom(X, U) g\nprovided Hom(U, W) h\nHom(X, Y x U) fg = (f, g)\nHom(X x U, Y x W) fxh = f x h\n";
 
     compile_program(source).unwrap();
 }
@@ -951,6 +951,27 @@ fn rejects_module_directive_in_main_programs() {
         .to_string();
 
     assert!(error.contains("#module is only valid in imported module files"));
+}
+
+#[test]
+fn diagnostics_accept_standalone_module_documents() {
+    let diagnostics = lane_diagnostics_with_base_dir(
+        "#module\nR secret = 2\nconst R exported = secret + 1\n",
+        ".",
+    );
+
+    assert_eq!(diagnostics, Vec::new());
+}
+
+#[test]
+fn diagnostics_validate_module_documents_as_modules() {
+    let diagnostics = lane_diagnostics_with_base_dir("#module\nprovided R time\n", ".");
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].line, 2);
+    assert!(diagnostics[0]
+        .message
+        .contains("provided declarations are not allowed in modules"));
 }
 
 #[test]
@@ -1083,10 +1104,7 @@ fn imports_raytracing_module() {
 
 #[test]
 fn preview_requirement_detection_uses_parsed_construct_scene() {
-    let source = "construct Object scene = Ball3D(r=1)
-const Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)
-const Hom(R3, Material) scene_material = (x, y, z) |-> material
-";
+    let source = "construct Object scene = Ball3D(r=1)\nconst Material material = Material((0.8, 0.6, 0.4), (0, 0, 0), 0.2)\nconst Hom(R3, Material) scene_material = (x, y, z) |-> material\n";
     let glsl = compile_vulkan_preview_fragment(source).unwrap();
 
     assert!(glsl.contains("float sdf_scene(vec3 p)"));
