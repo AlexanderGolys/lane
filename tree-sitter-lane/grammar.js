@@ -6,7 +6,7 @@ const PREC = {
     power: 3,
     call: 5,
     unary: 6,
-    closure: 7,
+    closure: 0,
 };
 
 const CATEGORY_NAMES = [
@@ -29,10 +29,10 @@ module.exports = grammar({
         $.comment,
     ],
 
-    word: ($) => $._identifier_text,
+    word: ($) => $.identifier,
 
     conflicts: ($) => [
-        [$._expression, $.closure_parameter_list],
+        [$._expression, $.closure_expression],
     ],
 
     rules: {
@@ -49,6 +49,7 @@ module.exports = grammar({
             $.category_type_declaration,
             $.product_type_declaration,
             $.input_declaration,
+            $.arrow_function_declaration,
             $.inferred_binding_declaration,
             $.binding_declaration,
         ),
@@ -96,19 +97,21 @@ module.exports = grammar({
             field('name', $.identifier),
         ),
 
-        input_declaration: ($) => choice(
-            seq(
+
+        input_declaration: ($) => seq(
                 'provided',
                 field('type', $._type),
                 commaSep1(field('name', $.identifier)),
             ),
-            seq(
+
+        arrow_function_declaration: ($) =>  seq(
                 'provided',
                 commaSep1(field('name', $.identifier)),
                 ':',
-                field('type', $.function_arrow_type),
+                field('dom', $._type),
+                '->',
+                field('codom', $._type),
             ),
-        ),
 
         binding_declaration: ($) => seq(
             optional(field('modifier', $.gen_modifier)),
@@ -151,15 +154,17 @@ module.exports = grammar({
         ),
 
         product_type: ($) => prec.left(PREC.multiply, seq(
-            $._non_product_type,
-            repeat1(seq(choice('×', 'x'), $._non_product_type)),
+            field('component', $._non_product_type),
+            repeat1(seq(
+                choice('×', 'x'), 
+                field('component', $._non_product_type))),
         )),
 
         parenthesized_type: ($) => seq('(', $._type, ')'),
 
 
         hom_type: ($) => seq(
-            choice('Hom', 'Func'),
+            field('functor', choice('Hom', 'Func')),
             '(',
             field('domain', $._type),
             ',',
@@ -167,21 +172,15 @@ module.exports = grammar({
             ')',
         ),
 
-        function_arrow_type: ($) => seq(
-            field('domain', $._type),
-            '->',
-            field('codomain', $._type),
-        ),
-
         end_type: ($) => seq(
-            'End',
+            field('functor', 'End'),
             '(',
             field('value', $._type),
             ')',
         ),
 
         array_type: ($) => seq(
-            'Array',
+            field('functor', 'Array'),
             '(',
             field('element', $._type),
             ')',
@@ -198,21 +197,21 @@ module.exports = grammar({
             $.parenthesized_expression,
             $.tuple_expression,
             $.bracket_literal,
-            $.string,
+            $.raw_code,
             $.identifier,
             $.number,
         ),
 
-        closure_expression: ($) => prec.right(PREC.closure, choice(
-            seq(field('parameter', $.identifier), '|->', field('body', $._expression)),
-            seq(field('parameters', $.closure_parameter_list), '|->', field('body', $._expression)),
-        )),
-
-        closure_parameter_list: ($) => seq(
-            '(',
-            commaSep1(field('parameter', $.identifier)),
-            ')',
+        closure_expression: ($) => prec.right(PREC.closure, seq(
+            choice(
+                '*',
+                field('parameter', $.identifier),
+                seq('(', commaSep1(field('parameter', $.identifier)), ')')),
+            '|->', 
+            field('body', $._expression)),
         ),
+
+
 
         call_expression: ($) => prec.left(PREC.call, seq(
             field('function', choice(
@@ -297,7 +296,7 @@ module.exports = grammar({
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '*'), field('right', $._expression))),
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '/'), field('right', $._expression))),
             prec.right(PREC.compose, seq(field('left', $._expression), field('operator', '@'), field('right', $._expression))),
-            prec.right(PREC.power, seq(field('left', $._expression), field('operator', '^'), field('right', $._expression))),
+            prec.left(PREC.power, seq(field('left', $._expression), field('operator', '^'), field('right', $._expression))),
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', 'x'), field('right', $._expression))),
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', '×'), field('right', $._expression))),
             prec.left(PREC.multiply, seq(field('left', $._expression), field('operator', 'and'), field('right', $._expression))),
@@ -312,10 +311,9 @@ module.exports = grammar({
 
         tuple_expression: ($) => seq(
             '(',
-            field('first', $._expression),
+            field('component', $._expression),
             ',',
-            field('second', $._expression),
-            repeat(seq(',', field('rest', $._expression))),
+            commaSep1(field('component', $._expression)),
             ')',
         ),
 
@@ -325,22 +323,22 @@ module.exports = grammar({
             ']',
         ),
 
-        identifier: ($) => prec.right(PREC.unary, seq(
-            $._identifier_text,
-            repeat(choice($.name_template_slot, $._identifier_suffix_text)),
-        )),
+        // identifier: ($) => prec.right(PREC.unary, seq(
+        //     $._identifier_text,
+        //     repeat(choice($.name_template_slot, $._identifier_suffix_text)),
+        // )),
 
-        _identifier_text: () => /[A-Za-z_][A-Za-z0-9_]*/,
+        identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
 
-        _identifier_suffix_text: () => token.immediate(/[A-Za-z_][A-Za-z0-9_]*/),
+        // _identifier_suffix_text: () => token.immediate(/[A-Za-z_][A-Za-z0-9_]*/),
 
-        name_template_slot: ($) => seq(
-            token.immediate('{'),
-            optional(field('name', $.template_slot_content)),
-            token.immediate('}'),
-        ),
+        // name_template_slot: ($) => seq(
+        //     token.immediate('{'),
+        //     optional(field('name', $.template_slot_content)),
+        //     token.immediate('}'),
+        // ),
 
-        template_slot_content: () => token.immediate(/[A-Za-z0-9_]+/),
+        // template_slot_content: () => token.immediate(/[A-Za-z0-9_]+/),
 
         number: () => token(choice(
             /\d+(?:\.\d+)?[eE][+-]?\d+/,
@@ -352,13 +350,13 @@ module.exports = grammar({
             /\d+/,
         )),
 
-        string: ($) => seq(
+        raw_code: ($) => seq(
             '"',
-            repeat(choice($.string_content, $.placeholder, /\\./)),
+            repeat(choice($.string, $.placeholder, /\\./)),
             '"',
         ),
 
-        string_content: () => token.immediate(prec(1, /[^"$\\]+/)),
+        string: () => token.immediate(prec(1, /[^"$\\]+/)),
 
         placeholder: ($) => seq(
             '${',

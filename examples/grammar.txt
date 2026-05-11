@@ -1,0 +1,13 @@
+"\n\t" --> " "
+
+"\n  " --> " "
+
+"End({A})" -> "Hom({A}, {A})"
+
+"Func" -> "Hom"
+
+trans("provided {T} {X}, [...]") = "provided {T} {X}\n" + trans("provided {T} [...]")
+
+"provided {funcs}: {T} -> {S}" -> "provided Hom({T}, {S}) {funcs}"
+
+

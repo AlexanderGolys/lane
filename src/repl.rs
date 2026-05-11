@@ -25,7 +25,7 @@ use tree_sitter_highlight::{
 use tree_sitter_language::LanguageFn;
 
 const USER_BG: Color = Color::Rgb(20, 22, 30);
-const OUTPUT_BG: Color = Color::Rgb(14, 32, 24);
+const OUTPUT_BG: Color = Color::Rgb(34, 36, 40);
 const ERROR_BG: Color = Color::Rgb(36, 18, 18);
 const ERROR_FG: Color = Color::LightRed;
 const SELECTED_USER_BG: Color = Color::Rgb(42, 45, 64);
@@ -1998,7 +1998,7 @@ fn highlight_style(index: usize) -> Style {
         "constructor" => Style::default().fg(Color::LightCyan),
         "function" | "function.builtin" => Style::default().fg(Color::Blue),
         "keyword" | "keyword.conditional" | "keyword.directive" => Style::default()
-            .fg(Color::LightMagenta)
+            .fg(Color::Rgb(210, 140, 255))
             .add_modifier(Modifier::BOLD),
         "number" => Style::default().fg(Color::LightGreen),
         "operator" | "punctuation.bracket" | "punctuation.delimiter" | "punctuation.special" => {
@@ -2007,7 +2007,7 @@ fn highlight_style(index: usize) -> Style {
         "property" => Style::default().fg(Color::Cyan),
         "string" => Style::default().fg(Color::Green),
         "type" | "type.builtin" => Style::default().fg(Color::Yellow),
-        "variable.parameter" => Style::default().fg(Color::LightBlue),
+        "variable.parameter" => Style::default().fg(Color::LightRed),
         "variable" => Style::default().fg(Color::White),
         _ => Style::default(),
     }

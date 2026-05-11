@@ -1,6 +1,6 @@
 ["provided" "construct" "const"] @keyword
 
-["Func" "Hom" "End" "Array" "->"] @lsp.type.operator
+["Func" "Hom" "End" "Array" "->"] @variable.builtin
 
 ["if" "else"] @keyword.conditional
 

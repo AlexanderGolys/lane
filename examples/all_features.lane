@@ -7,8 +7,14 @@ provided RVect X, Y, U, W
 provided f, f1: X -> Y
 provided Hom(X, U) g
 provided Hom(U, W) h
-provided Grp G, G1 
+provided Grp G0, G1 
 
+const Ab A<a, b> = R3 x R3
+const Grp G = Isom3 x Isom2 
 
 Hom(X, Y x U) fg = (f, g)
 Hom(X x U, Y x W) fxh = f x h
+
+Hom(R x R, R) l = &*
+
+

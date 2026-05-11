@@ -1,5 +1,6 @@
 use super::*;
 
+/// Type-checks raw GLSL runtime output typing.
 fn raw_glsl_runtime_output_ty<'a>(body: &FuncBody, output_ty: &'a Type) -> &'a Type {
     if matches!(
         body,
@@ -13,6 +14,7 @@ fn raw_glsl_runtime_output_ty<'a>(body: &FuncBody, output_ty: &'a Type) -> &'a T
     }
 }
 
+/// Type-checks helper logic for innermost_output_ty.
 fn innermost_output_ty(ty: &Type) -> &Type {
     let (_, output) = flatten_func_type(ty);
     output
@@ -37,6 +39,7 @@ struct LaneClosureTemplateInfo {
     body: Expr,
 }
 
+/// Type-checks helper logic for lane_closure_template_info.
 fn lane_closure_template_info(body: &FuncBody) -> Option<LaneClosureTemplateInfo> {
     let FuncBody::Expr(Expr::Closure { params, body }) = body else {
         return None;
@@ -45,6 +48,7 @@ fn lane_closure_template_info(body: &FuncBody) -> Option<LaneClosureTemplateInfo
     Some(LaneClosureTemplateInfo { params, body })
 }
 
+/// Type-checks helper logic for collect_lane_closure_params.
 fn collect_lane_closure_params(mut params: Vec<String>, body: Expr) -> (Vec<String>, Expr) {
     match body {
         Expr::Closure {
@@ -58,6 +62,7 @@ fn collect_lane_closure_params(mut params: Vec<String>, body: Expr) -> (Vec<Stri
     }
 }
 
+/// Type-checks helper logic for typed_raw_glsl_body.
 fn typed_raw_glsl_body(
     input_ty: &Type,
     output_ty: &Type,
@@ -79,6 +84,7 @@ fn typed_raw_glsl_body(
     Ok((runtime_input, runtime_output, body, refs))
 }
 
+/// Type-checks helper logic for raw_glsl_capture_bindings.
 fn raw_glsl_capture_bindings(
     captures: &[Type],
     closure_params: Option<&[String]>,
@@ -127,6 +133,7 @@ fn raw_glsl_capture_bindings(
     Ok(bindings)
 }
 
+/// Type-checks helper logic for render_checked_raw_glsl_placeholders.
 fn render_checked_raw_glsl_placeholders(
     body: &str,
     env: &Env<'_>,
@@ -161,6 +168,7 @@ fn render_checked_raw_glsl_placeholders(
     Ok((out, refs))
 }
 
+/// Type-checks helper logic for raw_glsl_placeholder_ref.
 fn raw_glsl_placeholder_ref(
     name: &str,
     env: &Env<'_>,
@@ -238,6 +246,7 @@ fn raw_glsl_placeholder_ref(
     }
 }
 
+/// Type-checks helper logic for raw_glsl_field_ref.
 fn raw_glsl_field_ref(base: &str, field: &str, ty: &Type, env: &Env<'_>) -> Result<String, Error> {
     match (ty, field) {
         (Type::Object, "sdf") | (Type::Object2D, "sdf") => Ok(format!("sdf_{base}")),
@@ -270,6 +279,7 @@ fn raw_glsl_field_ref(base: &str, field: &str, ty: &Type, env: &Env<'_>) -> Resu
     }
 }
 
+/// Type-checks helper logic for raw_glsl_template_info.
 fn raw_glsl_template_info(name: &str, body: &FuncBody) -> Option<RawGlslTemplateInfo> {
     let FuncBody::RawGlslClosure { params, body } = body else {
         return None;
@@ -281,6 +291,7 @@ fn raw_glsl_template_info(name: &str, body: &FuncBody) -> Option<RawGlslTemplate
     })
 }
 
+/// Type-checks helper logic for instantiate_raw_glsl_template_func.
 fn instantiate_raw_glsl_template_func(
     target_name: &str,
     target_input: &Type,
@@ -333,6 +344,7 @@ fn instantiate_raw_glsl_template_func(
     }
 }
 
+/// Type-checks helper logic for instantiate_lane_closure_template_func.
 fn instantiate_lane_closure_template_func(
     target_input: &Type,
     target_output: &Type,
@@ -397,6 +409,7 @@ fn instantiate_lane_closure_template_func(
     }
 }
 
+/// Type-checks helper logic for substitute_exprs.
 fn substitute_exprs(expr: &mut Expr, substitutions: &HashMap<String, Expr>) {
     match expr {
         Expr::Ident(name) => {
@@ -464,6 +477,7 @@ fn substitute_exprs(expr: &mut Expr, substitutions: &HashMap<String, Expr>) {
     }
 }
 
+/// Type-checks helper logic for flatten_raw_template_call.
 fn flatten_raw_template_call(expr: &Expr) -> Option<(&str, Vec<&Expr>)> {
     let mut args = Vec::new();
     let mut current = expr;
@@ -497,6 +511,7 @@ fn flatten_raw_template_call(expr: &Expr) -> Option<(&str, Vec<&Expr>)> {
     }
 }
 
+/// Type-checks helper logic for flatten_raw_template_inputs.
 fn flatten_raw_template_inputs(ty: &Type) -> (Vec<Type>, Type) {
     let (inputs, output) = flatten_func_type(ty);
     let mut flattened = Vec::new();
@@ -509,12 +524,14 @@ fn flatten_raw_template_inputs(ty: &Type) -> (Vec<Type>, Type) {
     (flattened, output.clone())
 }
 
+/// Type-checks helper logic for rebuild_func_type.
 fn rebuild_func_type(inputs: &[Type], output: &Type) -> Type {
     inputs.iter().rev().fold(output.clone(), |output, input| {
         Type::func(input.clone(), output)
     })
 }
 
+/// Type-checks helper logic for raw_glsl_template_type_match.
 fn raw_glsl_template_type_match(actual: &Type, expected: &Type) -> bool {
     match (actual, expected) {
         (Type::Func(actual_input, actual_output), Type::Func(expected_input, expected_output)) => {
@@ -534,6 +551,7 @@ fn raw_glsl_template_type_match(actual: &Type, expected: &Type) -> bool {
     }
 }
 
+/// Type-checks helper logic for raw_glsl_template_captures.
 fn raw_glsl_template_captures(
     params: &[String],
     inputs: &[Type],
@@ -555,6 +573,7 @@ fn raw_glsl_template_captures(
     Ok(captures)
 }
 
+/// Type-checks helper logic for raw_glsl_template_capture.
 fn raw_glsl_template_capture(
     input_ty: &Type,
     arg: &Expr,
@@ -626,6 +645,7 @@ fn raw_glsl_template_capture(
     }
 }
 
+/// Type-checks helper logic for function_input.
 fn function_input(ty: &Type) -> Result<&Type, Error> {
     let Type::Func(input, _) = ty else {
         return Err(Error::new(format!(
@@ -636,6 +656,7 @@ fn function_input(ty: &Type) -> Result<&Type, Error> {
     Ok(input)
 }
 
+/// Type-checks helper logic for function_output.
 fn function_output(ty: &Type) -> Result<&Type, Error> {
     let Type::Func(_, output) = ty else {
         return Err(Error::new(format!(
@@ -646,6 +667,7 @@ fn function_output(ty: &Type) -> Result<&Type, Error> {
     Ok(output)
 }
 
+/// Type-checks helper logic for raw_glsl_function_expr_ref.
 fn raw_glsl_function_expr_ref(func: &FunctionExpr) -> Result<String, Error> {
     match &func.kind {
         FunctionExprKind::Named(name) => Ok(name.clone()),
@@ -663,12 +685,14 @@ fn raw_glsl_function_expr_ref(func: &FunctionExpr) -> Result<String, Error> {
     }
 }
 
+/// Type-checks helper logic for rename_raw_glsl_definition.
 fn rename_raw_glsl_definition(body: &str, template_name: &str, target_name: &str) -> String {
     let needle = format!(" {template_name}(");
     let replacement = format!(" {target_name}(");
     body.replacen(&needle, &replacement, 1)
 }
 
+/// Type-checks helper logic for closure_param_types.
 fn closure_param_types(input_ty: &Type) -> Vec<Type> {
     match input_ty {
         Type::Product(parts) => parts.clone(),
@@ -679,10 +703,12 @@ fn closure_param_types(input_ty: &Type) -> Vec<Type> {
     }
 }
 
+/// Type-checks helper logic for internal_closure_param_name.
 fn internal_closure_param_name(name: &str) -> String {
     format!("_{name}")
 }
 
+/// Type-checks helper logic for infer_explicit_closure_expr.
 fn infer_explicit_closure_expr(
     params: &[String],
     body: &Expr,
@@ -753,6 +779,7 @@ fn infer_explicit_closure_expr(
     Ok((expr, param_bindings))
 }
 
+/// Type-checks helper logic for rewrite_whole_product_param_fields.
 fn rewrite_whole_product_param_fields(
     expr: &mut Expr,
     param: &str,
@@ -846,6 +873,7 @@ fn rewrite_whole_product_param_fields(
     }
 }
 
+/// Type-checks helper logic for closure_param_source_expr.
 fn closure_param_source_expr(input_ty: &Type, index: usize) -> Result<String, Error> {
     match input_ty {
         Type::Vec2 => Ok(format!("_t.{}", ["x", "y"][index])),
@@ -858,6 +886,7 @@ fn closure_param_source_expr(input_ty: &Type, index: usize) -> Result<String, Er
 }
 
 impl TypedProgram {
+    /// Type-checks helper logic for from_program.
     pub(super) fn from_program(program: &Program, registry: &Registry) -> Result<Self, Error> {
         for product_type in &program.product_types {
             validate_product_type_decl(product_type)
@@ -1263,6 +1292,7 @@ struct FunctionInfo {
 }
 
 impl<'a> Env<'a> {
+    /// Type-checks helper logic for new.
     fn new(
         registry: &'a Registry,
         ambient_dimension: ShapeDimension,
@@ -1336,6 +1366,7 @@ impl<'a> Env<'a> {
         }
     }
 
+    /// Type-checks helper logic for insert_value.
     fn insert_value(&mut self, name: String, ty: Type) -> Result<(), Error> {
         if self.values.contains_key(&name) || self.funcs.contains_key(&name) {
             return Err(Error::new(format!("duplicate declaration for '{}'", name)));
@@ -1354,10 +1385,12 @@ impl<'a> Env<'a> {
         Ok(())
     }
 
+    /// Type-checks helper logic for insert_func.
     fn insert_func(&mut self, name: String, ty: Type) -> Result<(), Error> {
         self.insert_func_with_templates(name, ty, None, None)
     }
 
+    /// Type-checks helper logic for insert_func_with_templates.
     fn insert_func_with_templates(
         &mut self,
         name: String,
@@ -1397,6 +1430,7 @@ impl<'a> Env<'a> {
         Ok(())
     }
 
+    /// Type-checks helper logic for get.
     fn get(&self, name: &str) -> Option<&Type> {
         self.values.get(name).map(|info| &info.ty).or_else(|| {
             self.funcs
@@ -1405,43 +1439,47 @@ impl<'a> Env<'a> {
         })
     }
 
+    /// Type-checks helper logic for get_value.
     fn get_value(&self, name: &str) -> Option<&ValueInfo> {
         self.values.get(name)
     }
 
+    /// Type-checks helper logic for function_overloads.
     fn function_overloads(&self, name: &str) -> Option<&[FunctionInfo]> {
         self.funcs.get(name).map(|funcs| funcs.as_slice())
     }
 
+    /// Type-checks helper logic for has_binding.
     fn has_binding(&self, name: &str) -> bool {
         self.values.contains_key(name) || self.funcs.contains_key(name)
     }
 
+    /// Type-checks helper logic for update_array_len.
     fn update_array_len(&mut self, name: &str, array_len: Option<usize>) {
         if let Some(info) = self.values.get_mut(name) {
             info.array_len = array_len;
         }
     }
 
+    /// Type-checks helper logic for update_object_dimension.
     fn update_object_dimension(&mut self, name: &str, dimension: Option<ShapeDimension>) {
         if let Some(dimension) = dimension {
             self.object_dimensions.insert(name.to_string(), dimension);
         }
     }
 
+    /// Type-checks helper logic for object_dimension.
     fn object_dimension(&self, name: &str) -> Option<ShapeDimension> {
         self.object_dimensions.get(name).copied()
     }
 
-    fn scene_input_values(&self) -> Vec<ValueExpr> {
-        Vec::new()
-    }
-
+    /// Type-checks helper logic for product_type.
     fn product_type(&self, name: &str) -> Option<&ProductTypeDecl> {
         self.product_types.get(name)
     }
 }
 
+/// Type-checks helper logic for validate_product_type_decl.
 fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
     if decl.category == AlgebraicCategory::DivRing {
         return Err(Error::new(format!(
@@ -1580,6 +1618,7 @@ fn product_component_satisfies_category(component: &Type, category: AlgebraicCat
         || (category == AlgebraicCategory::Grp && has_category(component, AlgebraicCategory::Ab))
 }
 
+/// Type-checks helper logic for product_category_supported.
 fn product_category_supported(category: AlgebraicCategory) -> bool {
     matches!(
         category,
@@ -1593,6 +1632,7 @@ fn product_category_supported(category: AlgebraicCategory) -> bool {
     )
 }
 
+/// Type-checks helper logic for object_type_dimension.
 fn object_type_dimension(ty: &Type) -> Option<ShapeDimension> {
     match ty {
         Type::Object2D => Some(ShapeDimension::D2),
@@ -1600,6 +1640,7 @@ fn object_type_dimension(ty: &Type) -> Option<ShapeDimension> {
     }
 }
 
+/// Type-checks helper logic for object_type_for_dimension.
 fn object_type_for_dimension(dimension: Option<ShapeDimension>) -> Type {
     match dimension {
         Some(ShapeDimension::D2) => Type::Object2D,
@@ -1607,6 +1648,7 @@ fn object_type_for_dimension(dimension: Option<ShapeDimension>) -> Type {
     }
 }
 
+/// Type-checks helper logic for function_domain_and_output.
 fn function_domain_and_output(ty: &Type) -> Result<(Type, Type), Error> {
     let (inputs, output) = flatten_func_type(ty);
     if inputs.is_empty() {
@@ -1623,6 +1665,7 @@ fn function_domain_and_output(ty: &Type) -> Result<(Type, Type), Error> {
     Ok((domain, (*output).clone()))
 }
 
+/// Type-checks helper logic for infer_object_expr.
 fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     match expr {
         Expr::Ident(name) => {
@@ -1804,6 +1847,7 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     }
 }
 
+/// Type-checks helper logic for object_dimension.
 fn object_dimension(expr: &ObjectExpr, env: &Env<'_>) -> Option<ShapeDimension> {
     match expr {
         ObjectExpr::Var(name) => env.object_dimension(name),
@@ -1823,6 +1867,7 @@ fn object_dimension(expr: &ObjectExpr, env: &Env<'_>) -> Option<ShapeDimension> 
     }
 }
 
+/// Type-checks helper logic for infer_segment_length_constructor.
 fn infer_segment_length_constructor(
     name: &str,
     args: &ConstructorArgs,
@@ -1886,6 +1931,7 @@ fn infer_segment_length_constructor(
     ]))
 }
 
+/// Type-checks helper logic for infer_object_call.
 fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     let (name, args) = flatten_call(expr)?;
     let op = env
@@ -1957,6 +2003,7 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     }
 }
 
+/// Type-checks helper logic for object_op_output_dimension.
 fn object_op_output_dimension(op: &ObjectOpDef) -> ShapeDimension {
     match op.glsl_name {
         "op_revolution" | "op_extrusion" | "op_rot" => ShapeDimension::D3,
@@ -1964,6 +2011,7 @@ fn object_op_output_dimension(op: &ObjectOpDef) -> ShapeDimension {
     }
 }
 
+/// Type-checks helper logic for infer_rotation_object_call.
 fn infer_rotation_object_call(
     name: &str,
     args: &[&Expr],
@@ -1997,6 +2045,7 @@ fn infer_rotation_object_call(
     })
 }
 
+/// Type-checks helper logic for ensure_object_op_arg_dimensions.
 fn ensure_object_op_arg_dimensions(
     op: &ObjectOpDef,
     object_args: &[ObjectExpr],
@@ -2016,6 +2065,7 @@ fn ensure_object_op_arg_dimensions(
     ))
 }
 
+/// Type-checks helper logic for rotation_value_arg_count.
 fn rotation_value_arg_count(name: &str, args: &[&Expr]) -> Result<usize, Error> {
     let max_value_args = match name {
         "rot" => 3,
@@ -2037,6 +2087,7 @@ fn rotation_value_arg_count(name: &str, args: &[&Expr]) -> Result<usize, Error> 
     Ok(args.len() - 1)
 }
 
+/// Type-checks helper logic for infer_rot_value_args.
 fn infer_rot_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr>, Error> {
     let (binormal, anchor, angle) = match args {
         [] => (unit_z_vec3(), zero_vec3(), ValueExpr::Float(0.0)),
@@ -2063,6 +2114,7 @@ fn infer_rot_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr>,
     Ok(vec![binormal, anchor, angle])
 }
 
+/// Type-checks helper logic for infer_rot2d_value_args.
 fn infer_rot2d_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr>, Error> {
     let (anchor, angle) = match args {
         [] => (zero_vec2(), ValueExpr::Float(0.0)),
@@ -2078,6 +2130,7 @@ fn infer_rot2d_value_args(args: &[&Expr], env: &Env<'_>) -> Result<Vec<ValueExpr
     Ok(vec![anchor, angle])
 }
 
+/// Type-checks helper logic for fold_associative_registered_op.
 fn fold_associative_registered_op(
     name: &str,
     glsl_name: &str,
@@ -2114,6 +2167,7 @@ fn fold_associative_registered_op(
     }
 }
 
+/// Type-checks helper logic for infer_value_expr.
 fn infer_value_expr(
     expr: &Expr,
     env: &Env<'_>,
@@ -2302,6 +2356,7 @@ fn infer_value_expr(
     }
 }
 
+/// Type-checks helper logic for infer_value_field_access.
 fn infer_value_field_access(
     object: &Expr,
     field: &str,
@@ -2317,7 +2372,7 @@ fn infer_value_field_access(
             });
         }
     }
-    if lift_param.is_some() {
+    if let Some(param_name) = lift_param {
         let expr = Expr::FieldAccess {
             object: Box::new(object.clone()),
             field: field.to_string(),
@@ -2326,7 +2381,7 @@ fn infer_value_field_access(
         return Ok(apply_function_expr(
             &func,
             ValueExpr::Var {
-                name: lift_param.unwrap().to_string(),
+                name: param_name.to_string(),
                 ty: func.input.clone(),
                 array_len: None,
             },
@@ -2335,6 +2390,7 @@ fn infer_value_field_access(
     Err(Error::new(format!("value has no field '{}'", field)))
 }
 
+/// Type-checks helper logic for field_access.
 fn field_access(ty: &Type, field: &str, env: &Env<'_>) -> Option<(Type, String)> {
     match ty {
         Type::Vec2 | Type::Complex => {
@@ -2350,6 +2406,7 @@ fn field_access(ty: &Type, field: &str, env: &Env<'_>) -> Option<(Type, String)>
     }
 }
 
+/// Type-checks helper logic for vector_field_access.
 fn vector_field_access(dimension: usize, field: &str) -> Option<String> {
     let index = positional_product_field_index(field)?;
     if index >= dimension {
@@ -2358,6 +2415,7 @@ fn vector_field_access(dimension: usize, field: &str) -> Option<String> {
     Some(["x", "y", "z", "w"][index].to_string())
 }
 
+/// Type-checks helper logic for product_field_access.
 fn product_field_access(product_type: &ProductTypeDecl, field: &str) -> Option<(Type, String)> {
     if let Some(index) = product_type
         .field_names
@@ -2379,6 +2437,7 @@ fn product_field_access(product_type: &ProductTypeDecl, field: &str) -> Option<(
     ))
 }
 
+/// Type-checks helper logic for uses_default_product_field_names.
 fn uses_default_product_field_names(product_type: &ProductTypeDecl) -> bool {
     product_type.field_names.len() == product_type.components.len()
         && product_type
@@ -2390,6 +2449,7 @@ fn uses_default_product_field_names(product_type: &ProductTypeDecl) -> bool {
             })
 }
 
+/// Type-checks helper logic for positional_product_field_index.
 fn positional_product_field_index(field: &str) -> Option<usize> {
     match field {
         "x" => Some(0),
@@ -2400,6 +2460,7 @@ fn positional_product_field_index(field: &str) -> Option<usize> {
     }
 }
 
+/// Type-checks helper logic for default_product_field_name.
 fn default_product_field_name(count: usize, index: usize) -> String {
     if index >= count {
         unreachable!("field index outside product");
@@ -2407,6 +2468,7 @@ fn default_product_field_name(count: usize, index: usize) -> String {
     format!("x{index}")
 }
 
+/// Type-checks helper logic for infer_value_expr_for_type.
 fn infer_value_expr_for_type(
     expr: &Expr,
     expected_ty: &Type,
@@ -2533,11 +2595,14 @@ fn infer_value_expr_for_type(
             lift_param,
         ),
         (_, Expr::Ident(name)) if lift_param.is_some() && env.get_value(name).is_none() => {
+            let param_name = lift_param
+                .expect("validated lift parameter presence")
+                .to_string();
             let func = infer_function_expr_for_type(expr, env, &Type::Float, expected_ty)?;
             Ok(apply_function_expr(
                 &func,
                 ValueExpr::Var {
-                    name: lift_param.unwrap().to_string(),
+                    name: param_name,
                     ty: Type::Float,
                     array_len: None,
                 },
@@ -2549,11 +2614,14 @@ fn infer_value_expr_for_type(
                 op: BinOp::Compose, ..
             },
         ) if lift_param.is_some() => {
+            let param_name = lift_param
+                .expect("validated lift parameter presence")
+                .to_string();
             let func = infer_function_expr_for_type(expr, env, &Type::Float, expected_ty)?;
             Ok(apply_function_expr(
                 &func,
                 ValueExpr::Var {
-                    name: lift_param.unwrap().to_string(),
+                    name: param_name,
                     ty: Type::Float,
                     array_len: None,
                 },
@@ -2565,12 +2633,15 @@ fn infer_value_expr_for_type(
                 op: BinOp::Product, ..
             },
         ) if lift_param.is_some() => {
+            let param_name = lift_param
+                .expect("validated lift parameter presence")
+                .to_string();
             let func = infer_function_expr(expr, env)?;
             ensure_type(&func.output, expected_ty, "function product")?;
             Ok(apply_function_expr(
                 &func,
                 ValueExpr::Var {
-                    name: lift_param.unwrap().to_string(),
+                    name: param_name,
                     ty: func.input.clone(),
                     array_len: None,
                 },
@@ -2651,6 +2722,7 @@ fn infer_value_expr_for_type(
     }
 }
 
+/// Type-checks helper logic for infer_conditional_value_expr.
 fn infer_conditional_value_expr(
     condition: &Expr,
     then_branch: &Expr,
@@ -2700,6 +2772,7 @@ fn infer_conditional_value_expr(
     })
 }
 
+/// Type-checks helper logic for infer_conditional_value_expr_for_type.
 fn infer_conditional_value_expr_for_type(
     condition: &Expr,
     then_branch: &Expr,
@@ -2730,6 +2803,7 @@ fn infer_conditional_value_expr_for_type(
     })
 }
 
+/// Type-checks helper logic for cast_value_to_type.
 fn cast_value_to_type(value: ValueExpr, expected_ty: &Type) -> Result<ValueExpr, ValueExpr> {
     if types_compatible_for_expected(&value.ty(), expected_ty) {
         return Ok(value);
@@ -2746,6 +2820,7 @@ fn cast_value_to_type(value: ValueExpr, expected_ty: &Type) -> Result<ValueExpr,
     Err(value)
 }
 
+/// Type-checks helper logic for zero_value_for_type.
 fn zero_value_for_type(ty: &Type) -> Option<ValueExpr> {
     if ty == &Type::Bool {
         return Some(ValueExpr::Bool(false));
@@ -2756,6 +2831,7 @@ fn zero_value_for_type(ty: &Type) -> Option<ValueExpr> {
     })
 }
 
+/// Type-checks helper logic for infer_pointwise_value_call.
 fn infer_pointwise_value_call(
     name: &str,
     args: &[Expr],
@@ -2789,6 +2865,7 @@ fn infer_pointwise_value_call(
     )))
 }
 
+/// Type-checks helper logic for infer_lifted_value_function.
 fn infer_lifted_value_function(
     expr: &Expr,
     env: &Env<'_>,
@@ -2801,6 +2878,7 @@ fn infer_lifted_value_function(
     Ok((input, output, typed))
 }
 
+/// Type-checks helper logic for ensure_lift_param_type.
 fn ensure_lift_param_type(expr: &ValueExpr, name: &str, expected: &Type) -> Result<(), Error> {
     if let Some(actual) = lifted_param_type(expr, name)? {
         ensure_type(&actual, expected, "function parameter")?;
@@ -2808,12 +2886,14 @@ fn ensure_lift_param_type(expr: &ValueExpr, name: &str, expected: &Type) -> Resu
     Ok(())
 }
 
+/// Type-checks helper logic for lifted_param_type.
 fn lifted_param_type(expr: &ValueExpr, name: &str) -> Result<Option<Type>, Error> {
     let mut ty = None;
     collect_lifted_param_type(expr, name, &mut ty)?;
     Ok(ty)
 }
 
+/// Type-checks helper logic for collect_lifted_param_type.
 fn collect_lifted_param_type(
     expr: &ValueExpr,
     name: &str,
@@ -2912,6 +2992,7 @@ fn collect_lifted_param_type(
     Ok(())
 }
 
+/// Type-checks helper logic for neutral_kind_for_type.
 fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKind> {
     match requested {
         NeutralKind::Zero => {
@@ -2945,6 +3026,7 @@ fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKin
     }
 }
 
+/// Type-checks helper logic for parse_identity_matrix_name.
 fn parse_identity_matrix_name(name: &str) -> Option<usize> {
     if let Some(suffixes) = parse_braced_usize_suffixes(name, "I") {
         let [dimension] = suffixes.as_slice() else {
@@ -2964,6 +3046,7 @@ fn parse_identity_matrix_name(name: &str) -> Option<usize> {
         .filter(|dimension| *dimension > 0)
 }
 
+/// Type-checks helper logic for parse_matrix_basis_name.
 fn parse_matrix_basis_name(name: &str) -> Option<(usize, usize)> {
     if let Some(suffixes) = parse_braced_usize_suffixes(name, "E") {
         let [row, column] = suffixes.as_slice() else {
@@ -2985,6 +3068,7 @@ fn parse_matrix_basis_name(name: &str) -> Option<(usize, usize)> {
     None
 }
 
+/// Type-checks helper logic for parse_unit_vector_basis_name.
 fn parse_unit_vector_basis_name(name: &str) -> Option<(usize, usize)> {
     let suffixes = parse_braced_usize_suffixes(name, "e")?;
     let [dimension, index] = suffixes.as_slice() else {
@@ -2993,6 +3077,7 @@ fn parse_unit_vector_basis_name(name: &str) -> Option<(usize, usize)> {
     (*dimension > 0).then_some((*dimension, *index))
 }
 
+/// Type-checks helper logic for parse_braced_usize_suffixes.
 fn parse_braced_usize_suffixes(name: &str, prefix: &str) -> Option<Vec<usize>> {
     let mut rest = name.strip_prefix(prefix)?;
     if rest.is_empty() {
@@ -3008,6 +3093,7 @@ fn parse_braced_usize_suffixes(name: &str, prefix: &str) -> Option<Vec<usize>> {
     rest.is_empty().then_some(values)
 }
 
+/// Type-checks helper logic for infer_type_constructor_call.
 fn infer_type_constructor_call(
     name: &str,
     args: &[Expr],
@@ -3048,6 +3134,7 @@ fn infer_type_constructor_call(
     }))
 }
 
+/// Type-checks helper logic for infer_product_domain_call.
 fn infer_product_domain_call(
     callee: &Expr,
     args: &[Expr],
@@ -3110,6 +3197,7 @@ fn infer_product_domain_call(
     }
 }
 
+/// Type-checks helper logic for infer_monoid_pow_call.
 fn infer_monoid_pow_call(
     name: &str,
     args: &[Expr],
@@ -3135,10 +3223,12 @@ fn infer_monoid_pow_call(
     }))
 }
 
+/// Type-checks helper logic for is_monoid_pow_type.
 fn is_monoid_pow_type(ty: &Type) -> bool {
     is_value_type(ty) && has_category(ty, AlgebraicCategory::Mon)
 }
 
+/// Type-checks helper logic for infer_value_call.
 fn infer_value_call(
     name: &str,
     args: &[Expr],
@@ -3225,11 +3315,13 @@ fn infer_value_call(
     })
 }
 
+/// Type-checks helper logic for call_arg_cost.
 fn call_arg_cost(actual: &Type, expected: &Type, arg: &ValueExpr) -> usize {
     usize::from(!types_match(actual, expected))
         + usize::from(matches!(arg, ValueExpr::Neutral { .. }))
 }
 
+/// Type-checks helper logic for call_inputs_and_output.
 fn call_inputs_and_output(ty: &Type) -> Result<(Vec<Type>, Type), Error> {
     let (inputs, output) = flatten_func_type(ty);
     if inputs.is_empty() {
@@ -3248,6 +3340,7 @@ fn call_inputs_and_output(ty: &Type) -> Result<(Vec<Type>, Type), Error> {
     Ok((flattened, (*output).clone()))
 }
 
+/// Type-checks helper logic for types_compatible_for_expected.
 fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
     types_match(actual, expected)
         || matches!(
@@ -3264,6 +3357,7 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
         )
 }
 
+/// Type-checks helper logic for is_value_type.
 fn is_value_type(ty: &Type) -> bool {
     matches!(
         ty,
@@ -3287,6 +3381,7 @@ fn is_value_type(ty: &Type) -> bool {
     )
 }
 
+/// Type-checks helper logic for infer_int_expr.
 fn infer_int_expr(
     expr: &Expr,
     env: &Env<'_>,
@@ -3304,6 +3399,7 @@ fn infer_int_expr(
     Ok(value)
 }
 
+/// Type-checks helper logic for infer_array_literal.
 fn infer_array_literal(
     items: &[Expr],
     env: &Env<'_>,
@@ -3343,6 +3439,7 @@ fn infer_array_literal(
     })
 }
 
+/// Type-checks helper logic for infer_index_expr.
 fn infer_index_expr(
     array: &Expr,
     index: &Expr,
@@ -3367,6 +3464,7 @@ fn infer_index_expr(
     })
 }
 
+/// Type-checks helper logic for infer_array_builtin.
 fn infer_array_builtin(
     expr: &Expr,
     env: &Env<'_>,
@@ -3434,6 +3532,7 @@ fn infer_array_builtin(
     }
 }
 
+/// Type-checks helper logic for infer_tuple_value_expr.
 fn infer_tuple_value_expr(
     items: &[Expr],
     env: &Env<'_>,
@@ -3451,6 +3550,7 @@ fn infer_tuple_value_expr(
     infer_matrix_tuple(values)
 }
 
+/// Type-checks helper logic for infer_vector_literal_for_type.
 fn infer_vector_literal_for_type(
     items: &[Expr],
     expected_ty: &Type,
@@ -3485,6 +3585,7 @@ fn infer_vector_literal_for_type(
     infer_vector_tuple(values)
 }
 
+/// Type-checks helper logic for infer_matrix_literal_for_type.
 fn infer_matrix_literal_for_type(
     items: &[Expr],
     expected_ty: &Type,
@@ -3515,6 +3616,7 @@ fn infer_matrix_literal_for_type(
     })
 }
 
+/// Type-checks helper logic for infer_vector_tuple.
 fn infer_vector_tuple(values: Vec<ValueExpr>) -> Result<ValueExpr, Error> {
     match values.as_slice() {
         [x, y] => Ok(ValueExpr::Vec2(Box::new(x.clone()), Box::new(y.clone()))),
@@ -3535,6 +3637,7 @@ fn infer_vector_tuple(values: Vec<ValueExpr>) -> Result<ValueExpr, Error> {
     }
 }
 
+/// Type-checks helper logic for infer_matrix_tuple.
 fn infer_matrix_tuple(rows: Vec<ValueExpr>) -> Result<ValueExpr, Error> {
     let Some(columns) = rows.first().and_then(|row| vector_dimension(&row.ty())) else {
         return Err(Error::new(
@@ -3556,6 +3659,7 @@ fn infer_matrix_tuple(rows: Vec<ValueExpr>) -> Result<ValueExpr, Error> {
     Ok(ValueExpr::Matrix { columns, rows })
 }
 
+/// Type-checks helper logic for vector_dimension.
 fn vector_dimension(ty: &Type) -> Option<usize> {
     match ty {
         Type::Vec2 => Some(2),
@@ -3565,6 +3669,7 @@ fn vector_dimension(ty: &Type) -> Option<usize> {
     }
 }
 
+/// Type-checks helper logic for vector_type.
 fn vector_type(dimension: usize) -> Type {
     match dimension {
         2 => Type::Vec2,
@@ -3574,6 +3679,7 @@ fn vector_type(dimension: usize) -> Type {
     }
 }
 
+/// Type-checks helper logic for validate_user_type.
 fn validate_user_type(ty: &Type) -> Result<(), Error> {
     match ty {
         Type::Array(element_ty) => {
@@ -3599,6 +3705,7 @@ fn validate_user_type(ty: &Type) -> Result<(), Error> {
     }
 }
 
+/// Type-checks helper logic for is_array_element_type.
 fn is_array_element_type(ty: &Type) -> bool {
     matches!(
         ty,
@@ -3617,6 +3724,7 @@ fn is_array_element_type(ty: &Type) -> bool {
     )
 }
 
+/// Type-checks helper logic for infer_differential_builtin.
 fn infer_differential_builtin(
     expr: &Expr,
     env: &Env<'_>,
@@ -3641,6 +3749,7 @@ fn infer_differential_builtin(
     Ok(result)
 }
 
+/// Type-checks helper logic for infer_derivative_builtin.
 fn infer_derivative_builtin(
     args: &[&Expr],
     env: &Env<'_>,
@@ -3663,6 +3772,7 @@ fn infer_derivative_builtin(
     })
 }
 
+/// Type-checks helper logic for infer_partial_builtin.
 fn infer_partial_builtin(
     args: &[&Expr],
     env: &Env<'_>,
@@ -3694,6 +3804,7 @@ fn infer_partial_builtin(
     })
 }
 
+/// Type-checks helper logic for infer_differential_func_and_point.
 fn infer_differential_func_and_point(
     func_arg: &Expr,
     at_arg: Option<&Expr>,
@@ -3749,6 +3860,7 @@ fn infer_differential_func_and_point(
     }
 }
 
+/// Type-checks helper logic for derivative_dimension.
 fn derivative_dimension(ty: &Type) -> Option<usize> {
     match ty {
         Type::Float => Some(1),
@@ -3759,6 +3871,7 @@ fn derivative_dimension(ty: &Type) -> Option<usize> {
     }
 }
 
+/// Type-checks helper logic for derivative_output_type.
 fn derivative_output_type(input: &Type, output: &Type) -> Option<Type> {
     let input_dim = derivative_dimension(input)?;
     let output_dim = derivative_dimension(output)?;
@@ -3773,6 +3886,7 @@ fn derivative_output_type(input: &Type, output: &Type) -> Option<Type> {
     }
 }
 
+/// Type-checks helper logic for infer_gradient_builtin.
 fn infer_gradient_builtin(
     args: &[&Expr],
     env: &Env<'_>,
@@ -3807,6 +3921,7 @@ fn infer_gradient_builtin(
     }
 }
 
+/// Type-checks helper logic for infer_divergence_builtin.
 fn infer_divergence_builtin(
     args: &[&Expr],
     env: &Env<'_>,
@@ -3835,6 +3950,7 @@ fn infer_divergence_builtin(
     })
 }
 
+/// Type-checks helper logic for divergence_dimension.
 fn divergence_dimension(ty: &Type) -> Option<usize> {
     match ty {
         Type::Vec2 => Some(2),
@@ -3844,6 +3960,7 @@ fn divergence_dimension(ty: &Type) -> Option<usize> {
     }
 }
 
+/// Type-checks helper logic for infer_vec2_list_expr.
 fn infer_vec2_list_expr(
     expr: &Expr,
     env: &Env<'_>,
@@ -3881,6 +3998,7 @@ fn infer_vec2_list_expr(
     Ok(points)
 }
 
+/// Type-checks helper logic for pack_single_vector_field_args.
 fn pack_single_vector_field_args(
     primitive: &PrimitiveDef,
     values: &[Expr],
@@ -3915,6 +4033,7 @@ fn pack_single_vector_field_args(
     )]))
 }
 
+/// Type-checks helper logic for infer_composed_value_expr.
 fn infer_composed_value_expr(
     left: &Expr,
     right: &Expr,
@@ -3947,6 +4066,7 @@ fn infer_composed_value_expr(
     ))
 }
 
+/// Type-checks helper logic for infer_function_product_value_expr.
 fn infer_function_product_value_expr(
     left: &Expr,
     right: &Expr,
@@ -3971,6 +4091,7 @@ fn infer_function_product_value_expr(
     Ok(apply_function_expr(&product, arg))
 }
 
+/// Type-checks helper logic for infer_function_expr.
 fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error> {
     let candidates = infer_function_expr_candidates(expr, env)?;
     if candidates.len() == 1 {
@@ -3982,6 +4103,7 @@ fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error
     )))
 }
 
+/// Type-checks helper logic for infer_function_expr_for_type.
 fn infer_function_expr_for_type(
     expr: &Expr,
     env: &Env<'_>,
@@ -4048,6 +4170,7 @@ fn infer_function_expr_for_type(
     )))
 }
 
+/// Type-checks helper logic for infer_function_expr_candidates.
 fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<FunctionExpr>, Error> {
     match expr {
         Expr::Operator(op) => infer_operator_function_expr_candidates(*op),
@@ -4137,7 +4260,7 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                 kind: FunctionExprKind::ObjectGetter {
                     object: object_name.clone(),
                     getter,
-                    captures: env.scene_input_values(),
+                    captures: Vec::new(),
                 },
             }])
         }
@@ -4203,6 +4326,7 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
     }
 }
 
+/// Type-checks helper logic for infer_operator_function_expr_for_type.
 fn infer_operator_function_expr_for_type(
     op: BinOp,
     expected_input: &Type,
@@ -4227,6 +4351,7 @@ fn infer_operator_function_expr_for_type(
     })
 }
 
+/// Type-checks helper logic for infer_operator_function_expr_candidates.
 fn infer_operator_function_expr_candidates(op: BinOp) -> Result<Vec<FunctionExpr>, Error> {
     let mut candidates: Vec<FunctionExpr> = Vec::new();
     let types = operator_candidate_types();
@@ -4251,10 +4376,12 @@ fn infer_operator_function_expr_candidates(op: BinOp) -> Result<Vec<FunctionExpr
     Ok(candidates)
 }
 
+/// Type-checks helper logic for operator_candidate_input_type.
 fn operator_candidate_input_type(left: &Type, right: &Type) -> Type {
     Type::Product(vec![left.clone(), right.clone()])
 }
 
+/// Type-checks helper logic for operator_input_types.
 fn operator_input_types(input: &Type) -> Option<[Type; 2]> {
     match input {
         Type::Vec2 => Some([Type::Float, Type::Float]),
@@ -4263,6 +4390,7 @@ fn operator_input_types(input: &Type) -> Option<[Type; 2]> {
     }
 }
 
+/// Type-checks helper logic for operator_candidate_types.
 fn operator_candidate_types() -> Vec<Type> {
     let mut types = float_gen_types();
     types.extend([
@@ -4277,6 +4405,7 @@ fn operator_candidate_types() -> Vec<Type> {
     types
 }
 
+/// Type-checks helper logic for infer_pointwise_binary_function_candidates.
 fn infer_pointwise_binary_function_candidates(
     op: BinOp,
     left: &Expr,
@@ -4322,6 +4451,7 @@ fn infer_pointwise_binary_function_candidates(
     Ok(candidates)
 }
 
+/// Type-checks helper logic for infer_conditional_function_candidates.
 fn infer_conditional_function_candidates(
     condition: &Expr,
     then_branch: &Expr,
@@ -4382,6 +4512,7 @@ fn infer_conditional_function_candidates(
     Ok(candidates)
 }
 
+/// Type-checks helper logic for infer_pointwise_arg_candidates_for_expected.
 fn infer_pointwise_arg_candidates_for_expected(
     expr: &Expr,
     expected_ty: &Type,
@@ -4416,6 +4547,7 @@ fn infer_pointwise_arg_candidates_for_expected(
     candidates
 }
 
+/// Type-checks helper logic for merge_pointwise_domain.
 fn merge_pointwise_domain(target: &mut Option<Type>, domain: Option<&Type>) -> bool {
     let Some(domain) = domain else {
         return true;
@@ -4437,6 +4569,7 @@ struct PointwiseBinaryArgCandidate {
     lifted: bool,
 }
 
+/// Type-checks helper logic for infer_pointwise_binary_arg_candidates.
 fn infer_pointwise_binary_arg_candidates(
     expr: &Expr,
     env: &Env<'_>,
@@ -4464,6 +4597,7 @@ fn infer_pointwise_binary_arg_candidates(
     candidates
 }
 
+/// Type-checks helper logic for infer_pointwise_call_function_candidates.
 fn infer_pointwise_call_function_candidates(
     name: &str,
     args: &[Expr],
@@ -4538,6 +4672,7 @@ fn infer_pointwise_call_function_candidates(
     Ok(candidates)
 }
 
+/// Type-checks helper logic for infer_pointwise_call_function_arg.
 fn infer_pointwise_call_function_arg(
     arg: &Expr,
     expected_output: &Type,
@@ -4560,10 +4695,12 @@ fn infer_pointwise_call_function_arg(
     }
 }
 
+/// Type-checks helper logic for can_cast_function_output_to_expected.
 fn can_cast_function_output_to_expected(output: &Type, expected: &Type) -> bool {
     output == &Type::Bool && matches!(expected, Type::Float | Type::Int)
 }
 
+/// Type-checks helper logic for infer_same_domain_function_product_candidates.
 fn infer_same_domain_function_product_candidates(
     items: &[Expr],
     env: &Env<'_>,
@@ -4592,6 +4729,7 @@ fn infer_same_domain_function_product_candidates(
     }])
 }
 
+/// Type-checks helper logic for infer_tensor_function_product_candidates.
 fn infer_tensor_function_product_candidates(
     left: &Expr,
     right: &Expr,
@@ -4608,11 +4746,13 @@ fn infer_tensor_function_product_candidates(
     }])
 }
 
+/// Type-checks helper logic for infer_tensor_product_part.
 fn infer_tensor_product_part(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error> {
     infer_function_expr(expr, env)
         .or_else(|_| infer_function_expr_for_type(expr, env, &Type::Float, &Type::Float))
 }
 
+/// Type-checks helper logic for scalar_product_output.
 fn scalar_product_output<'a>(parts: impl Iterator<Item = &'a Type>) -> Result<Type, Error> {
     let parts = parts.cloned().collect::<Vec<_>>();
     let scalar_count = parts
@@ -4632,6 +4772,7 @@ fn scalar_product_output<'a>(parts: impl Iterator<Item = &'a Type>) -> Result<Ty
     Ok(Type::Product(parts))
 }
 
+/// Type-checks helper logic for scalar_product_part_len.
 fn scalar_product_part_len(ty: &Type) -> Option<usize> {
     match ty {
         Type::Float => Some(1),
@@ -4640,6 +4781,7 @@ fn scalar_product_part_len(ty: &Type) -> Option<usize> {
     }
 }
 
+/// Type-checks helper logic for normalize_scalar_product_type.
 fn normalize_scalar_product_type(ty: &Type) -> Type {
     match ty {
         Type::Product(parts) if parts.iter().all(|part| part == &Type::Float) => {
@@ -4654,6 +4796,7 @@ fn normalize_scalar_product_type(ty: &Type) -> Type {
     }
 }
 
+/// Type-checks helper logic for types_equivalent.
 fn types_equivalent(left: &Type, right: &Type) -> bool {
     types_match(
         &normalize_scalar_product_type(left),
@@ -4661,6 +4804,7 @@ fn types_equivalent(left: &Type, right: &Type) -> bool {
     )
 }
 
+/// Type-checks helper logic for format_function_expr.
 fn format_function_expr(expr: &Expr) -> String {
     match expr {
         Expr::Ident(name) => name.clone(),
@@ -4677,6 +4821,7 @@ fn format_function_expr(expr: &Expr) -> String {
     }
 }
 
+/// Type-checks helper logic for infer_identifier_value.
 fn infer_identifier_value(
     name: &str,
     env: &Env<'_>,
@@ -4707,7 +4852,9 @@ fn infer_identifier_value(
                 name
             )));
         }
-        let param_name = lift_param.unwrap().to_string();
+        let param_name = lift_param
+            .expect("validated lift parameter presence")
+            .to_string();
         let overloads = env
             .function_overloads(name)
             .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
@@ -4772,7 +4919,9 @@ fn infer_identifier_value(
                     name
                 )));
             }
-            let param_name = lift_param.unwrap().to_string();
+            let param_name = lift_param
+                .expect("validated lift parameter presence")
+                .to_string();
             Ok(ValueExpr::Call {
                 func: name.to_string(),
                 args: vec![ValueExpr::Var {
@@ -4790,6 +4939,7 @@ fn infer_identifier_value(
     }
 }
 
+/// Type-checks helper logic for infer_rot_builtin.
 fn infer_rot_builtin(
     callee: &Expr,
     args: &[Expr],
@@ -4830,6 +4980,7 @@ fn infer_rot_builtin(
     }))
 }
 
+/// Type-checks helper logic for infer_complex_overload_call.
 fn infer_complex_overload_call(
     name: &str,
     args: &[Expr],
@@ -4853,6 +5004,7 @@ fn infer_complex_overload_call(
     }))
 }
 
+/// Type-checks helper logic for infer_binary_type.
 fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error> {
     if left == right && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div) {
         let category = match op {
@@ -4931,14 +5083,17 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
     )))
 }
 
+/// Type-checks helper logic for is_equality_comparable_type.
 fn is_equality_comparable_type(ty: &Type) -> bool {
     matches!(ty, Type::Bool | Type::Float | Type::Int)
 }
 
+/// Type-checks helper logic for is_ordered_comparable_type.
 fn is_ordered_comparable_type(ty: &Type) -> bool {
     matches!(ty, Type::Float | Type::Int)
 }
 
+/// Type-checks helper logic for bool_numeric_cast_type_for_binary.
 fn bool_numeric_cast_type_for_binary(other: &Type) -> Option<Type> {
     if other == &Type::Int {
         Some(Type::Int)
@@ -4952,6 +5107,7 @@ fn bool_numeric_cast_type_for_binary(other: &Type) -> Option<Type> {
     }
 }
 
+/// Type-checks helper logic for try_int_literal_cast_value.
 fn try_int_literal_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
     if expected_ty != &Type::Int {
         return None;
@@ -4967,6 +5123,7 @@ fn try_int_literal_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<V
     }
 }
 
+/// Type-checks helper logic for try_bool_to_number_cast_value.
 fn try_bool_to_number_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
     if !matches!(expected_ty, Type::Float | Type::Int) || value.ty() != Type::Bool {
         return None;
@@ -4977,6 +5134,7 @@ fn try_bool_to_number_cast_value(value: &ValueExpr, expected_ty: &Type) -> Optio
     })
 }
 
+/// Type-checks helper logic for try_neutral_cast_value.
 fn try_neutral_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
     let kind = match value {
         ValueExpr::Float(value) if (*value - 0.0).abs() < f64::EPSILON => NeutralKind::Zero,
@@ -4990,6 +5148,7 @@ fn try_neutral_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<Value
     })
 }
 
+/// Type-checks helper logic for zero_vec2.
 fn zero_vec2() -> ValueExpr {
     ValueExpr::Vec2(
         Box::new(ValueExpr::Float(0.0)),
@@ -4997,6 +5156,7 @@ fn zero_vec2() -> ValueExpr {
     )
 }
 
+/// Type-checks helper logic for zero_vec3.
 fn zero_vec3() -> ValueExpr {
     ValueExpr::Vec3(
         Box::new(ValueExpr::Float(0.0)),
@@ -5005,6 +5165,7 @@ fn zero_vec3() -> ValueExpr {
     )
 }
 
+/// Type-checks helper logic for ambient_vector_type.
 fn ambient_vector_type(dimension: ShapeDimension) -> Type {
     match dimension {
         ShapeDimension::D2 => Type::Vec2,
@@ -5012,6 +5173,7 @@ fn ambient_vector_type(dimension: ShapeDimension) -> Type {
     }
 }
 
+/// Type-checks helper logic for ambient_identity_matrix.
 fn ambient_identity_matrix(dimension: ShapeDimension) -> ValueExpr {
     match dimension {
         ShapeDimension::D2 => identity_mat2(),
@@ -5019,6 +5181,7 @@ fn ambient_identity_matrix(dimension: ShapeDimension) -> ValueExpr {
     }
 }
 
+/// Type-checks helper logic for identity_mat2.
 fn identity_mat2() -> ValueExpr {
     ValueExpr::Matrix {
         columns: 2,
@@ -5035,6 +5198,7 @@ fn identity_mat2() -> ValueExpr {
     }
 }
 
+/// Type-checks helper logic for unit_z_vec3.
 fn unit_z_vec3() -> ValueExpr {
     ValueExpr::Vec3(
         Box::new(ValueExpr::Float(0.0)),
@@ -5043,6 +5207,7 @@ fn unit_z_vec3() -> ValueExpr {
     )
 }
 
+/// Type-checks helper logic for identity_mat3.
 fn identity_mat3() -> ValueExpr {
     ValueExpr::Matrix {
         columns: 3,

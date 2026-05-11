@@ -1,6 +1,6 @@
 (comment) @comment
 (number) @number
-(string_content) @string
+(string) @string
 
 (directive_token) @directive
 
@@ -19,12 +19,16 @@
 (generic_type
   name: (identifier) @typeParameter)
 
-(name_template_slot
-  name: (template_slot_content) @typeParameter)
 
 (category_identifier) @category
 
 (type_identifier) @type
+
+(provided_category_declaration
+  name: (identifier) @type)
+
+(provided_category_declaration
+  name: (identifier) @type)
 
 (unit_type) @type
 
@@ -47,7 +51,6 @@
   type: [
     (end_type)
     (hom_type)
-    (array_type)
   ]
   name: (identifier) @function.declaration)
 
@@ -68,13 +71,10 @@
 (closure_expression
   parameter: (identifier) @parameter.declaration)
 
-(closure_parameter_list
-  parameter: (identifier) @parameter.declaration)
-
 (hom_type
   ["Hom" "Func"] @functor)
 
-(function_arrow_type
+(arrow_function_declaration
   "->" @functor)
 
 [(end_type "End") (array_type "Array")] @functor

@@ -8,6 +8,7 @@ const Set RaytraceConfig<max_steps, hit_threshold, max_travel> = Z x R x R
 const Set RaycolorConfig<max_bounces, ray_bias, throughput_threshold> = Z x R x R
 
 const RaytraceConfig default_raytrace_config = RaytraceConfig(128, 0.0005, 100)
+
 const RaycolorConfig default_raycolor_config = RaycolorConfig(6, 0.001, 0.001)
 
 const Hom(Hit, R3) hit_position = hit |-> hit.position
@@ -43,7 +44,8 @@ vec3 _miss = _origin + _dir * _travel;
 return Hit(_miss, vec3(0.0f, 1.0f, 0.0f), _travel, false);
 "
 
-const Hom(RaycolorConfig × R3 × Hom(Ray, Hit) × Hom(Hit, R3) × Hom(Hit, R3) × Hom(Hit, R), Hom(Ray, R3)) raycolor_from_hit_with = (config, ambientColor, hit_at, color_at, emission_at, reflectiveness_at) |-> "
+const Hom(RaycolorConfig × R3 × Hom(Ray, Hit) × Hom(Hit, R3) × Hom(Hit, R3) × Hom(Hit, R), Hom(Ray, R3)) raycolor_from_hit_with =
+    (config, ambientColor, hit_at, color_at, emission_at, reflectiveness_at) |-> "
 Ray _ray = Ray(_t.origin, normalize(_t.dir));
 vec3 _radiance = vec3(0.0f);
 vec3 _throughput = vec3(1.0f);

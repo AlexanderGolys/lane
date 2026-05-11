@@ -366,11 +366,6 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        if line.starts_with("generate ") || line.starts_with("gen ") {
-            return Err(Error::new(
-                "generate declarations have been removed; use 'const Object name = value'",
-            ));
-        }
 
         let is_construct = line.starts_with("construct ");
         let is_const = line.starts_with("const ");
