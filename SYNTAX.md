@@ -149,10 +149,11 @@ The current unary inverse operator is written `~`. For values, `~a` requires
 functions, `~f` is interpreted pointwise in the codomain when a function type is
 expected.
 
-Function products are also semantic, not just tuple syntax:
+Function products are also semantic. Use brackets for vector-valued functions
+and parentheses for structural product-valued functions:
 
 ```lane
-Hom(R, R2) circle = (sin, cos)
+Hom(R, R2) circle = [sin, cos]
 Hom(R, R x R) pair = (sin, cos)
 ```
 

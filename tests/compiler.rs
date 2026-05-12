@@ -624,7 +624,7 @@ fn supports_multiple_provided_function_values_on_one_line() {
 
 #[test]
 fn supports_function_declarations_with_comma_types_and_tuple_bodies() {
-    let source = "provided Hom(R, R) f\nprovided Hom(R, R) g\nHom(R, R2) pair = (f, g)\nconst Object output = Ball3D(r=pair(1).x)\n";
+    let source = "provided Hom(R, R) f\nprovided Hom(R, R) g\nHom(R, R2) pair = [f, g]\nconst Object output = Ball3D(r=pair(1).x)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 pair(float _t)"));
@@ -833,7 +833,7 @@ fn emits_support_for_custom_complex_functions() {
 
 #[test]
 fn supports_same_domain_function_products() {
-    let source = "provided Hom(R2, R) f\nprovided Hom(R2, R) g\nHom(R2, R2) h = (f, g)\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
+    let source = "provided Hom(R2, R) f\nprovided Hom(R2, R) g\nHom(R2, R2) h = [f, g]\nprovided R2 uv\nconst Object output = Ball3D(r=length(h(uv)))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 h(vec2 _t)"));
@@ -949,7 +949,7 @@ fn emits_functions_and_object_helpers_in_source_order() {
 
 #[test]
 fn typed_declarations_can_reference_inferred_bindings() {
-    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin * 2, cos * 2)\nconst ball = Ball2D(r=1.2) + center(time)\nblend = (max(rect.sdf, 0.01) * color2 + max(ball.sdf, 0.01) * color1) / (max(rect.sdf, 0.01) + max(ball.sdf, 0.01))\nconst scene = union(rect, ball)\nconst Hom(R2, R4) color = blend * (scene.sdf > 0)\n";
+    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = [sin * 2, cos * 2]\nconst ball = Ball2D(r=1.2) + center(time)\nblend = (max(rect.sdf, 0.01) * color2 + max(ball.sdf, 0.01) * color1) / (max(rect.sdf, 0.01) + max(ball.sdf, 0.01))\nconst scene = union(rect, ball)\nconst Hom(R2, R4) color = blend * (scene.sdf > 0)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec4 blend(vec2 _t)"));
@@ -1886,7 +1886,7 @@ fn const_value_and_function_declarations_emit_even_when_unused() {
 
 #[test]
 fn const_value_expressions_lift_object_getters_over_points() {
-    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\nconst color = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
+    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = [sin*2, cos*2]\nconst ball = Ball2D(r=1.2) + center(time)\nconst color = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec4 color(vec2 _t) {"));
@@ -1897,7 +1897,7 @@ fn const_value_expressions_lift_object_getters_over_points() {
 
 #[test]
 fn omits_non_const_functions_not_used_by_const_outputs() {
-    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = (sin*2, cos*2)\nconst ball = Ball2D(r=1.2) + center(time)\ncolor = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
+    let source = "#2D\nprovided R time\ncolor1 = (.5, .5, .9, 1)\ncolor2 = (.9, .5, .5, 1)\nconst rect = Box2D(a=1, b=2)\nHom(R, R2) center = [sin*2, cos*2]\nconst ball = Ball2D(r=1.2) + center(time)\ncolor = (rect.sdf*color1 + ball.sdf*color2)/(rect.sdf + ball.sdf + 1e-3)\nconst scene = union(rect, ball)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("vec2 center(float _t)"));

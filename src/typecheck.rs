@@ -4131,6 +4131,23 @@ fn infer_function_expr_for_type(
     if let Expr::Operator(op) = expr {
         return infer_operator_function_expr_for_type(*op, expected_input, expected_output);
     }
+    if let Expr::Array(items) = expr {
+        if let Some(count) = vector_dimension(expected_output) {
+            if count == items.len() {
+                let funcs = items
+                    .iter()
+                    .map(|item| {
+                        infer_function_expr_for_type(item, env, expected_input, &Type::Float)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                return Ok(FunctionExpr {
+                    input: expected_input.clone(),
+                    output: expected_output.clone(),
+                    kind: FunctionExprKind::ProductSameDomain(funcs),
+                });
+            }
+        }
+    }
     if let Expr::Tuple(items) = expr {
         if let Some(count) = vector_dimension(expected_output) {
             if count == items.len() {
@@ -4336,6 +4353,7 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             else_branch.as_deref(),
             env,
         ),
+        Expr::Array(items) => infer_same_domain_vector_function_candidates(items, env),
         Expr::Binary { op, left, right } => {
             infer_pointwise_binary_function_candidates(*op, left, right, env)
         }
@@ -4778,6 +4796,34 @@ fn infer_same_domain_function_product_candidates(
     Ok(vec![FunctionExpr {
         input: normalize_scalar_product_type(&input),
         output,
+        kind: FunctionExprKind::ProductSameDomain(funcs),
+    }])
+}
+
+/// Type-checks helper logic for infer_same_domain_vector_function_candidates.
+fn infer_same_domain_vector_function_candidates(
+    items: &[Expr],
+    env: &Env<'_>,
+) -> Result<Vec<FunctionExpr>, Error> {
+    if !(2..=4).contains(&items.len()) {
+        return Err(Error::new("function vectors support two to four functions"));
+    }
+    let funcs = items
+        .iter()
+        .map(|item| infer_function_expr(item, env))
+        .collect::<Result<Vec<_>, _>>()?;
+    let input = funcs[0].input.clone();
+    if funcs
+        .iter()
+        .any(|func| !types_equivalent(&func.input, &input) || func.output != Type::Float)
+    {
+        return Err(Error::new(
+            "function vector entries must have equivalent domains and scalar codomains",
+        ));
+    }
+    Ok(vec![FunctionExpr {
+        input: normalize_scalar_product_type(&input),
+        output: vector_type(items.len()),
         kind: FunctionExprKind::ProductSameDomain(funcs),
     }])
 }

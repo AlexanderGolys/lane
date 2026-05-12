@@ -519,7 +519,7 @@ Function type.
 
 ```lane
 Func(R, R) pulse = sin
-Func(R, R3) path = (sin, cos, 0)
+Func(R, R3) path = [sin, cos, 0]
 ```
 
 User-defined function bodies support value inputs such as `R`, `R2`, and `R3`.
@@ -897,7 +897,7 @@ must match as written: `Hom(R2, R)` and `Hom(R x R, R)` are different
 signatures.
 
 ```lane
-Hom(R, R2) circle = (sin, cos)
+Hom(R, R2) circle = [sin, cos]
 R2 p = circle(time)
 ```
 
