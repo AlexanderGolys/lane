@@ -57,6 +57,8 @@ R4
 Mat2
 Mat3
 Mat4
+Mat{n}
+Mat{n}x{m}
 Object
 Object2D
 ```
