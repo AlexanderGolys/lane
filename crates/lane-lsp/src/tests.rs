@@ -29,6 +29,7 @@ fn completes_new_language_surface() {
     assert!(labels.iter().any(|label| label == "#import"));
     assert!(labels.iter().any(|label| label == "raytracing"));
     assert!(labels.iter().any(|label| label == "Ball3D"));
+    assert!(labels.iter().any(|label| label == "Mat{n}"));
     assert!(labels.iter().any(|label| label == "Mat{n}x{m}"));
     assert!(!labels.iter().any(|label| label == "R{n}"));
 }

@@ -159,6 +159,11 @@ pub fn lane_completion_items() -> Vec<LaneCompletionItem> {
             LaneCompletionKind::Type,
         ),
         (
+            "Mat{n}",
+            "generic square real matrix type",
+            LaneCompletionKind::Type,
+        ),
+        (
             "E{n}{m}",
             "generic matrix basis element",
             LaneCompletionKind::Constant,
@@ -222,7 +227,9 @@ pub fn lane_hover_for_word(word: &str) -> Option<String> {
         "R" => {
             Some("R is the real scalar type; R{n} denotes generic real vector spaces.".to_string())
         }
-        "Mat" => Some("Mat{n}x{m} denotes generic real matrix types.".to_string()),
+        "Mat" => {
+            Some("Mat{n} denotes generic square matrices; Mat{n}x{m} denotes generic rectangular matrix types.".to_string())
+        }
         "E" => Some("E{n}{m} denotes generic matrix basis elements.".to_string()),
         _ => None,
     }
@@ -2239,6 +2246,9 @@ impl Type {
             Self::Generic(name) => return format!("{{{name}}}"),
             Self::VecGeneric(dim) => return format!("R{{{}}}", format_generic_dim(dim)),
             Self::MatGeneric(rows, columns) => {
+                if rows == columns {
+                    return format!("Mat{{{}}}", format_generic_dim(rows));
+                }
                 return format!(
                     "Mat{{{}}}x{{{}}}",
                     format_generic_dim(rows),
@@ -2283,6 +2293,7 @@ fn parse_generic_type_name(name: &str) -> Option<Type> {
     }
     if let Some(inner) = name.strip_prefix("Mat") {
         if let Some(square) = parse_braced_generic_dim(inner) {
+            let square = ensure_matrix_generic_dim(square)?;
             return Some(matrix_type_for_generic_dims(square.clone(), square));
         }
         let (rows, columns) = split_matrix_generic_dims(inner)?;
@@ -2321,13 +2332,23 @@ fn parse_matrix_dimension(source: &str) -> Option<usize> {
     source
         .parse::<usize>()
         .ok()
-        .filter(|dimension| *dimension > 0)
+        .filter(|dimension| *dimension > 1)
 }
 
 fn parse_generic_dim(source: &str) -> Option<GenericDim> {
-    parse_matrix_dimension(source)
+    source
+        .parse::<usize>()
+        .ok()
+        .filter(|dimension| *dimension > 0)
         .map(GenericDim::Known)
         .or_else(|| parse_generic_name(source).map(GenericDim::Var))
+}
+
+fn ensure_matrix_generic_dim(dim: GenericDim) -> Option<GenericDim> {
+    match dim {
+        GenericDim::Known(value) if value <= 1 => None,
+        _ => Some(dim),
+    }
 }
 
 fn parse_generic_name(source: &str) -> Option<String> {
@@ -2348,8 +2369,10 @@ fn parse_braced_generic_dim(source: &str) -> Option<GenericDim> {
 
 fn split_matrix_generic_dims(source: &str) -> Option<(GenericDim, GenericDim)> {
     let rows_end = source.strip_prefix('{')?.find('}')? + 1;
-    let rows = parse_braced_generic_dim(&source[..=rows_end])?;
-    let columns = parse_braced_generic_dim(source[rows_end + 1..].strip_prefix('x')?)?;
+    let rows = ensure_matrix_generic_dim(parse_braced_generic_dim(&source[..=rows_end])?)?;
+    let columns = ensure_matrix_generic_dim(parse_braced_generic_dim(
+        source[rows_end + 1..].strip_prefix('x')?,
+    )?)?;
     Some((rows, columns))
 }
 
@@ -3488,13 +3511,13 @@ fn compact_overload_set(overloads: &[Type]) -> Option<String> {
     take_pattern(
         &mut remaining,
         &square_matrix_to_float_overloads(),
-        "Hom(Mat{n}x{n}, R)",
+        "Hom(Mat{n}, R)",
         &mut parts,
     );
     take_pattern(
         &mut remaining,
         &square_matrix_overloads(),
-        "Hom(Mat{n}x{n}, Mat{n}x{n})",
+        "Hom(Mat{n}, Mat{n})",
         &mut parts,
     );
 

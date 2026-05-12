@@ -468,6 +468,8 @@ fn looks_up_builtin_object_detail() {
     assert!(clamp.ty.contains("Hom(Rn × Rn × Rn, Rn)"));
     assert!(clamp.ty.contains("Hom(Rn × R × R, Rn)"));
     assert_eq!(clamp.body, "");
+    let determinant = known_builtin_object("determinant").unwrap();
+    assert_eq!(determinant.ty, "Hom(Mat{n}, R)");
 }
 
 #[test]
@@ -673,6 +675,14 @@ fn supports_generic_matrix_dimensions() {
 }
 
 #[test]
+fn supports_generic_square_matrix_dimensions() {
+    let source = "provided Hom(Mat{n}, R) trace_generic\nprovided Hom(Mat{2}, R) measure2\nprovided Mat3 a\nprovided Mat2 b\nR radius = trace_generic(a) + measure2(b)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = (trace_generic(a) + measure2(b));"));
+}
+
+#[test]
 fn supports_matrix_identity_and_basis_literals() {
     let source = "Mat3 eye = I{3}\nMat3 also_eye = eye{3}\nMat3 axis = E{1}{3}\nMat3 alias = E13\nR3 unit = e{3}{2}\nconst Object output = Ball3D(r=determinant(eye + also_eye + axis + alias) + length(unit))\n";
     let glsl = compile_program(source).unwrap();
@@ -704,10 +714,19 @@ fn supports_delimited_double_digit_matrix_basis_names() {
 
 #[test]
 fn rejects_inconsistent_generic_matrix_dimensions() {
-    let source = "provided Hom(Mat{n}x{n}, R) trace_generic\nprovided Mat2x3 a\nR radius = trace_generic(a)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided Hom(Mat{n}, R) trace_generic\nprovided Mat2x3 a\nR radius = trace_generic(a)\nconst Object output = Ball3D(r=radius)\n";
     let error = compile_program(source).unwrap_err().to_string();
 
     assert!(error.contains("no overload of 'trace_generic' matches provided argument(s)"));
+}
+
+#[test]
+fn rejects_matrix_dimension_one_types() {
+    let error = compile_program("provided Mat{1} a\nconst Object output = Ball3D(r=1)\n")
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("unsupported type 'Mat{1}'"));
 }
 
 #[test]

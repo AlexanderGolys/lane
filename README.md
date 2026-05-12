@@ -139,8 +139,9 @@ Usage:
 - `lane list all` lists every builtin item on one line, including primitive
   constructors, GLSL functions, type aliases, object operators, and algebraic
   categories. Repeated scalar/vector overload families are compacted with `Rn`,
-  matrix families use `Mat{n}x{m}`, and algebraic helper operations such as
-  component-wise matrix multiplication are omitted from this broad list.
+  square matrix families use `Mat{n}`, rectangular matrix families use
+  `Mat{n}x{m}`, and algebraic helper operations such as component-wise matrix
+  multiplication are omitted from this broad list.
 - `lane -pc SHELL` prints completion code for `bash`, `zsh`, or `fish`.
 - `lane help` is treated as an input path. Use `lane -h` or `lane --help`.
 - CLI failures are printed on stderr with an error type prefix such as
@@ -925,10 +926,12 @@ R x = xs[1]
 
 Lane pre-registers GLSL math builtins whose signatures fit Lane's current value
 types: `Bool`, `R`, `Z`, `R2`, `R3`, `R4`, and generic matrix families such as
-`Mat{n}x{m}`. Calls emit as direct GLSL calls and do not add support bodies.
+`Mat{n}` and `Mat{n}x{m}`. Calls emit as direct GLSL calls and do not add
+support bodies.
 `lane list all` prints complete scalar/vector families compactly, for example
 `Hom(Rn, Rn)` for functions available on `R`, `R2`, `R3`, and `R4`, and
-`transpose` as `Hom(Mat{n}x{m}, Mat{m}x{n})`.
+`transpose` as `Hom(Mat{n}x{m}, Mat{m}x{n})`; square-matrix-only helpers use
+`Mat{n}`.
 
 ```lane
 provided Mat3 frame

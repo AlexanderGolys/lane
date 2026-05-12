@@ -90,6 +90,7 @@ Current generic placeholders are supported in limited places:
 ```lane
 {X}
 R{n}
+Mat{n}
 Mat{n}x{m}
 ```
 

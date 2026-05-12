@@ -208,6 +208,7 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("reflect: Hom(Rn × Rn, Rn)"));
     assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
+    assert!(stdout.contains("determinant: Hom(Mat{n}, R)"));
     assert!(!stdout.contains("sdf0_Ball3D"));
 }
 
@@ -248,6 +249,7 @@ fn lists_all_builtin_items_from_command() {
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("min: Hom(Rn × Rn, Rn) | Hom(Rn × R, Rn) | Hom(R × Rn, Rn)"));
     assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
+    assert!(stdout.contains("inverse: Hom(Mat{n}, Mat{n})"));
     assert!(stdout.contains("union: Hom(Object × Object, Object)"));
     assert!(!stdout.contains("matrixCompMult:"));
     assert!(!stdout.contains("sdf0_Ball3D"));
@@ -280,6 +282,7 @@ fn lists_all_builtin_items_from_short_flag() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Ball3D: {r: R}"));
     assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
+    assert!(stdout.contains("determinant: Hom(Mat{n}, R)"));
 }
 
 #[test]
