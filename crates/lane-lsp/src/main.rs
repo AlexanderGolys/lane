@@ -11,10 +11,11 @@ use tower_lsp::lsp_types::{
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams, DocumentLink,
     DocumentLinkOptions, DocumentLinkParams, DocumentSymbolParams, DocumentSymbolResponse, Hover,
     HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, MarkedString, MessageType, OneOf, Position, Range,
-    SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url,
+    InitializedParams, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel,
+    Position, Range, SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
+    SignatureHelpParams, SignatureInformation, TextDocumentContentChangeEvent,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -36,6 +37,12 @@ impl DocumentStore {
 struct Backend {
     client: Client,
     documents: Arc<DocumentStore>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CallContext {
+    name: String,
+    active_parameter: u32,
 }
 
 impl Backend {
@@ -95,6 +102,26 @@ impl Backend {
             .collect()
     }
 
+    fn signature_help_for_context(context: &CallContext) -> Option<SignatureHelp> {
+        let signature = signature_for_name(&context.name)?;
+        Some(SignatureHelp {
+            signatures: vec![signature],
+            active_signature: Some(0),
+            active_parameter: Some(context.active_parameter),
+        })
+    }
+
+    fn call_context_at_position(text: &str, position: Position) -> Option<CallContext> {
+        let offset = byte_offset_for_position(text, position)?;
+        let prefix = &text[..offset];
+        let open = innermost_open_paren(prefix)?;
+        let name = call_name_before(prefix, open)?;
+        Some(CallContext {
+            name,
+            active_parameter: active_parameter_index(&prefix[open + 1..]),
+        })
+    }
+
     fn word_at_position(text: &str, position: Position) -> Option<String> {
         let line = text.lines().nth(position.line as usize)?;
         let chars = line.chars().collect::<Vec<_>>();
@@ -127,6 +154,201 @@ fn is_word_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_'
 }
 
+fn byte_offset_for_position(text: &str, position: Position) -> Option<usize> {
+    let mut offset = 0;
+    for (line_index, line) in text.split_inclusive('\n').enumerate() {
+        let line_text = line.strip_suffix('\n').unwrap_or(line);
+        if line_index == position.line as usize {
+            return Some(
+                offset + byte_offset_for_character(line_text, position.character as usize),
+            );
+        }
+        offset += line.len();
+    }
+    if position.line as usize == text.lines().count() {
+        return Some(text.len());
+    }
+    None
+}
+
+fn byte_offset_for_character(line: &str, character: usize) -> usize {
+    let mut utf16_units = 0;
+    for (index, ch) in line.char_indices() {
+        if utf16_units >= character {
+            return index;
+        }
+        utf16_units += ch.len_utf16();
+    }
+    line.len()
+}
+
+fn innermost_open_paren(prefix: &str) -> Option<usize> {
+    let mut stack = Vec::new();
+    for (index, ch) in prefix.char_indices() {
+        match ch {
+            '(' => stack.push(index),
+            ')' => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    stack.pop()
+}
+
+fn call_name_before(prefix: &str, open_paren: usize) -> Option<String> {
+    let before = prefix[..open_paren].trim_end();
+    let end = before.len();
+    let start = before[..end]
+        .char_indices()
+        .rev()
+        .find_map(|(index, ch)| (!is_word_char(ch)).then_some(index + ch.len_utf8()))
+        .unwrap_or(0);
+    (start < end).then(|| before[start..end].to_string())
+}
+
+fn active_parameter_index(source: &str) -> u32 {
+    let mut active = 0;
+    let mut depth = 0u32;
+    for ch in source.chars() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' if depth > 0 => depth -= 1,
+            ',' if depth == 0 => active += 1,
+            _ => {}
+        }
+    }
+    active
+}
+
+fn signature_for_name(name: &str) -> Option<SignatureInformation> {
+    if let Some(primitive) = lane::known_primitive(name) {
+        let params = primitive
+            .fields
+            .into_iter()
+            .map(|field| format!("{}: {}", field.name, field.domain))
+            .collect::<Vec<_>>();
+        return Some(signature_information(
+            format!("{}({})", primitive.name, params.join(", ")),
+            params,
+            Some(format!(
+                "{} primitive constructor",
+                primitive.dimension.label()
+            )),
+        ));
+    }
+
+    let object = lane::known_builtin_object(name)?;
+    if object.kind != lane::KnownBuiltinObjectKind::Function {
+        return None;
+    }
+    signature_from_function_type(&object.name, &object.ty)
+}
+
+fn signature_from_function_type(name: &str, ty: &str) -> Option<SignatureInformation> {
+    let (domain, codomain) = hom_domain_and_codomain(ty)?;
+    let params = parameter_labels_from_domain(&domain);
+    Some(signature_information(
+        format!("{}({}) -> {}", name, params.join(", "), codomain),
+        params,
+        Some(ty.to_string()),
+    ))
+}
+
+fn hom_domain_and_codomain(ty: &str) -> Option<(String, String)> {
+    let ty = ty.trim();
+    let inner = ty
+        .strip_prefix("Hom(")
+        .or_else(|| ty.strip_prefix("Func("))?
+        .strip_suffix(')')?;
+    split_top_level_comma(inner)
+}
+
+fn split_top_level_comma(source: &str) -> Option<(String, String)> {
+    let mut depth = 0u32;
+    for (index, ch) in source.char_indices() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' if depth > 0 => depth -= 1,
+            ',' if depth == 0 => {
+                let left = source[..index].trim().to_string();
+                let right = source[index + 1..].trim().to_string();
+                return Some((left, right));
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parameter_labels_from_domain(domain: &str) -> Vec<String> {
+    if domain == "*" {
+        return Vec::new();
+    }
+    let parts = split_top_level_product(domain);
+    if parts.is_empty() {
+        vec![domain.to_string()]
+    } else {
+        parts
+    }
+}
+
+fn split_top_level_product(source: &str) -> Vec<String> {
+    let mut depth = 0u32;
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let chars = source.char_indices().collect::<Vec<_>>();
+    let mut index = 0;
+    while index < chars.len() {
+        let (byte, ch) = chars[index];
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' if depth > 0 => depth -= 1,
+            'x' | '×' if depth == 0 && product_separator_at(source, byte, ch) => {
+                parts.push(source[start..byte].trim().to_string());
+                start = byte + ch.len_utf8();
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    if start > 0 {
+        parts.push(source[start..].trim().to_string());
+    }
+    parts.retain(|part| !part.is_empty());
+    parts
+}
+
+fn product_separator_at(source: &str, byte: usize, ch: char) -> bool {
+    if ch == '×' {
+        return true;
+    }
+    let before = source[..byte].chars().next_back();
+    let after = source[byte + ch.len_utf8()..].chars().next();
+    before.is_some_and(char::is_whitespace) && after.is_some_and(char::is_whitespace)
+}
+
+fn signature_information(
+    label: String,
+    params: Vec<String>,
+    documentation: Option<String>,
+) -> SignatureInformation {
+    SignatureInformation {
+        label,
+        documentation: documentation.map(tower_lsp::lsp_types::Documentation::String),
+        parameters: Some(
+            params
+                .into_iter()
+                .map(|label| ParameterInformation {
+                    label: ParameterLabel::Simple(label),
+                    documentation: None,
+                })
+                .collect(),
+        ),
+        active_parameter: None,
+    }
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
@@ -140,6 +362,11 @@ impl LanguageServer for Backend {
                     ..CompletionOptions::default()
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+                    retrigger_characters: Some(vec![",".to_string()]),
+                    ..SignatureHelpOptions::default()
+                }),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 document_link_provider: Some(DocumentLinkOptions {
                     resolve_provider: Some(false),
@@ -233,6 +460,18 @@ impl LanguageServer for Backend {
             contents: HoverContents::Scalar(MarkedString::String(contents)),
             range: None,
         }))
+    }
+
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let Some(text) = self.documents.get(&uri).await else {
+            return Ok(None);
+        };
+        let position = params.text_document_position_params.position;
+        let Some(context) = Self::call_context_at_position(&text, position) else {
+            return Ok(None);
+        };
+        Ok(Self::signature_help_for_context(&context))
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {

@@ -34,6 +34,60 @@ fn completes_new_language_surface() {
 }
 
 #[test]
+fn finds_call_context_at_lsp_position() {
+    let text = "const R y = mix(a, clamp(b, 0, 1), 0.5)\n";
+    let context = Backend::call_context_at_position(text, Position::new(0, 38)).unwrap();
+
+    assert_eq!(
+        context,
+        CallContext {
+            name: "mix".to_string(),
+            active_parameter: 2,
+        }
+    );
+}
+
+#[test]
+fn call_context_uses_lsp_utf16_columns() {
+    let text = "const Object output = 💡 Ball3D(r=1)\n";
+    let character = text[..text.find("r=1").unwrap() + 1].encode_utf16().count() as u32;
+    let context = Backend::call_context_at_position(text, Position::new(0, character)).unwrap();
+
+    assert_eq!(context.name, "Ball3D");
+    assert_eq!(context.active_parameter, 0);
+}
+
+#[test]
+fn provides_primitive_signature_help() {
+    let context = CallContext {
+        name: "Ball3D".to_string(),
+        active_parameter: 0,
+    };
+    let help = Backend::signature_help_for_context(&context).unwrap();
+
+    assert_eq!(help.active_parameter, Some(0));
+    assert_eq!(help.signatures[0].label, "Ball3D(r: R)");
+    assert_eq!(
+        help.signatures[0].parameters.as_ref().unwrap()[0].label,
+        tower_lsp::lsp_types::ParameterLabel::Simple("r: R".to_string())
+    );
+}
+
+#[test]
+fn provides_builtin_function_signature_help() {
+    let context = CallContext {
+        name: "mix".to_string(),
+        active_parameter: 1,
+    };
+    let help = Backend::signature_help_for_context(&context).unwrap();
+
+    assert_eq!(help.active_parameter, Some(1));
+    assert!(help.signatures[0].label.starts_with("mix("));
+    assert!(help.signatures[0].label.contains("->"));
+    assert!(help.signatures[0].parameters.as_ref().unwrap().len() >= 3);
+}
+
+#[test]
 fn formats_whole_document_range() {
     let range = whole_document_range("R radius = 1\nconst R diameter = 2\n");
 

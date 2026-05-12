@@ -153,9 +153,10 @@ The LSP server provides diagnostics by compiling the whole document after open,
 change, and save events. Diagnostics resolve `#import` paths relative to the
 open file, so local modules work the same way in the editor and the CLI. The
 server also provides formatting, full-document semantic tokens, plus basic
-completion, hover, document links for resolved `#import` module paths, and
-document symbols for Lane keywords, built-in modules, primitive constructors,
-type aliases, categories, built-in functions, and top-level Lane declarations.
+completion, hover, signature help, document links for resolved `#import`
+module paths, and document symbols for Lane keywords, built-in modules,
+primitive constructors, type aliases, categories, built-in functions, and
+top-level Lane declarations.
 The semantic formatter trims trailing whitespace, collapses repeated blank
 lines, and normalizes spaced ASCII type products such as `R x R` to `R × R`.
 The semantic token legend uses Lane-specific
