@@ -186,6 +186,14 @@ registers the filetype, tree-sitter parser/query, and LSP config. Pass
 `{ lsp = false }` to disable the LSP hookup, or pass `{ lsp = { cmd = { ... } } }`
 to override the server command.
 
+## Design Notes
+
+- [Semantic model roadmap](SEMANTIC_MODEL.md) describes the current
+  compiler model and the planned object, dependency, GLSL, and generic
+  specialization architecture.
+- [LSP roadmap](LSP_ROADMAP.md) describes the current language-server shape and
+  planned editor-facing improvements.
+
 ## Program Structure
 
 Lane source is line-oriented. Each non-empty, non-comment line is one
@@ -601,7 +609,7 @@ Categories classify which algebraic operations are available.
 | `Set` | plain values | no algebraic operations |
 | `Ab` | additive abelian group | `0`, `+`, `-` |
 | `Mon` | monoid | `1`, `*` |
-| `Grp` | group | `e`, `*`, inverse helpers |
+| `Grp` | group | `e`, `*`, `~` |
 | `Ring` | ring | `0`, `1`, `+`, `-`, `*` |
 | `DivRing` | division ring | ring operations and `/` |
 | `RVect` | real vector space | `0`, `+`, `-`, scalar `*` and `/` |
@@ -763,6 +771,18 @@ Numeric negation.
 ```lane
 R x = -1
 R3 p = [-1, -2, -3]
+```
+
+### Unary `~`
+
+Multiplicative or group inverse. This is the inverse operation for `Grp`
+values; use it for plain groups where `/` is intentionally not available.
+
+```lane
+provided Grp G
+provided G a
+G inv_a = ~a
+G identity = ~e
 ```
 
 ### Binary `+` And `-`

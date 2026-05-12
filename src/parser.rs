@@ -23,6 +23,7 @@ enum Token {
     Minus,
     Star,
     Slash,
+    Tilde,
     Amp,
     Dot,
     At,
@@ -365,7 +366,6 @@ impl<'a> Parser<'a> {
                 line: line_number,
             }));
         }
-
 
         let is_construct = line.starts_with("construct ");
         let is_const = line.starts_with("const ");
@@ -1200,6 +1200,14 @@ impl ExprParser {
                 right: Box::new(expr),
             });
         }
+        if matches!(self.peek(), Some(Token::Tilde)) {
+            self.index += 1;
+            let expr = self.parse_unary()?;
+            return Ok(Expr::Unary {
+                op: UnaryOp::Inv,
+                expr: Box::new(expr),
+            });
+        }
         self.parse_primary()
     }
 
@@ -1408,6 +1416,7 @@ impl ExprParser {
             Token::Minus => "'-'".to_string(),
             Token::Star => "'*'".to_string(),
             Token::Slash => "'/'".to_string(),
+            Token::Tilde => "'~'".to_string(),
             Token::Amp => "'&'".to_string(),
             Token::Dot => "'.'".to_string(),
             Token::At => "'@'".to_string(),
@@ -1545,6 +1554,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
             '-' => Token::Minus,
             '*' => Token::Star,
             '/' => Token::Slash,
+            '~' => Token::Tilde,
             '&' => Token::Amp,
             '.' => Token::Dot,
             '@' => Token::At,

@@ -886,6 +886,15 @@ fn supports_pointwise_function_arithmetic_with_value_constants() {
 }
 
 #[test]
+fn supports_pointwise_function_inverse() {
+    let source = "provided Hom(R, R) f\nconst Hom(R, R) h = ~f\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float h(float _t)"));
+    assert!(glsl.contains("return (1.0 / f(_t));"));
+}
+
+#[test]
 fn lifts_value_calls_over_function_arguments() {
     let source =
         "#2D\nconst Object2D rect = Box2D(a=1, b=2)\nconst Hom(R2, R) m = max(rect.sdf, 0.01)\n";
@@ -1429,6 +1438,14 @@ fn supports_provided_group_category_types() {
 }
 
 #[test]
+fn supports_unary_inverse_for_group_category_types() {
+    let source = "provided Grp G\nprovided G a\nprovided Hom(G, R) measure\nR radius = measure(~a)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = measure(inv_G(a));"));
+}
+
+#[test]
 fn supports_multiple_provided_category_types_on_one_line() {
     let source = "provided Grp G, K\nprovided G a\nprovided K b\nprovided Hom(G, R) measure_g\nprovided Hom(K, R) measure_k\nR radius = measure_g(a * a) + measure_k(b * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
@@ -1579,7 +1596,7 @@ fn rejects_real_division_algebra_product_types() {
 
 #[test]
 fn supports_abelian_components_in_group_product_types() {
-    let source = "Grp G = Isom3 x R3\nconst Grp Motion<motion, shift> = Isom3 x R3\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nG identity = e\nG product = a * b\nR radius = measure(product * identity)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "Grp G = Isom3 x R3\nconst Grp Motion<motion, shift> = Isom3 x R3\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nG identity = e\nG inverse_identity = ~e\nG inverse_a = ~a\nG product = a * b\nR radius = measure(product * identity * inverse_a * inverse_identity)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct G {\n    Isom3 x0;\n    vec3 x1;\n};"));
@@ -1590,6 +1607,8 @@ fn supports_abelian_components_in_group_product_types() {
         "Motion inv_Motion(Motion value) {\n    return Motion(inv_Isom3(value.motion), (vec3(0.0) - value.shift));\n}"
     ));
     assert!(glsl.contains("G identity = e_G;"));
+    assert!(glsl.contains("G inverse_identity = inv_G(e_G);"));
+    assert!(glsl.contains("G inverse_a = inv_G(a);"));
     assert!(glsl.contains("G product = mult_G(a, b);"));
 }
 
@@ -1599,6 +1618,14 @@ fn rejects_division_for_group_category_types() {
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("unsupported operands for binary operator: G / G"));
+}
+
+#[test]
+fn rejects_unary_inverse_for_non_group_types() {
+    let source = "provided Z n\nZ bad = ~n\nconst Object output = Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+
+    assert!(err.contains("unsupported operand for unary operator: ~Z"));
 }
 
 #[test]

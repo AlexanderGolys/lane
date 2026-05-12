@@ -281,6 +281,7 @@ module.exports = grammar({
 
         unary_expression: ($) => choice(
             prec.right(PREC.unary, seq(field('operator', '-'), field('argument', $._expression))),
+            prec.right(PREC.unary, seq(field('operator', '~'), field('argument', $._expression))),
             prec.right(PREC.unary, seq(field('operator', 'not'), field('argument', $._expression))),
         ),
 

@@ -452,6 +452,7 @@ fn substitute_exprs(expr: &mut Expr, substitutions: &HashMap<String, Expr>) {
             substitute_exprs(array, substitutions);
             substitute_exprs(index, substitutions);
         }
+        Expr::Unary { expr, .. } => substitute_exprs(expr, substitutions),
         Expr::Binary { left, right, .. } => {
             substitute_exprs(left, substitutions);
             substitute_exprs(right, substitutions);
@@ -845,6 +846,9 @@ fn rewrite_whole_product_param_fields(
         Expr::Index { array, index } => {
             rewrite_whole_product_param_fields(array, param, parts, env, param_bindings)?;
             rewrite_whole_product_param_fields(index, param, parts, env, param_bindings)
+        }
+        Expr::Unary { expr, .. } => {
+            rewrite_whole_product_param_fields(expr, param, parts, env, param_bindings)
         }
         Expr::Binary { left, right, .. } => {
             rewrite_whole_product_param_fields(left, param, parts, env, param_bindings)?;
@@ -1842,7 +1846,8 @@ fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
         | Expr::Array(_)
         | Expr::Index { .. }
         | Expr::FieldAccess { .. }
-        | Expr::Conditional { .. } => Err(Error::new("expected an Object expression")),
+        | Expr::Conditional { .. }
+        | Expr::Unary { .. } => Err(Error::new("expected an Object expression")),
         Expr::Binary { .. } => Err(Error::new("unsupported object expression")),
     }
 }
@@ -2271,6 +2276,10 @@ fn infer_value_expr(
             left,
             right,
         } => infer_function_product_value_expr(left, right, env, lift_param),
+        Expr::Unary { op, expr } => {
+            let expr = infer_value_expr(expr, env, lift_param)?;
+            infer_unary_value_expr(*op, expr)
+        }
         Expr::Binary { op, left, right } => {
             let left = infer_value_expr(left, env, lift_param)?;
             let right = match (*op, left.ty()) {
@@ -2594,6 +2603,12 @@ fn infer_value_expr_for_type(
             env,
             lift_param,
         ),
+        (_, Expr::Unary { op, expr }) => {
+            let expr = infer_value_expr_for_type(expr, expected_ty, env, lift_param)?;
+            let value = infer_unary_value_expr(*op, expr)?;
+            ensure_type(&value.ty(), expected_ty, "unary expression")?;
+            Ok(value)
+        }
         (_, Expr::Ident(name)) if lift_param.is_some() && env.get_value(name).is_none() => {
             let param_name = lift_param
                 .expect("validated lift parameter presence")
@@ -2949,6 +2964,9 @@ fn collect_lifted_param_type(
         ValueExpr::Index { array, index, .. } => {
             collect_lifted_param_type(array, name, ty)?;
             collect_lifted_param_type(index, name, ty)?;
+        }
+        ValueExpr::Unary { expr, .. } => {
+            collect_lifted_param_type(expr, name, ty)?;
         }
         ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
             collect_lifted_param_type(left, name, ty)?;
@@ -4307,6 +4325,7 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             };
             infer_pointwise_call_function_candidates(name, args, env)
         }
+        Expr::Unary { op, expr } => infer_pointwise_unary_function_candidates(*op, expr, env),
         Expr::Conditional {
             condition,
             then_branch,
@@ -4446,6 +4465,40 @@ fn infer_pointwise_binary_function_candidates(
     if candidates.is_empty() {
         return Err(Error::new(
             "no pointwise function arithmetic overload matches provided operands",
+        ));
+    }
+    Ok(candidates)
+}
+
+/// Type-checks helper logic for infer_pointwise_unary_function_candidates.
+fn infer_pointwise_unary_function_candidates(
+    op: UnaryOp,
+    expr: &Expr,
+    env: &Env<'_>,
+) -> Result<Vec<FunctionExpr>, Error> {
+    let args = infer_pointwise_binary_arg_candidates(expr, env);
+    let mut candidates = Vec::new();
+    for arg in &args {
+        if !arg.lifted {
+            continue;
+        }
+        let Some(input) = arg.domain.as_ref() else {
+            continue;
+        };
+        if let Ok(output) = infer_unary_type(op, &arg.output) {
+            candidates.push(FunctionExpr {
+                input: normalize_scalar_product_type(input),
+                output,
+                kind: FunctionExprKind::PointwiseUnary {
+                    op,
+                    arg: arg.arg.clone(),
+                },
+            });
+        }
+    }
+    if candidates.is_empty() {
+        return Err(Error::new(
+            "no pointwise function unary overload matches provided operand",
         ));
     }
     Ok(candidates)
@@ -5002,6 +5055,34 @@ fn infer_complex_overload_call(
         args: vec![arg],
         ty: Type::Complex,
     }))
+}
+
+/// Type-checks helper logic for infer_unary_value_expr.
+fn infer_unary_value_expr(op: UnaryOp, expr: ValueExpr) -> Result<ValueExpr, Error> {
+    let ty = expr.ty();
+    infer_unary_type(op, &ty)?;
+    Ok(ValueExpr::Unary {
+        op,
+        expr: Box::new(expr),
+        ty,
+    })
+}
+
+/// Type-checks helper logic for infer_unary_type.
+fn infer_unary_type(op: UnaryOp, ty: &Type) -> Result<Type, Error> {
+    match op {
+        UnaryOp::Inv => {
+            if has_category(ty, AlgebraicCategory::Grp) {
+                Ok(ty.clone())
+            } else {
+                Err(Error::new(format!(
+                    "unsupported operand for unary operator: {}{}",
+                    op.symbol(),
+                    format_type(ty)
+                )))
+            }
+        }
+    }
 }
 
 /// Type-checks helper logic for infer_binary_type.

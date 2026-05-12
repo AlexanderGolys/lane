@@ -922,6 +922,7 @@ fn collect_expr_names(expr: &Expr, names: &mut HashSet<String>) {
             collect_expr_names(array, names);
             collect_expr_names(index, names);
         }
+        Expr::Unary { expr, .. } => collect_expr_names(expr, names),
         Expr::Binary { left, right, .. } => {
             collect_expr_names(left, names);
             collect_expr_names(right, names);
@@ -1135,6 +1136,7 @@ fn expr_minimum_vector_dimension(expr: &Expr, captures: &HashMap<String, usize>)
         }
         Expr::Index { array, index } => expr_minimum_vector_dimension(array, captures)
             .max(expr_minimum_vector_dimension(index, captures)),
+        Expr::Unary { expr, .. } => expr_minimum_vector_dimension(expr, captures),
         Expr::Binary { left, right, .. } => expr_minimum_vector_dimension(left, captures)
             .max(expr_minimum_vector_dimension(right, captures)),
         Expr::Constructor { args, .. } => match args {
@@ -1256,6 +1258,10 @@ fn substitute_expr_templates(expr: &Expr, substitutions: &HashMap<String, usize>
         Expr::Index { array, index } => Expr::Index {
             array: Box::new(substitute_expr_templates(array, substitutions)),
             index: Box::new(substitute_expr_templates(index, substitutions)),
+        },
+        Expr::Unary { op, expr } => Expr::Unary {
+            op: *op,
+            expr: Box::new(substitute_expr_templates(expr, substitutions)),
         },
         Expr::Binary { op, left, right } => Expr::Binary {
             op: *op,
@@ -1611,6 +1617,7 @@ fn rename_expr(expr: &mut Expr, renames: &HashMap<String, String>) {
             rename_expr(array, renames);
             rename_expr(index, renames);
         }
+        Expr::Unary { expr, .. } => rename_expr(expr, renames),
         Expr::Binary { left, right, .. } => {
             rename_expr(left, renames);
             rename_expr(right, renames);
@@ -2628,6 +2635,10 @@ enum Expr {
         array: Box<Expr>,
         index: Box<Expr>,
     },
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr>,
+    },
     Binary {
         op: BinOp,
         left: Box<Expr>,
@@ -2659,6 +2670,11 @@ enum BinOp {
     Ge,
     Product,
     Compose,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UnaryOp {
+    Inv,
 }
 
 #[derive(Clone, Debug)]
@@ -2725,6 +2741,11 @@ enum ValueExpr {
         op: BinOp,
         left: Box<ValueExpr>,
         right: Box<ValueExpr>,
+        ty: Type,
+    },
+    Unary {
+        op: UnaryOp,
+        expr: Box<ValueExpr>,
         ty: Type,
     },
     Vec2(Box<ValueExpr>, Box<ValueExpr>),
@@ -2794,6 +2815,7 @@ impl ValueExpr {
             Self::Index { ty, .. } => ty.clone(),
             Self::Concat { element_ty, .. } => Type::Array(Box::new(element_ty.clone())),
             Self::Binary { ty, .. } => ty.clone(),
+            Self::Unary { ty, .. } => ty.clone(),
             Self::Vec2(_, _) => Type::Vec2,
             Self::Vec3(_, _, _) => Type::Vec3,
             Self::Vec4(_, _, _, _) => Type::Vec4,
@@ -2846,6 +2868,10 @@ enum FunctionExprKind {
         op: BinOp,
         left: PointwiseCallArg,
         right: PointwiseCallArg,
+    },
+    PointwiseUnary {
+        op: UnaryOp,
+        arg: PointwiseCallArg,
     },
     PointwiseCall {
         func: String,
@@ -2904,6 +2930,11 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             op: *op,
             left: Box::new(apply_pointwise_call_arg(left, arg.clone())),
             right: Box::new(apply_pointwise_call_arg(right, arg)),
+            ty: func.output.clone(),
+        },
+        FunctionExprKind::PointwiseUnary { op, arg: call_arg } => ValueExpr::Unary {
+            op: *op,
+            expr: Box::new(apply_pointwise_call_arg(call_arg, arg)),
             ty: func.output.clone(),
         },
         FunctionExprKind::PointwiseCall { func: name, args } => ValueExpr::Call {
@@ -3973,6 +4004,14 @@ fn matrix_shapes() -> Vec<(usize, usize)> {
         }
     }
     shapes
+}
+
+impl UnaryOp {
+    fn symbol(self) -> &'static str {
+        match self {
+            Self::Inv => "~",
+        }
+    }
 }
 
 impl BinOp {

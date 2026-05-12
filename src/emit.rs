@@ -898,6 +898,9 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
             collect_object_getter_value_refs(left, names);
             collect_object_getter_value_refs(right, names);
         }
+        ValueExpr::Unary { expr, .. } => {
+            collect_object_getter_value_refs(expr, names);
+        }
         ValueExpr::Binary { left, right, .. } => {
             collect_object_getter_value_refs(left, names);
             collect_object_getter_value_refs(right, names);
@@ -968,6 +971,9 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
         FunctionExprKind::PointwiseBinary { left, right, .. } => {
             collect_object_getter_pointwise_call_arg_refs(left, names);
             collect_object_getter_pointwise_call_arg_refs(right, names);
+        }
+        FunctionExprKind::PointwiseUnary { arg, .. } => {
+            collect_object_getter_pointwise_call_arg_refs(arg, names);
         }
         FunctionExprKind::PointwiseCall { args, .. } => {
             for arg in args {
@@ -1971,6 +1977,9 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
             collect_concat_helpers(left, helpers);
             collect_concat_helpers(right, helpers);
         }
+        ValueExpr::Unary { expr, .. } => {
+            collect_concat_helpers(expr, helpers);
+        }
         ValueExpr::Binary { left, right, .. } => {
             collect_concat_helpers(left, helpers);
             collect_concat_helpers(right, helpers);
@@ -2069,6 +2078,9 @@ fn collect_conditional_helpers(
             collect_conditional_helpers(array, helpers);
             collect_conditional_helpers(index, helpers);
         }
+        ValueExpr::Unary { expr, .. } => {
+            collect_conditional_helpers(expr, helpers);
+        }
         ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
             collect_conditional_helpers(left, helpers);
             collect_conditional_helpers(right, helpers);
@@ -2143,6 +2155,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         ValueExpr::Binary { left, right, .. } => {
             is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
         }
+        ValueExpr::Unary { expr, .. } => is_global_const_value_expr(expr, names),
         ValueExpr::BoolToNumberCast { value, .. } => is_global_const_value_expr(value, names),
         ValueExpr::Conditional {
             condition,
@@ -2283,6 +2296,9 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_refs(left, names);
             collect_value_refs(right, names);
         }
+        ValueExpr::Unary { expr, .. } => {
+            collect_value_refs(expr, names);
+        }
         ValueExpr::Binary { left, right, .. } => {
             collect_value_refs(left, names);
             collect_value_refs(right, names);
@@ -2373,6 +2389,9 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         ValueExpr::Index { array, index, .. } => {
             collect_value_function_refs(array, names);
             collect_value_function_refs(index, names);
+        }
+        ValueExpr::Unary { expr, .. } => {
+            collect_value_function_refs(expr, names);
         }
         ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
             collect_value_function_refs(left, names);
@@ -2604,6 +2623,13 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_support(left, names);
             collect_value_support(right, names);
         }
+        ValueExpr::Unary { op, expr, ty } => {
+            collect_type_support(ty, names);
+            if let Some(name) = unary_support_name(*op, ty) {
+                names.insert(name);
+            }
+            collect_value_support(expr, names);
+        }
         ValueExpr::Vec2(x, y) => {
             collect_value_support(x, names);
             collect_value_support(y, names);
@@ -2675,6 +2701,12 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
         FunctionExprKind::PointwiseBinary { left, right, .. } => {
             collect_pointwise_call_arg_support(left, names);
             collect_pointwise_call_arg_support(right, names);
+        }
+        FunctionExprKind::PointwiseUnary { op, arg } => {
+            if let Some(name) = unary_support_name(*op, &func.output) {
+                names.insert(name);
+            }
+            collect_pointwise_call_arg_support(arg, names);
         }
         FunctionExprKind::PointwiseCall { func, args } => {
             names.insert(func.clone());
@@ -2838,6 +2870,9 @@ fn emit_value_expr(
                 return format!("(-{})", emit_value_expr(right, helper_names, value_names));
             }
             emit_binary_expr(*op, left, right, helper_names, value_names)
+        }
+        ValueExpr::Unary { op, expr, ty } => {
+            emit_unary_expr(*op, expr, ty, helper_names, value_names)
         }
         ValueExpr::Vec2(x, y) => format!(
             "vec2({}, {})",
@@ -3039,6 +3074,19 @@ fn emit_binary_expr(
     }
 }
 
+fn emit_unary_expr(
+    op: UnaryOp,
+    expr: &ValueExpr,
+    ty: &Type,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
+    let value = emit_value_expr(expr, helper_names, value_names);
+    match op {
+        UnaryOp::Inv => emit_component_unary(ProductOp::Inv, ty, &value),
+    }
+}
+
 fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
     if other == &Type::Int {
         Some(Type::Int)
@@ -3161,6 +3209,19 @@ fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
         }
         (BinOp::Mul, Type::Float, Type::Custom { name, .. }) => {
             Some(product_type_op_support_name(name, ProductOp::Scale))
+        }
+        _ => None,
+    }
+}
+
+fn unary_support_name(op: UnaryOp, ty: &Type) -> Option<String> {
+    match (op, ty) {
+        (UnaryOp::Inv, Type::Complex) => Some("C".to_string()),
+        (UnaryOp::Inv, Type::Quat) => Some("H".to_string()),
+        (UnaryOp::Inv, Type::Isom2) => Some("Isom2".to_string()),
+        (UnaryOp::Inv, Type::Isom3) => Some("Isom3".to_string()),
+        (UnaryOp::Inv, Type::Custom { name, .. }) => {
+            Some(product_type_op_support_name(name, ProductOp::Inv))
         }
         _ => None,
     }
