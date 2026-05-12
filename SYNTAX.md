@@ -165,11 +165,11 @@ Hom(X, Y x Z) = Hom(X, Y) x Hom(X, Z)
 Products should also provide projections:
 
 ```lane
-p{0}: Hom(X x Y, X)
-p{1}: Hom(X x Y, Y)
+p{0}: Hom({X} x {Y}, {X})
+p{1}: Hom({X} x {Y}, {Y})
 ```
 
-Every `v: X x Y` can be identified with:
+Every `v: {X} x {Y}` can be identified with:
 
 ```text
 (p{0}(v), p{1}(v))
