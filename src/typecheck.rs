@@ -825,6 +825,29 @@ fn rewrite_whole_product_param_fields(
             Ok(())
         }
         Expr::Call { callee, args } => {
+            if let Expr::Ident(name) = &**callee {
+                if let Some(index) = parse_projection_name(name) {
+                    if args.len() == 1 && matches!(&args[0], Expr::Ident(name) if name == param) {
+                        let Some(ty) = parts.get(index) else {
+                            return Err(Error::new(format!(
+                                "product parameter '{}' has no projection p{{{}}}",
+                                param, index
+                            )));
+                        };
+                        let internal = format!("__lane_product_param_{index}");
+                        if !env.has_binding(&internal) {
+                            env.insert_value(internal.clone(), ty.clone())?;
+                            param_bindings.push(TypedFuncParamBinding {
+                                ty: ty.clone(),
+                                name: internal.clone(),
+                                expr: format!("_t{index}"),
+                            });
+                        }
+                        *expr = Expr::Ident(internal);
+                        return Ok(());
+                    }
+                }
+            }
             rewrite_whole_product_param_fields(callee, param, parts, env, param_bindings)?;
             for arg in args {
                 rewrite_whole_product_param_fields(arg, param, parts, env, param_bindings)?;
@@ -2258,6 +2281,11 @@ fn infer_value_expr(
             if let Some(result) = infer_monoid_pow_call(name, args, env, lift_param)? {
                 return Ok(result);
             }
+            if let Some(result) =
+                infer_projection_or_diagonal_call(name, args, env, lift_param, None)?
+            {
+                return Ok(result);
+            }
             if let Some(result) = infer_product_domain_call(callee, args, env, lift_param)? {
                 return Ok(result);
             }
@@ -2668,6 +2696,9 @@ fn infer_value_expr_for_type(
         (Type::Mat(_, _), Expr::Array(items)) => {
             infer_matrix_literal_for_type(items, expected_ty, env, lift_param)
         }
+        (Type::Product(parts), Expr::Tuple(items)) => {
+            infer_product_tuple_for_type(items, parts, env, lift_param)
+        }
         (Type::Vec4, Expr::Tuple(items)) if items.len() == 2 => {
             let xyz = infer_value_expr_for_type(&items[0], &Type::Vec3, env, lift_param)?;
             let w = infer_value_expr_for_type(&items[1], &Type::Float, env, lift_param)?;
@@ -2721,6 +2752,11 @@ fn infer_value_expr_for_type(
                     return Ok(result);
                 }
             }
+            if let Some(result) =
+                infer_projection_or_diagonal_call(name, args, env, lift_param, Some(expected_ty))?
+            {
+                return Ok(result);
+            }
             if let Some(result) = infer_product_domain_call(callee, args, env, lift_param)? {
                 if types_compatible_for_expected(&result.ty(), expected_ty) {
                     return Ok(result);
@@ -2735,6 +2771,28 @@ fn infer_value_expr_for_type(
         }
         _ => infer_value_expr(expr, env, lift_param),
     }
+}
+
+/// Type-checks helper logic for infer_product_tuple_for_type.
+fn infer_product_tuple_for_type(
+    items: &[Expr],
+    parts: &[Type],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+) -> Result<ValueExpr, Error> {
+    if items.len() != parts.len() {
+        return Err(Error::new(format!(
+            "product tuple expects {} item(s), got {}",
+            parts.len(),
+            items.len()
+        )));
+    }
+    let values = items
+        .iter()
+        .zip(parts.iter())
+        .map(|(item, ty)| infer_value_expr_for_type(item, ty, env, lift_param))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ValueExpr::Product(values))
 }
 
 /// Type-checks helper logic for infer_conditional_value_expr.
@@ -3111,6 +3169,24 @@ fn parse_braced_usize_suffixes(name: &str, prefix: &str) -> Option<Vec<usize>> {
     rest.is_empty().then_some(values)
 }
 
+/// Type-checks helper logic for parse_projection_name.
+fn parse_projection_name(name: &str) -> Option<usize> {
+    if let Some(values) = parse_braced_usize_suffixes(name, "p") {
+        return (values.len() == 1).then_some(values[0]);
+    }
+    name.strip_prefix("projection_")?.parse::<usize>().ok()
+}
+
+/// Type-checks helper logic for parse_diagonal_name.
+fn parse_diagonal_name(name: &str) -> Option<usize> {
+    if let Some(values) = parse_braced_usize_suffixes(name, "diag") {
+        return (values.len() == 1 && values[0] > 0).then_some(values[0]);
+    }
+    name.strip_prefix("diagonal")
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|dimension| *dimension > 0)
+}
+
 /// Type-checks helper logic for infer_type_constructor_call.
 fn infer_type_constructor_call(
     name: &str,
@@ -3150,6 +3226,38 @@ fn infer_type_constructor_call(
         args: typed_args,
         ty,
     }))
+}
+
+/// Type-checks helper logic for infer_projection_or_diagonal_call.
+fn infer_projection_or_diagonal_call(
+    name: &str,
+    args: &[Expr],
+    env: &Env<'_>,
+    lift_param: Option<&str>,
+    expected_output: Option<&Type>,
+) -> Result<Option<ValueExpr>, Error> {
+    if args.len() != 1 {
+        return Ok(None);
+    }
+    if let Some(index) = parse_projection_name(name) {
+        let arg = infer_value_expr(&args[0], env, lift_param)?;
+        let func = if let Some(expected) = expected_output {
+            infer_projection_function_for_type(index, &arg.ty(), expected, env)?
+        } else {
+            infer_projection_function_for_input(index, &arg.ty(), env)?
+        };
+        return Ok(Some(apply_function_expr(&func, arg)));
+    }
+    if let Some(dimension) = parse_diagonal_name(name) {
+        let arg = infer_value_expr(&args[0], env, lift_param)?;
+        let func = if let Some(expected) = expected_output {
+            infer_diagonal_function_for_type(dimension, &arg.ty(), expected, env)?
+        } else {
+            infer_diagonal_function_for_input(dimension, &arg.ty())?
+        };
+        return Ok(Some(apply_function_expr(&func, arg)));
+    }
+    Ok(None)
 }
 
 /// Type-checks helper logic for infer_product_domain_call.
@@ -3372,6 +3480,15 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
             (actual, expected),
             (Type::Custom { name: actual, .. }, Type::Custom { name: expected, .. })
                 if actual == expected
+        )
+        || matches!(
+            (actual, expected),
+            (Type::Product(actual), Type::Product(expected))
+                if actual.len() == expected.len()
+                    && actual
+                        .iter()
+                        .zip(expected.iter())
+                        .all(|(actual, expected)| types_compatible_for_expected(actual, expected))
         )
 }
 
@@ -4128,6 +4245,19 @@ fn infer_function_expr_for_type(
     expected_input: &Type,
     expected_output: &Type,
 ) -> Result<FunctionExpr, Error> {
+    if let Expr::Ident(name) = expr {
+        if let Some(index) = parse_projection_name(name) {
+            return infer_projection_function_for_type(index, expected_input, expected_output, env);
+        }
+        if let Some(dimension) = parse_diagonal_name(name) {
+            return infer_diagonal_function_for_type(
+                dimension,
+                expected_input,
+                expected_output,
+                env,
+            );
+        }
+    }
     if let Expr::Operator(op) = expr {
         return infer_operator_function_expr_for_type(*op, expected_input, expected_output);
     }
@@ -4205,6 +4335,146 @@ fn infer_function_expr_for_type(
     )))
 }
 
+/// Type-checks helper logic for infer_projection_function_for_type.
+fn infer_projection_function_for_type(
+    index: usize,
+    input: &Type,
+    output: &Type,
+    env: &Env<'_>,
+) -> Result<FunctionExpr, Error> {
+    let Some((component, field)) = projection_component(input, index, env) else {
+        return Err(Error::new(format!(
+            "projection p{{{index}}} is not valid for {}",
+            format_type(input)
+        )));
+    };
+    if !types_compatible_for_expected(&component, output) {
+        return Err(Error::new(format!(
+            "projection p{{{index}}} expected {}, got {}",
+            format_type(output),
+            format_type(&component)
+        )));
+    }
+    Ok(FunctionExpr {
+        input: input.clone(),
+        output: output.clone(),
+        kind: FunctionExprKind::Projection { index, field },
+    })
+}
+
+/// Type-checks helper logic for infer_projection_function_for_input.
+fn infer_projection_function_for_input(
+    index: usize,
+    input: &Type,
+    env: &Env<'_>,
+) -> Result<FunctionExpr, Error> {
+    let Some((output, field)) = projection_component(input, index, env) else {
+        return Err(Error::new(format!(
+            "projection p{{{index}}} is not valid for {}",
+            format_type(input)
+        )));
+    };
+    Ok(FunctionExpr {
+        input: input.clone(),
+        output,
+        kind: FunctionExprKind::Projection { index, field },
+    })
+}
+
+/// Type-checks helper logic for projection_component.
+fn projection_component(ty: &Type, index: usize, env: &Env<'_>) -> Option<(Type, Option<String>)> {
+    match ty {
+        Type::Product(parts) => parts.get(index).cloned().map(|ty| (ty, None)),
+        Type::Vec2 | Type::Complex => vector_projection_component(2, index),
+        Type::Vec3 => vector_projection_component(3, index),
+        Type::Vec4 | Type::Quat => vector_projection_component(4, index),
+        Type::Custom { name, .. } => {
+            let product_type = env.product_type(name)?;
+            product_field_access(product_type, &format!("x{index}"))
+                .map(|(ty, field)| (ty, Some(field)))
+        }
+        _ => None,
+    }
+}
+
+/// Type-checks helper logic for vector_projection_component.
+fn vector_projection_component(dimension: usize, index: usize) -> Option<(Type, Option<String>)> {
+    if index >= dimension {
+        return None;
+    }
+    vector_field_access(dimension, &format!("x{index}")).map(|field| (Type::Float, Some(field)))
+}
+
+/// Type-checks helper logic for infer_diagonal_function_for_type.
+fn infer_diagonal_function_for_type(
+    dimension: usize,
+    input: &Type,
+    output: &Type,
+    env: &Env<'_>,
+) -> Result<FunctionExpr, Error> {
+    if !diagonal_output_matches(dimension, input, output, env) {
+        return Err(Error::new(format!(
+            "diag{{{dimension}}} does not match Hom({}, {})",
+            format_type(input),
+            format_type(output)
+        )));
+    }
+    Ok(FunctionExpr {
+        input: input.clone(),
+        output: output.clone(),
+        kind: FunctionExprKind::Diagonal { dimension },
+    })
+}
+
+/// Type-checks helper logic for infer_diagonal_function_for_input.
+fn infer_diagonal_function_for_input(
+    dimension: usize,
+    input: &Type,
+) -> Result<FunctionExpr, Error> {
+    let output = diagonal_output_type(dimension, input);
+    Ok(FunctionExpr {
+        input: input.clone(),
+        output,
+        kind: FunctionExprKind::Diagonal { dimension },
+    })
+}
+
+/// Type-checks helper logic for diagonal_output_type.
+fn diagonal_output_type(dimension: usize, input: &Type) -> Type {
+    if input == &Type::Float {
+        match dimension {
+            2 => return Type::Vec2,
+            3 => return Type::Vec3,
+            4 => return Type::Vec4,
+            _ => {}
+        }
+    }
+    Type::Product(std::iter::repeat(input.clone()).take(dimension).collect())
+}
+
+/// Type-checks helper logic for diagonal_output_matches.
+fn diagonal_output_matches(dimension: usize, input: &Type, output: &Type, env: &Env<'_>) -> bool {
+    if types_compatible_for_expected(&diagonal_output_type(dimension, input), output) {
+        return true;
+    }
+    match output {
+        Type::Product(parts) if parts.len() == dimension => parts
+            .iter()
+            .all(|part| types_compatible_for_expected(input, part)),
+        Type::Vec2 | Type::Vec3 | Type::Vec4 => {
+            input == &Type::Float && vector_dimension(output) == Some(dimension)
+        }
+        Type::Custom { name, .. } => env.product_type(name).is_some_and(|product_type| {
+            product_type.components.len() == dimension
+                && product_type
+                    .components
+                    .iter()
+                    .all(|part| types_compatible_for_expected(input, part))
+        }),
+        _ => false,
+    }
+}
+
 /// Type-checks helper logic for infer_function_expr_candidates.
 fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<FunctionExpr>, Error> {
     match expr {
@@ -4251,6 +4521,7 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                 | Type::Generic(_)
                 | Type::VecGeneric(_)
                 | Type::MatGeneric(_, _)
+                | Type::Power(_, _)
                 | Type::Array(_) => {
                     Err(Error::new(format!("'{}' is a value, not a function", name)))
                 }
@@ -4304,8 +4575,50 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
             left,
             right,
         } => {
-            let outers = infer_function_expr_candidates(left, env)?;
             let inners = infer_function_expr_candidates(right, env)?;
+            if let Expr::Ident(name) = &**left {
+                if let Some(index) = parse_projection_name(name) {
+                    let mut candidates = Vec::new();
+                    for inner in &inners {
+                        if let Ok(outer) =
+                            infer_projection_function_for_input(index, &inner.output, env)
+                        {
+                            candidates.push(FunctionExpr {
+                                input: inner.input.clone(),
+                                output: outer.output.clone(),
+                                kind: FunctionExprKind::Compose(
+                                    Box::new(outer),
+                                    Box::new(inner.clone()),
+                                ),
+                            });
+                        }
+                    }
+                    if !candidates.is_empty() {
+                        return Ok(candidates);
+                    }
+                }
+                if let Some(dimension) = parse_diagonal_name(name) {
+                    let candidates = inners
+                        .iter()
+                        .map(|inner| {
+                            let outer =
+                                infer_diagonal_function_for_input(dimension, &inner.output)?;
+                            Ok(FunctionExpr {
+                                input: inner.input.clone(),
+                                output: outer.output.clone(),
+                                kind: FunctionExprKind::Compose(
+                                    Box::new(outer),
+                                    Box::new(inner.clone()),
+                                ),
+                            })
+                        })
+                        .collect::<Result<Vec<_>, Error>>()?;
+                    if !candidates.is_empty() {
+                        return Ok(candidates);
+                    }
+                }
+            }
+            let outers = infer_function_expr_candidates(left, env)?;
             let mut candidates = Vec::new();
             for outer in &outers {
                 for inner in &inners {
@@ -5000,7 +5313,9 @@ fn infer_identifier_value(
         | Type::Generic(_)
         | Type::VecGeneric(_)
         | Type::MatGeneric(_, _)
-        | Type::Array(_) => Ok(ValueExpr::Var {
+        | Type::Power(_, _)
+        | Type::Array(_)
+        | Type::Product(_) => Ok(ValueExpr::Var {
             name: name.to_string(),
             ty: info.ty,
             array_len: info.array_len,
@@ -5031,7 +5346,7 @@ fn infer_identifier_value(
                 ty: (*output).clone(),
             })
         }
-        Type::Object | Type::Object2D | Type::Product(_) => Err(Error::new(format!(
+        Type::Object | Type::Object2D => Err(Error::new(format!(
             "object '{}' is not a value expression",
             name
         ))),

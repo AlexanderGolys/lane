@@ -95,6 +95,10 @@
             "named": true
           },
           {
+            "type": "power_type",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
@@ -149,6 +153,10 @@
             "named": true
           },
           {
+            "type": "power_type",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
@@ -184,6 +192,10 @@
           },
           {
             "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "power_type",
             "named": true
           },
           {
@@ -450,6 +462,10 @@
           },
           {
             "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "power_type",
             "named": true
           },
           {
@@ -743,6 +759,10 @@
           },
           {
             "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "power_type",
             "named": true
           },
           {
@@ -1107,6 +1127,10 @@
             "named": true
           },
           {
+            "type": "power_type",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
@@ -1222,6 +1246,10 @@
             "named": true
           },
           {
+            "type": "power_type",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
@@ -1257,6 +1285,10 @@
           },
           {
             "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "power_type",
             "named": true
           },
           {
@@ -1514,6 +1546,10 @@
             "named": true
           },
           {
+            "type": "power_type",
+            "named": true
+          },
+          {
             "type": "product_type",
             "named": true
           },
@@ -1696,6 +1732,10 @@
           "named": true
         },
         {
+          "type": "power_type",
+          "named": true
+        },
+        {
           "type": "product_type",
           "named": true
         },
@@ -1731,6 +1771,68 @@
           {
             "type": "identifier",
             "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "power_type",
+    "named": true,
+    "fields": {
+      "base": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_type",
+            "named": true
+          },
+          {
+            "type": "end_type",
+            "named": true
+          },
+          {
+            "type": "generic_type",
+            "named": true
+          },
+          {
+            "type": "hom_type",
+            "named": true
+          },
+          {
+            "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "type_identifier",
+            "named": true
+          },
+          {
+            "type": "unit_type",
+            "named": true
+          }
+        ]
+      },
+      "exponent": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "{",
+            "named": false
+          },
+          {
+            "type": "}",
+            "named": false
           }
         ]
       }
@@ -1778,6 +1880,10 @@
           },
           {
             "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "power_type",
             "named": true
           },
           {
@@ -1848,6 +1954,10 @@
           },
           {
             "type": "parenthesized_type",
+            "named": true
+          },
+          {
+            "type": "power_type",
             "named": true
           },
           {

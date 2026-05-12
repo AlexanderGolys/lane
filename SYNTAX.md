@@ -80,11 +80,25 @@ R3 x R
 Hom(R x R, R)
 ```
 
-Concrete power types are supported today and lower to products:
+Concrete power types lower to products:
 
 ```lane
 R^3
 R^{3}
+C^5
+```
+
+Symbolic power types can appear in generic signatures:
+
+```lane
+{X}^{n}
+Hom({X}^{n}, {X})
+```
+
+The unbraced form is sugar when the base is already a type expression:
+
+```lane
+R^n
 ```
 
 Current generic placeholders are supported in limited places:
@@ -168,6 +182,8 @@ Products should also provide projections:
 ```lane
 p{0}: Hom({X} x {Y}, {X})
 p{1}: Hom({X} x {Y}, {Y})
+p{k}: Hom({X}^{n}, {X})
+diag{n}: Hom({X}, {X}^{n})
 ```
 
 Every `v: {X} x {Y}` can be identified with:
@@ -254,7 +270,8 @@ Hom({B}, {C}) x Hom({A}, {C})
 ```
 
 ```lane
-Hom({X}^{n}, {X}) p{k}{n}
+Hom({X}^{n}, {X}) p{k}
+Hom({X}, {X}^{n}) diag{n}
 ```
 
 The intended behavior is that explicit generic arguments and contextual type
@@ -269,7 +286,7 @@ f: Hom(R, R^7)
 then:
 
 ```lane
-p{3}{} @ f
+p{3} @ f
 ```
 
 should deduce:
@@ -304,7 +321,6 @@ These are intentional roadmap items, not current syntax promises:
 
 - Semantic generic schemes with explicit parameter lists.
 - Empty generic holes such as `p{3}{}`.
-- Symbolic power types such as `{X}^{n}`.
 - Backtracking and deferred generic resolution.
 - Interned specializations such as one shared object for repeated `d(f)`.
 - Dependency-driven emission from a first-class object table.

@@ -1064,6 +1064,10 @@ fn collect_unbound_generic_dims(
             collect_unbound_generic_dim(rows, captures, out);
             collect_unbound_generic_dim(columns, captures, out);
         }
+        Type::Power(base, dim) => {
+            collect_unbound_generic_dims(base, captures, out);
+            collect_unbound_generic_dim(dim, captures, out);
+        }
         Type::Array(element) => collect_unbound_generic_dims(element, captures, out),
         Type::Product(parts) => {
             for part in parts {
@@ -2207,6 +2211,7 @@ enum Type {
     Generic(String),
     VecGeneric(GenericDim),
     MatGeneric(GenericDim, GenericDim),
+    Power(Box<Type>, GenericDim),
     Array(Box<Type>),
     Object,
     Object2D,
@@ -2234,7 +2239,9 @@ impl Type {
             Self::Vec3 => "vec3".to_string(),
             Self::Vec4 => "vec4".to_string(),
             Self::Mat(rows, columns) => matrix_glsl_type(*rows, *columns),
-            Self::Generic(_) | Self::VecGeneric(_) | Self::MatGeneric(_, _) => String::new(),
+            Self::Generic(_) | Self::VecGeneric(_) | Self::MatGeneric(_, _) | Self::Power(_, _) => {
+                String::new()
+            }
             Self::Array(element) => format!("{}[]", element.glsl_name()),
             Self::Object | Self::Object2D | Self::Product(_) | Self::Func(_, _) => "".to_string(),
         }
@@ -2253,6 +2260,13 @@ impl Type {
                     "Mat{{{}}}x{{{}}}",
                     format_generic_dim(rows),
                     format_generic_dim(columns)
+                );
+            }
+            Self::Power(base, dim) => {
+                return format!(
+                    "{}^{{{}}}",
+                    format_type_power_base(base),
+                    format_generic_dim(dim)
                 );
             }
             _ => {}
@@ -2399,6 +2413,21 @@ fn matrix_type_for_generic_dims(rows: GenericDim, columns: GenericDim) -> Type {
     }
 }
 
+fn power_type_for_generic_dim(base: Type, dim: GenericDim) -> Type {
+    match dim {
+        GenericDim::Known(count) => Type::Product(std::iter::repeat(base).take(count).collect()),
+        dim => Type::Power(Box::new(base), dim),
+    }
+}
+
+fn format_type_power_base(ty: &Type) -> String {
+    match ty {
+        Type::Generic(name) => format!("{{{name}}}"),
+        Type::Product(_) | Type::Func(_, _) | Type::Power(_, _) => format!("({})", format_type(ty)),
+        _ => format_type(ty),
+    }
+}
+
 fn matrix_type_name(rows: usize, columns: usize) -> String {
     if rows == columns {
         format!("Mat{rows}")
@@ -2444,6 +2473,9 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
             || (unify_symbolic_dims(rows, columns, &mut GenericSubstitution::default())
                 && (category == AlgebraicCategory::Ring
                     || category_implies(AlgebraicCategory::Ring, category)));
+    }
+    if let Type::Power(base, _) = ty {
+        return has_category(base, category);
     }
     if let Type::Mat(rows, columns) = ty {
         return category == AlgebraicCategory::RVect
@@ -2881,6 +2913,13 @@ struct FunctionExpr {
 enum FunctionExprKind {
     Named(String),
     Operator(BinOp),
+    Projection {
+        index: usize,
+        field: Option<String>,
+    },
+    Diagonal {
+        dimension: usize,
+    },
     ObjectGetter {
         object: String,
         getter: ObjectGetter,
@@ -2933,6 +2972,12 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
                 right: Box::new(right),
                 ty: func.output.clone(),
             }
+        }
+        FunctionExprKind::Projection { index, field } => {
+            apply_projection_function(*index, field.as_deref(), &func.input, &func.output, arg)
+        }
+        FunctionExprKind::Diagonal { dimension } => {
+            product_value(std::iter::repeat(arg).take(*dimension).collect())
         }
         FunctionExprKind::ObjectGetter {
             object,
@@ -3001,6 +3046,55 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             ])
         }
     }
+}
+
+fn apply_projection_function(
+    index: usize,
+    field: Option<&str>,
+    input: &Type,
+    output: &Type,
+    arg: ValueExpr,
+) -> ValueExpr {
+    if let ValueExpr::Product(values) = &arg {
+        if let Some(value) = values.get(index) {
+            return cast_value_for_expected_type(value.clone(), output);
+        }
+    }
+    match input {
+        Type::Product(_) => match arg {
+            ValueExpr::Var { name, .. } => ValueExpr::Var {
+                name: product_projection_value_name(&name, index),
+                ty: output.clone(),
+                array_len: None,
+            },
+            other => ValueExpr::Index {
+                array: Box::new(other),
+                index: Box::new(ValueExpr::Int(index as i64)),
+                ty: output.clone(),
+            },
+        },
+        Type::Vec2 | Type::Vec3 | Type::Vec4 | Type::Complex | Type::Quat | Type::Custom { .. } => {
+            ValueExpr::FieldAccess {
+                value: Box::new(arg),
+                field: field
+                    .unwrap_or_else(|| vector_field_name(index))
+                    .to_string(),
+                ty: output.clone(),
+            }
+        }
+        _ => unreachable!("projection function expects a product-like input"),
+    }
+}
+
+fn vector_field_name(index: usize) -> &'static str {
+    ["x", "y", "z", "w"][index]
+}
+
+fn product_projection_value_name(name: &str, index: usize) -> String {
+    if name == "t" || name.starts_with("_t") {
+        return format!("{name}{index}");
+    }
+    format!("__lane_product_{name}_{index}")
 }
 
 fn operator_function_args(func: &FunctionExpr, arg: ValueExpr) -> (ValueExpr, ValueExpr) {
@@ -3073,7 +3167,7 @@ fn product_value(values: Vec<ValueExpr>) -> ValueExpr {
             Box::new(z.clone()),
             Box::new(w.clone()),
         ),
-        _ => unreachable!("function products only support R2, R3, and R4 outputs"),
+        _ => ValueExpr::Product(values),
     }
 }
 
@@ -3263,6 +3357,9 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
     if types_match(actual, expected) {
         return Ok(());
     }
+    if types_compatible_for_expected(actual, expected) {
+        return Ok(());
+    }
     if let (Type::Array(actual), Type::Array(expected)) = (actual, expected) {
         return ensure_type(actual, expected, context);
     }
@@ -3288,6 +3385,31 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
         format_type(expected),
         format_type(actual)
     )))
+}
+
+fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
+    types_match(actual, expected)
+        || matches!(
+            (actual, expected),
+            (Type::Vec2, Type::Complex)
+                | (Type::Complex, Type::Vec2)
+                | (Type::Vec4, Type::Quat)
+                | (Type::Quat, Type::Vec4)
+        )
+        || matches!(
+            (actual, expected),
+            (Type::Custom { name: actual, .. }, Type::Custom { name: expected, .. })
+                if actual == expected
+        )
+        || matches!(
+            (actual, expected),
+            (Type::Product(actual), Type::Product(expected))
+                if actual.len() == expected.len()
+                    && actual
+                        .iter()
+                        .zip(expected.iter())
+                        .all(|(actual, expected)| types_compatible_for_expected(actual, expected))
+        )
 }
 
 fn types_match(actual: &Type, expected: &Type) -> bool {
@@ -3323,6 +3445,17 @@ fn unify_types(left: &Type, right: &Type, substitutions: &mut GenericSubstitutio
         ) => {
             unify_symbolic_dims(left_rows, right_rows, substitutions)
                 && unify_symbolic_dims(left_columns, right_columns, substitutions)
+        }
+        (Type::Power(left_base, left_dim), Type::Power(right_base, right_dim)) => {
+            unify_types(left_base, right_base, substitutions)
+                && unify_symbolic_dims(left_dim, right_dim, substitutions)
+        }
+        (Type::Power(base, dim), Type::Product(parts))
+        | (Type::Product(parts), Type::Power(base, dim)) => {
+            unify_generic_dim(dim, parts.len(), substitutions)
+                && parts
+                    .iter()
+                    .all(|part| unify_types(base, part, substitutions))
         }
         (Type::Array(left), Type::Array(right)) => unify_types(left, right, substitutions),
         (Type::Product(left), Type::Product(right)) if left.len() == right.len() => left
@@ -3416,6 +3549,10 @@ fn substitute_type(ty: &Type, substitutions: &GenericSubstitution) -> Type {
                 _ => Type::MatGeneric(rows, columns),
             }
         }
+        Type::Power(base, dim) => {
+            let base = substitute_type(base, substitutions);
+            power_type_for_generic_dim(base, substitute_dim(dim, substitutions))
+        }
         Type::Array(element) => Type::Array(Box::new(substitute_type(element, substitutions))),
         Type::Product(parts) => Type::Product(
             parts
@@ -3451,6 +3588,13 @@ fn format_type(ty: &Type) -> String {
             .map(format_type)
             .collect::<Vec<_>>()
             .join(" × "),
+        Type::Power(base, dim) => {
+            format!(
+                "{}^{{{}}}",
+                format_type_power_base(base),
+                format_generic_dim(dim)
+            )
+        }
         Type::Func(_, _) => {
             let (inputs, output) = flatten_func_type(ty);
             let domain = if inputs.len() == 1 {
@@ -3471,6 +3615,13 @@ fn format_object_type(ty: &Type) -> String {
             .map(format_object_type)
             .collect::<Vec<_>>()
             .join(" × "),
+        Type::Power(base, dim) => {
+            format!(
+                "{}^{{{}}}",
+                format_type_power_base(base),
+                format_generic_dim(dim)
+            )
+        }
         Type::Func(input, output) => {
             format!(
                 "Hom({}, {})",

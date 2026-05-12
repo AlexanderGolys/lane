@@ -586,12 +586,21 @@ provided Hom(R3 x R3, R3) cross_ascii
 
 ASCII `x` is a product separator only when surrounded by whitespace.
 
-`A^n` is shorthand for an `n`-fold product `A × A × ... × A` when `n` is a
-positive integer.
+`A^n` is shorthand for an `n`-fold product `A × A × ... × A`. Concrete
+dimensions lower to structural products, and symbolic dimensions can appear in
+generic signatures such as `Hom({X}^{n}, {X})`.
 
 ```lane
 const Hom(R^3, R) sum3 = v |-> v.x + v.y + v.z
 Set Triple = R^{3}
+C^5 xs = ((0,1), (0,1), (0,1), 0, 1)
+```
+
+Power products have generic projection and diagonal builtins:
+
+```lane
+const Hom(R^5, R) pick = p{3}
+R radius = p{3}(diag{5}(time))
 ```
 
 ### Parenthesized Types

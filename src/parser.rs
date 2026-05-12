@@ -1587,9 +1587,9 @@ fn parse_type_with_custom_types(
         return Ok(Type::Product(parsed));
     }
     if let Some((base, exponent)) = split_top_level_power(source) {
-        let count = parse_type_power_exponent(exponent)?;
+        let dim = parse_type_power_exponent(exponent)?;
         let base = parse_type_with_custom_types(base, custom_types)?;
-        return Ok(power_type(base, count));
+        return Ok(power_type(base, dim));
     }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
@@ -1665,9 +1665,9 @@ fn parse_type_with_custom_types_for_ambient(
         return Ok(Type::Product(parsed));
     }
     if let Some((base, exponent)) = split_top_level_power(source) {
-        let count = parse_type_power_exponent(exponent)?;
+        let dim = parse_type_power_exponent(exponent)?;
         let base = parse_type_with_custom_types_for_ambient(base, custom_types, ambient_dimension)?;
-        return Ok(power_type(base, count));
+        return Ok(power_type(base, dim));
     }
     if let Some(inner) = strip_type_head(source, "Func") {
         let (input, output) = split_top_level_comma(inner)?;
@@ -1807,26 +1807,26 @@ fn split_top_level_power(source: &str) -> Option<(&str, &str)> {
     None
 }
 
-fn parse_type_power_exponent(source: &str) -> Result<usize, Error> {
+fn parse_type_power_exponent(source: &str) -> Result<GenericDim, Error> {
     let source = source
         .strip_prefix('{')
         .and_then(|inner| inner.strip_suffix('}'))
         .unwrap_or(source)
         .trim();
-    let count = source.parse::<usize>().map_err(|_| {
-        Error::new(format!(
-            "type power exponent '{}' must be a positive integer",
+    let Some(dim) = parse_generic_dim(source) else {
+        return Err(Error::new(format!(
+            "type power exponent '{}' must be a positive integer or generic dimension",
             source
-        ))
-    })?;
-    if count == 0 {
+        )));
+    };
+    if matches!(dim, GenericDim::Known(0)) {
         return Err(Error::new("type power exponent must be greater than zero"));
     }
-    Ok(count)
+    Ok(dim)
 }
 
-fn power_type(base: Type, count: usize) -> Type {
-    Type::Product(std::iter::repeat(base).take(count).collect())
+fn power_type(base: Type, dim: GenericDim) -> Type {
+    power_type_for_generic_dim(base, dim)
 }
 
 fn split_type_name(source: &str) -> Result<(&str, &str), Error> {

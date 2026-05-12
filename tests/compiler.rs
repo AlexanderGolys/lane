@@ -579,6 +579,41 @@ fn supports_power_type_product_declarations() {
 }
 
 #[test]
+fn supports_symbolic_power_types_in_provided_signatures() {
+    let source = "provided Hom({X}^{n}, {X}) fold\nconst Object output = Ball3D(r=1)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("ParamBall3D(1.0)"));
+}
+
+#[test]
+fn supports_generic_projection_builtin_for_power_domains() {
+    let source = "const Hom(R^5, R) pick = p{3}\nprovided R a, b, c, d, e\nR radius = pick(a, b, c, d, e)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float pick(float _t0, float _t1, float _t2, float _t3, float _t4)"));
+    assert!(glsl.contains("return _t3;"));
+}
+
+#[test]
+fn supports_generic_projection_and_diagonal_value_calls() {
+    let source =
+        "provided R z\nR radius = p{3}(diag{5}(z))\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("float radius = z;"));
+}
+
+#[test]
+fn supports_power_tuple_construction_for_non_float_components() {
+    let source = "C^5 x = ((0,1), (0,1), (0,1), 0, 1)\nR radius = p{3}(x).x\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("const vec2 __lane_product_x_3 = vec2(0.0, 0.0);"));
+    assert!(glsl.contains("float radius = (__lane_product_x_3).x;"));
+}
+
+#[test]
 fn supports_single_vector_closure_parameter() {
     let source =
         "const Hom(R2, R) g = v |-> v.x + v.y\nconst Object output = Ball3D(r=g((1, 2)))\n";
@@ -1176,10 +1211,9 @@ fn imports_std_module() {
     let source = "#import std\nprovided R2 uv\nR radius = projection_1(uv) + diagonal3(1).z\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float projection_1(vec2 _t)"));
-    assert!(glsl.contains("return (_v).y;"));
-    assert!(glsl.contains("vec3 diagonal3(float _t)"));
-    assert!(glsl.contains("return vec3(_t);"));
+    assert!(glsl.contains("float radius = ((uv).y + (vec3(1.0, 1.0, 1.0)).z);"));
+    assert!(!glsl.contains("float projection_1(vec2 _t)"));
+    assert!(!glsl.contains("vec3 diagonal3(float _t)"));
 }
 
 #[test]
@@ -1187,9 +1221,8 @@ fn imports_std_projection_templates_for_expression_arguments() {
     let source = "#import std\nprovided R2 uv\nR radius = projection_1(uv + uv)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float projection_1(vec2 _t)"));
-    assert!(glsl.contains("return (_v).y;"));
-    assert!(glsl.contains("float radius = projection_1((uv + uv));"));
+    assert!(glsl.contains("float radius = ((uv + uv)).y;"));
+    assert!(!glsl.contains("float projection_1(vec2 _t)"));
 }
 
 #[test]

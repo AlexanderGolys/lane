@@ -176,13 +176,7 @@ impl TypedProgram {
                 !global_value_names.contains(&binding.name)
                     && needed_value_names.contains(&binding.name)
             })
-            .map(|binding| {
-                format!(
-                    "    {} = {};",
-                    emit_value_binding_type(&binding.ty, &binding.name, binding.expr.array_len()),
-                    emit_plain_value_expr(&binding.expr, helper_names)
-                )
-            })
+            .flat_map(|binding| emit_value_binding_lines_for(binding, helper_names, "    "))
             .collect()
     }
 
@@ -194,13 +188,7 @@ impl TypedProgram {
         self.value_bindings
             .iter()
             .filter(|binding| global_value_names.contains(&binding.name))
-            .map(|binding| {
-                format!(
-                    "const {} = {};",
-                    emit_value_binding_type(&binding.ty, &binding.name, binding.expr.array_len()),
-                    emit_plain_value_expr(&binding.expr, helper_names)
-                )
-            })
+            .flat_map(|binding| emit_value_binding_lines_for(binding, helper_names, "const "))
             .collect()
     }
 
@@ -487,6 +475,7 @@ impl TypedProgram {
                 | Type::Generic(_)
                 | Type::VecGeneric(_)
                 | Type::MatGeneric(_, _)
+                | Type::Power(_, _)
                 | Type::Array(_) => {
                     forbidden.insert(input.name.clone());
                 }
@@ -956,6 +945,7 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
     match &func.kind {
         FunctionExprKind::Named(_) => {}
         FunctionExprKind::Operator(_) => {}
+        FunctionExprKind::Projection { .. } | FunctionExprKind::Diagonal { .. } => {}
         FunctionExprKind::ObjectGetter {
             object, captures, ..
         } => {
@@ -1025,6 +1015,7 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
                 collect_type_support(part, names);
             }
         }
+        Type::Power(base, _) => collect_type_support(base, names),
         Type::Func(input, output) => {
             collect_type_support(input, names);
             collect_type_support(output, names);
@@ -1753,6 +1744,33 @@ fn emit_value_binding_type(ty: &Type, name: &str, array_len: Option<usize>) -> S
     }
 }
 
+fn emit_value_binding_lines_for(
+    binding: &TypedValueBinding,
+    helper_names: &HashMap<String, String>,
+    prefix: &str,
+) -> Vec<String> {
+    if let (Type::Product(parts), ValueExpr::Product(values)) = (&binding.ty, &binding.expr) {
+        return parts
+            .iter()
+            .zip(values.iter())
+            .enumerate()
+            .map(|(index, (ty, value))| {
+                let name = product_projection_value_name(&binding.name, index);
+                format!(
+                    "{prefix}{} = {};",
+                    emit_value_binding_type(ty, &name, value.array_len()),
+                    emit_plain_value_expr(value, helper_names)
+                )
+            })
+            .collect();
+    }
+    vec![format!(
+        "{prefix}{} = {};",
+        emit_value_binding_type(&binding.ty, &binding.name, binding.expr.array_len()),
+        emit_plain_value_expr(&binding.expr, helper_names)
+    )]
+}
+
 fn emit_array_constructor(
     element_ty: &Type,
     elements: &[ValueExpr],
@@ -2130,7 +2148,11 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         | ValueExpr::Float(_)
         | ValueExpr::Int(_)
         | ValueExpr::Neutral { .. } => true,
-        ValueExpr::Var { name, .. } => names.contains(name),
+        ValueExpr::Var { name, .. } => {
+            names.contains(name)
+                || product_projection_source_name(name)
+                    .is_some_and(|source| names.contains(&source))
+        }
         ValueExpr::Vec2(x, y) => {
             is_global_const_value_expr(x, names) && is_global_const_value_expr(y, names)
         }
@@ -2251,6 +2273,9 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         | ValueExpr::Neutral { .. } => {}
         ValueExpr::Var { name, .. } => {
             names.insert(name.clone());
+            if let Some(source) = product_projection_source_name(name) {
+                names.insert(source);
+            }
         }
         ValueExpr::Call { args, .. } => {
             for arg in args {
@@ -2689,6 +2714,7 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
                 }
             }
         }
+        FunctionExprKind::Projection { .. } | FunctionExprKind::Diagonal { .. } => {}
         FunctionExprKind::ObjectGetter { captures, .. } => {
             for capture in captures {
                 collect_value_support(capture, names);
@@ -2760,10 +2786,7 @@ fn emit_value_expr(
         ValueExpr::Float(value) => format_float(*value),
         ValueExpr::Int(value) => value.to_string(),
         ValueExpr::Neutral { kind, ty } => emit_neutral_value(*kind, ty),
-        ValueExpr::Var { name, .. } => value_names
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| name.clone()),
+        ValueExpr::Var { name, .. } => emit_value_name(name, value_names),
         ValueExpr::Call { func, args, .. } => {
             if let Some(reordered) =
                 emit_scalar_first_min_max(func, args, helper_names, value_names)
@@ -2919,6 +2942,34 @@ fn emit_value_expr(
             emit_divergence(func, epsilon, at, helper_names, value_names)
         }
     }
+}
+
+fn emit_value_name(name: &str, value_names: &HashMap<String, String>) -> String {
+    if let Some(mapped) = value_names.get(name) {
+        return mapped.clone();
+    }
+    let suffix_start = name
+        .char_indices()
+        .rev()
+        .take_while(|(_, ch)| ch.is_ascii_digit())
+        .last()
+        .map(|(index, _)| index);
+    if let Some(index) = suffix_start {
+        if index > 0 {
+            let (prefix, suffix) = name.split_at(index);
+            if let Some(mapped) = value_names.get(prefix) {
+                return format!("{mapped}{suffix}");
+            }
+        }
+    }
+    name.to_string()
+}
+
+fn product_projection_source_name(name: &str) -> Option<String> {
+    let rest = name.strip_prefix("__lane_product_")?;
+    let (source, index) = rest.rsplit_once('_')?;
+    index.parse::<usize>().ok()?;
+    Some(source.to_string())
 }
 
 fn emit_scalar_first_min_max(

@@ -136,6 +136,11 @@ module.exports = grammar({
         ),
 
         _non_product_type: ($) => choice(
+            $.power_type,
+            $._non_power_type,
+        ),
+
+        _non_power_type: ($) => choice(
             $.hom_type,
             $.end_type,
             $.array_type,
@@ -152,6 +157,16 @@ module.exports = grammar({
             field('name', $.identifier),
             '}',
         ),
+
+        power_type: ($) => prec.left(PREC.power, seq(
+            field('base', $._non_power_type),
+            '^',
+            field('exponent', choice(
+                $.number,
+                $.identifier,
+                seq('{', choice($.number, $.identifier), '}'),
+            )),
+        )),
 
         product_type: ($) => prec.left(PREC.multiply, seq(
             field('component', $._non_product_type),
@@ -329,7 +344,7 @@ module.exports = grammar({
         //     repeat(choice($.name_template_slot, $._identifier_suffix_text)),
         // )),
 
-        identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
+        identifier: () => /[A-Za-z_][A-Za-z0-9_]*(\{[A-Za-z0-9_]*\})*/,
 
         // _identifier_suffix_text: () => token.immediate(/[A-Za-z_][A-Za-z0-9_]*/),
 
