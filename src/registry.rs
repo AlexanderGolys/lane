@@ -789,7 +789,7 @@ impl Registry {
     pub(super) fn known_builtin_objects(&self) -> Vec<KnownBuiltinObject> {
         let mut objects = Vec::new();
 
-        for def in ALGEBRAIC_CATEGORY_DEFS.iter() {
+        for def in CATEGORY_DEFS.iter() {
             objects.push(KnownBuiltinObject {
                 name: def.name.to_string(),
                 ty: CATEGORY_METATYPE_NAME.to_string(),

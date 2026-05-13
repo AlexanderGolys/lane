@@ -1111,25 +1111,25 @@ fn emit_monoid_pow_function(ty: &Type) -> String {
 }
 
 /// Performs `product_category_ops` behavior.
-fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
+fn product_category_ops(category: Category) -> &'static [ProductOp] {
     match category {
-        AlgebraicCategory::Ab => &[ProductOp::Zero, ProductOp::Add, ProductOp::Sub],
-        AlgebraicCategory::Mon => &[ProductOp::One, ProductOp::Mult],
-        AlgebraicCategory::Grp => &[ProductOp::Identity, ProductOp::Mult, ProductOp::Inv],
-        AlgebraicCategory::Ring => &[
+        Category::Ab => &[ProductOp::Zero, ProductOp::Add, ProductOp::Sub],
+        Category::Mon => &[ProductOp::One, ProductOp::Mult],
+        Category::Grp => &[ProductOp::Identity, ProductOp::Mult, ProductOp::Inv],
+        Category::Ring => &[
             ProductOp::Zero,
             ProductOp::One,
             ProductOp::Add,
             ProductOp::Sub,
             ProductOp::Mult,
         ],
-        AlgebraicCategory::RVect => &[
+        Category::RVect => &[
             ProductOp::Zero,
             ProductOp::Add,
             ProductOp::Sub,
             ProductOp::Scale,
         ],
-        AlgebraicCategory::RAlg => &[
+        Category::RAlg => &[
             ProductOp::Zero,
             ProductOp::One,
             ProductOp::Add,
@@ -1137,7 +1137,7 @@ fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
             ProductOp::Mult,
             ProductOp::Scale,
         ],
-        AlgebraicCategory::DivRing | AlgebraicCategory::RDivAlg | AlgebraicCategory::Set => &[],
+        Category::DivRing | Category::RDivAlg | Category::Set => &[],
     }
 }
 
@@ -1346,7 +1346,7 @@ fn emit_component_op_dependency(
         Type::Custom { name, .. } => {
             if let Some(decl) = product_types.get(name.as_str()) {
                 let component_op =
-                    if matches!(op, ProductOp::One) && has_category(ty, AlgebraicCategory::Grp) {
+                    if matches!(op, ProductOp::One) && has_category(ty, Category::Grp) {
                         ProductOp::Identity
                     } else {
                         op
@@ -1456,7 +1456,7 @@ fn emit_product_unary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
 
 /// Performs `component_product_op` behavior.
 fn component_product_op(op: ProductOp, ty: &Type) -> ProductOp {
-    if has_category(ty, AlgebraicCategory::Grp) || !has_category(ty, AlgebraicCategory::Ab) {
+    if has_category(ty, Category::Grp) || !has_category(ty, Category::Ab) {
         return op;
     }
 
@@ -1488,10 +1488,10 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
     match op {
         ProductOp::Zero => emit_neutral_value(NeutralKind::Zero, ty),
         ProductOp::One
-            if has_category(ty, AlgebraicCategory::Grp)
-                && !has_category(ty, AlgebraicCategory::Ring)
-                && !has_category(ty, AlgebraicCategory::DivRing)
-                && !has_category(ty, AlgebraicCategory::RAlg) =>
+            if has_category(ty, Category::Grp)
+                && !has_category(ty, Category::Ring)
+                && !has_category(ty, Category::DivRing)
+                && !has_category(ty, Category::RAlg) =>
         {
             emit_component_neutral(ProductOp::Identity, ty)
         }
@@ -3126,8 +3126,8 @@ fn numeric_widen_cast_type_for_emit(actual: &Type, other: &Type) -> Option<Type>
     let target = if other == &Type::Int {
         Type::Int
     } else if other == &Type::Float
-        || has_category(other, AlgebraicCategory::RVect)
-        || has_category(other, AlgebraicCategory::RAlg)
+        || has_category(other, Category::RVect)
+        || has_category(other, Category::RAlg)
     {
         Type::Float
     } else {

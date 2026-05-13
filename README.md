@@ -141,7 +141,7 @@ Usage:
   through `glslc`; intermediate files are placed under `target/lane-preview`.
 - `lane preview SOURCE` opens the native Vulkan previewer. It uses `glslc`,
   FIFO presentation, and a conservative frame cap.
-- `lane list` lists builtin objects, type aliases, and algebraic categories.
+- `lane list` lists builtin objects, type aliases, and categories.
 - `lane list NAME` shows one builtin object's type and support body.
 - `lane list 2d` and `lane list 3d` list only 2D or 3D primitives.
 - `lane list all` lists every builtin item on one line, including primitive
@@ -332,7 +332,7 @@ const Object output = Ball3D(r=radius)
 
 ### `provided CATEGORY TypeName`
 
-Declares an external nominal type. Lane knows its algebraic category, but the
+Declares an external nominal type. Lane knows its category, but the
 host GLSL environment must provide the representation and operations.
 
 ```lane

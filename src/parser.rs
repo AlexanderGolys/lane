@@ -42,7 +42,7 @@ impl<'a> Parser<'a> {
 
     /// Performs `parse_program` behavior.
     pub(super) fn parse_program(&self) -> Result<Program, Error> {
-        let mut custom_types: HashMap<String, AlgebraicCategory> = HashMap::new();
+        let mut custom_types: HashMap<String, Category> = HashMap::new();
         let mut product_types = Vec::new();
         let mut category_types = Vec::new();
         let mut inputs = Vec::new();
@@ -190,7 +190,7 @@ impl<'a> Parser<'a> {
                     ensure_user_decl_name(&product_type.name, "product type", line_number)?;
                     let existing =
                         custom_types.insert(product_type.name.clone(), product_type.category);
-                    if existing.is_some_and(|category| category != AlgebraicCategory::Set) {
+                    if existing.is_some_and(|category| category != Category::Set) {
                         return Err(Error::new(format!(
                             "duplicate provided type '{}'",
                             product_type.name
@@ -205,7 +205,7 @@ impl<'a> Parser<'a> {
                     let existing =
                         custom_types.insert(category_type.name.clone(), category_type.category);
                     if existing.is_some_and(|category| {
-                        category != AlgebraicCategory::Set
+                        category != Category::Set
                             || category_type.name != category_type.base.type_name()
                     }) {
                         return Err(Error::new(format!(
@@ -266,7 +266,7 @@ impl<'a> Parser<'a> {
         &self,
         line: &str,
         line_number: usize,
-        custom_types: &HashMap<String, AlgebraicCategory>,
+        custom_types: &HashMap<String, Category>,
         ambient_dimension: ShapeDimension,
         allow_raw_glsl: bool,
     ) -> Result<Decl, Error> {
@@ -553,7 +553,7 @@ fn parse_directive(
 fn parse_product_type_decl(
     line: &str,
     line_number: usize,
-    custom_types: &HashMap<String, AlgebraicCategory>,
+    custom_types: &HashMap<String, Category>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Option<ProductTypeDecl>, Error> {
     let (provided, eager_ops, line) = if let Some(rest) = line.strip_prefix("provided ") {
@@ -633,7 +633,7 @@ fn parse_product_type_decl(
 fn parse_category_type_decl(
     line: &str,
     line_number: usize,
-    custom_types: &HashMap<String, AlgebraicCategory>,
+    custom_types: &HashMap<String, Category>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Option<CategoryTypeDecl>, Error> {
     let Some((left, right)) = line.split_once('=') else {
@@ -655,7 +655,7 @@ fn parse_category_type_decl(
     {
         return Ok(None);
     }
-    if category == AlgebraicCategory::Set {
+    if category == Category::Set {
         return Ok(None);
     }
     if right.trim().contains('{') || right.trim().contains('}') {
@@ -681,7 +681,7 @@ fn parse_category_type_decl(
 fn parse_multi_input_decls(
     line: &str,
     line_number: usize,
-    custom_types: &HashMap<String, AlgebraicCategory>,
+    custom_types: &HashMap<String, Category>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Option<Vec<InputDecl>>, Error> {
     let Some((ty_source, names_source)) = parse_provided_multi_names(line) else {
@@ -726,7 +726,7 @@ fn parse_multi_provided_type_decls(line: &str) -> Result<Option<Vec<ProvidedType
 fn parse_provided_arrow_decls(
     source: &str,
     line_number: usize,
-    custom_types: &HashMap<String, AlgebraicCategory>,
+    custom_types: &HashMap<String, Category>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Option<Vec<InputDecl>>, Error> {
     let Some(colon_index) = find_top_level_colon(source) else {
@@ -1503,7 +1503,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
 /// Performs `parse_type_with_custom_types_for_ambient` behavior.
 fn parse_type_with_custom_types_for_ambient(
     source: &str,
-    custom_types: &HashMap<String, AlgebraicCategory>,
+    custom_types: &HashMap<String, Category>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Type, Error> {
     parse_type_with_custom_types_base(source, custom_types, Some(ambient_dimension))
@@ -1511,7 +1511,7 @@ fn parse_type_with_custom_types_for_ambient(
 
 fn parse_type_with_custom_types_base(
     source: &str,
-    custom_types: &HashMap<String, AlgebraicCategory>,
+    custom_types: &HashMap<String, Category>,
     ambient_dimension: Option<ShapeDimension>,
 ) -> Result<Type, Error> {
     let source = source.trim();
@@ -1574,7 +1574,7 @@ fn parse_type_with_custom_types_base(
                 .chars()
                 .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
             {
-                Ok(custom_type(source, AlgebraicCategory::Set))
+                Ok(custom_type(source, Category::Set))
             } else {
                 Err(Error::new(format!("unsupported type '{}'", source)))
             }

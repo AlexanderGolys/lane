@@ -240,12 +240,12 @@ pub fn is_known_type_name(name: &str) -> bool {
     parse_builtin_type_name(name).is_some()
 }
 
-/// Returns all known algebraic category names for validation and rendering.
+/// Returns all known category names for validation and rendering.
 pub fn known_category_names() -> Vec<&'static str> {
-    ALGEBRAIC_CATEGORY_DEFS.iter().map(|def| def.name).collect()
+    CATEGORY_DEFS.iter().map(|def| def.name).collect()
 }
 
-/// Checks whether a name matches a known algebraic category.
+/// Checks whether a name matches a known category.
 pub fn is_known_category_name(name: &str) -> bool {
     category_by_name(name).is_some()
 }
@@ -316,7 +316,7 @@ const QUAT_FIELD_SUPPORT_GLSL: &str = "vec4 mult_H(vec4 a, vec4 b) {\n    return
 const ISOM3_GROUP_SUPPORT_GLSL: &str = "struct Isom3 {\n    mat3 A;\n    vec3 t;\n};\n\nvec3 act_Isom3(Isom3 g, vec3 p) {\n    return (g.A * p) + g.t;\n}\n\nIsom3 mult_Isom3(Isom3 a, Isom3 b) {\n    return Isom3(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nIsom3 inv_Isom3(Isom3 g) {\n    mat3 inverse_linear = transpose(g.A);\n    return Isom3(inverse_linear, -(inverse_linear * g.t));\n}\n\nmat3 rot_Isom3_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nIsom3 rot(vec3 binormal, vec3 anchor, float angle) {\n    mat3 A = rot_Isom3_matrix(binormal, angle);\n    return Isom3(A, anchor - (A * anchor));\n}";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AlgebraicCategory {
+enum Category {
     Ab,
     Mon,
     Grp,
@@ -328,61 +328,61 @@ enum AlgebraicCategory {
     Set,
 }
 
-struct AlgebraicCategoryDef {
-    category: AlgebraicCategory,
+struct CategoryDef {
+    category: Category,
     name: &'static str,
 }
 
-const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 9] = [
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::Ab,
+const CATEGORY_DEFS: [CategoryDef; 9] = [
+    CategoryDef {
+        category: Category::Ab,
         name: "Ab",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::Mon,
+    CategoryDef {
+        category: Category::Mon,
         name: "Mon",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::Grp,
+    CategoryDef {
+        category: Category::Grp,
         name: "Grp",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::Ring,
+    CategoryDef {
+        category: Category::Ring,
         name: "Ring",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::DivRing,
+    CategoryDef {
+        category: Category::DivRing,
         name: "DivRing",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::RVect,
+    CategoryDef {
+        category: Category::RVect,
         name: "RVect",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::RAlg,
+    CategoryDef {
+        category: Category::RAlg,
         name: "RAlg",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::RDivAlg,
+    CategoryDef {
+        category: Category::RDivAlg,
         name: "RDivAlg",
     },
-    AlgebraicCategoryDef {
-        category: AlgebraicCategory::Set,
+    CategoryDef {
+        category: Category::Set,
         name: "Set",
     },
 ];
 
 /// Performs `category_by_name` behavior.
-fn category_by_name(name: &str) -> Option<AlgebraicCategory> {
-    ALGEBRAIC_CATEGORY_DEFS
+fn category_by_name(name: &str) -> Option<Category> {
+    CATEGORY_DEFS
         .iter()
         .find(|def| def.name == name)
         .map(|def| def.category)
 }
 
 /// Performs `category_name` behavior.
-fn category_name(category: AlgebraicCategory) -> &'static str {
-    ALGEBRAIC_CATEGORY_DEFS
+fn category_name(category: Category) -> &'static str {
+    CATEGORY_DEFS
         .iter()
         .find(|def| def.category == category)
         .map(|def| def.name)
@@ -400,7 +400,7 @@ fn type_category_signature(name: &str) -> Option<String> {
 }
 
 /// Performs `minimal_categories` behavior.
-fn minimal_categories(categories: Vec<AlgebraicCategory>) -> Vec<AlgebraicCategory> {
+fn minimal_categories(categories: Vec<Category>) -> Vec<Category> {
     categories
         .iter()
         .copied()
@@ -413,13 +413,13 @@ fn minimal_categories(categories: Vec<AlgebraicCategory>) -> Vec<AlgebraicCatego
 }
 
 /// Performs `type_direct_categories` behavior.
-fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {
+fn type_direct_categories(ty: &Type) -> Vec<Category> {
     if let Type::Mat(rows, columns) = ty {
         let mut categories = Vec::new();
         if rows == columns {
-            categories.push(AlgebraicCategory::Ring);
+            categories.push(Category::Ring);
         }
-        categories.push(AlgebraicCategory::RVect);
+        categories.push(Category::RVect);
         return categories;
     }
 
@@ -431,7 +431,7 @@ fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {
 }
 
 /// Performs `format_categories` behavior.
-fn format_categories(categories: &[AlgebraicCategory]) -> String {
+fn format_categories(categories: &[Category]) -> String {
     categories
         .iter()
         .map(|category| category_name(*category))
@@ -444,7 +444,7 @@ struct BuiltinTypeDef {
     aliases: &'static [&'static str],
     display_name: &'static str,
     support_glsl: Option<&'static str>,
-    categories: &'static [AlgebraicCategory],
+    categories: &'static [Category],
 }
 
 const MATRIX_TYPE_NAMES: [&str; 9] = [
@@ -457,68 +457,56 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         aliases: &["Bool"],
         display_name: "Bool",
         support_glsl: None,
-        categories: &[AlgebraicCategory::DivRing],
+        categories: &[Category::DivRing],
     },
     BuiltinTypeDef {
         ty: Type::Float,
         aliases: &["Float", "R"],
         display_name: "R",
         support_glsl: None,
-        categories: &[
-            AlgebraicCategory::Grp,
-            AlgebraicCategory::RDivAlg,
-            AlgebraicCategory::RVect,
-        ],
+        categories: &[Category::Grp, Category::RDivAlg, Category::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Int,
         aliases: &["Int", "Z"],
         display_name: "Z",
         support_glsl: None,
-        categories: &[AlgebraicCategory::Ring],
+        categories: &[Category::Ring],
     },
     BuiltinTypeDef {
         ty: Type::Complex,
         aliases: &["Complex", "C"],
         display_name: "C",
         support_glsl: Some(COMPLEX_FIELD_SUPPORT_GLSL),
-        categories: &[
-            AlgebraicCategory::Grp,
-            AlgebraicCategory::RDivAlg,
-            AlgebraicCategory::RVect,
-        ],
+        categories: &[Category::Grp, Category::RDivAlg, Category::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Vec2,
         aliases: &["Vec2", "R2"],
         display_name: "R2",
         support_glsl: None,
-        categories: &[AlgebraicCategory::RVect],
+        categories: &[Category::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Vec3,
         aliases: &["Vec3", "R3"],
         display_name: "R3",
         support_glsl: None,
-        categories: &[AlgebraicCategory::RVect],
+        categories: &[Category::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Vec4,
         aliases: &["Vec4", "R4"],
         display_name: "R4",
         support_glsl: None,
-        categories: &[AlgebraicCategory::RVect],
+        categories: &[Category::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Quat,
         aliases: &["H"],
         display_name: "H",
         support_glsl: Some(QUAT_FIELD_SUPPORT_GLSL),
-        categories: &[
-            AlgebraicCategory::Grp,
-            AlgebraicCategory::RDivAlg,
-            AlgebraicCategory::RVect,
-        ],
+        categories: &[Category::Grp, Category::RDivAlg, Category::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Object,
@@ -539,14 +527,14 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         aliases: &["Isom2"],
         display_name: "Isom2",
         support_glsl: Some(ISOM2_GROUP_SUPPORT_GLSL),
-        categories: &[AlgebraicCategory::Grp],
+        categories: &[Category::Grp],
     },
     BuiltinTypeDef {
         ty: Type::Isom3,
         aliases: &["Isom3"],
         display_name: "Isom3",
         support_glsl: Some(ISOM3_GROUP_SUPPORT_GLSL),
-        categories: &[AlgebraicCategory::Grp],
+        categories: &[Category::Grp],
     },
 ];
 
@@ -589,7 +577,7 @@ enum Type {
     Isom3,
     Custom {
         name: String,
-        categories: Vec<AlgebraicCategory>,
+        categories: Vec<Category>,
     },
     Vec2,
     Vec3,
@@ -710,7 +698,7 @@ fn parse_generic_type_name(name: &str) -> Option<Type> {
 }
 
 /// Performs `custom_type` behavior.
-fn custom_type(name: &str, category: AlgebraicCategory) -> Type {
+fn custom_type(name: &str, category: Category) -> Type {
     Type::Custom {
         name: name.to_string(),
         categories: vec![category],
@@ -872,8 +860,8 @@ fn matrix_constructor_type(rows: usize, columns: usize) -> String {
 }
 
 /// Performs `has_category` behavior.
-fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
-    if category == AlgebraicCategory::Set {
+fn has_category(ty: &Type, category: Category) -> bool {
+    if category == Category::Set {
         return !matches!(ty, Type::Object | Type::Object2D | Type::Func(_, _));
     }
     if matches!(ty, Type::Generic(_)) {
@@ -882,26 +870,21 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
     if matches!(ty, Type::VecGeneric(_)) {
         return matches!(
             category,
-            AlgebraicCategory::RVect
-                | AlgebraicCategory::Ab
-                | AlgebraicCategory::Mon
-                | AlgebraicCategory::Grp
+            Category::RVect | Category::Ab | Category::Mon | Category::Grp
         );
     }
     if let Type::MatGeneric(rows, columns) = ty {
-        return category == AlgebraicCategory::RVect
+        return category == Category::RVect
             || (unify_symbolic_dims(rows, columns, &mut GenericSubstitution::default())
-                && (category == AlgebraicCategory::Ring
-                    || category_implies(AlgebraicCategory::Ring, category)));
+                && (category == Category::Ring || category_implies(Category::Ring, category)));
     }
     if let Type::Power(base, _) = ty {
         return has_category(base, category);
     }
     if let Type::Mat(rows, columns) = ty {
-        return category == AlgebraicCategory::RVect
+        return category == Category::RVect
             || (rows == columns
-                && (category == AlgebraicCategory::Ring
-                    || category_implies(AlgebraicCategory::Ring, category)));
+                && (category == Category::Ring || category_implies(Category::Ring, category)));
     }
     if let Type::Custom { categories, .. } = ty {
         return categories
@@ -917,36 +900,36 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
 }
 
 /// Performs `category_implies` behavior.
-fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> bool {
+fn category_implies(source: Category, target: Category) -> bool {
     matches!(
         (source, target),
-        (AlgebraicCategory::RDivAlg, AlgebraicCategory::DivRing)
-            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::RAlg)
-            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Grp)
-            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Ring)
-            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::RVect)
-            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Ab)
-            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Mon)
-            | (AlgebraicCategory::RAlg, AlgebraicCategory::Ring)
-            | (AlgebraicCategory::RAlg, AlgebraicCategory::RVect)
-            | (AlgebraicCategory::RAlg, AlgebraicCategory::Ab)
-            | (AlgebraicCategory::RAlg, AlgebraicCategory::Mon)
-            | (AlgebraicCategory::Ring, AlgebraicCategory::Ab)
-            | (AlgebraicCategory::Ring, AlgebraicCategory::Mon)
-            | (AlgebraicCategory::DivRing, AlgebraicCategory::Grp)
-            | (AlgebraicCategory::DivRing, AlgebraicCategory::Ring)
-            | (AlgebraicCategory::DivRing, AlgebraicCategory::Ab)
-            | (AlgebraicCategory::DivRing, AlgebraicCategory::Mon)
-            | (AlgebraicCategory::Grp, AlgebraicCategory::Mon)
-            | (AlgebraicCategory::RVect, AlgebraicCategory::Ab)
-            | (AlgebraicCategory::Ab, AlgebraicCategory::Set)
-            | (AlgebraicCategory::Mon, AlgebraicCategory::Set)
-            | (AlgebraicCategory::Grp, AlgebraicCategory::Set)
-            | (AlgebraicCategory::Ring, AlgebraicCategory::Set)
-            | (AlgebraicCategory::DivRing, AlgebraicCategory::Set)
-            | (AlgebraicCategory::RVect, AlgebraicCategory::Set)
-            | (AlgebraicCategory::RAlg, AlgebraicCategory::Set)
-            | (AlgebraicCategory::RDivAlg, AlgebraicCategory::Set)
+        (Category::RDivAlg, Category::DivRing)
+            | (Category::RDivAlg, Category::RAlg)
+            | (Category::RDivAlg, Category::Grp)
+            | (Category::RDivAlg, Category::Ring)
+            | (Category::RDivAlg, Category::RVect)
+            | (Category::RDivAlg, Category::Ab)
+            | (Category::RDivAlg, Category::Mon)
+            | (Category::RAlg, Category::Ring)
+            | (Category::RAlg, Category::RVect)
+            | (Category::RAlg, Category::Ab)
+            | (Category::RAlg, Category::Mon)
+            | (Category::Ring, Category::Ab)
+            | (Category::Ring, Category::Mon)
+            | (Category::DivRing, Category::Grp)
+            | (Category::DivRing, Category::Ring)
+            | (Category::DivRing, Category::Ab)
+            | (Category::DivRing, Category::Mon)
+            | (Category::Grp, Category::Mon)
+            | (Category::RVect, Category::Ab)
+            | (Category::Ab, Category::Set)
+            | (Category::Mon, Category::Set)
+            | (Category::Grp, Category::Set)
+            | (Category::Ring, Category::Set)
+            | (Category::DivRing, Category::Set)
+            | (Category::RVect, Category::Set)
+            | (Category::RAlg, Category::Set)
+            | (Category::RDivAlg, Category::Set)
     )
 }
 
@@ -960,13 +943,13 @@ struct InputDecl {
 #[derive(Clone, Debug)]
 struct ProvidedTypeDecl {
     name: String,
-    category: AlgebraicCategory,
+    category: Category,
 }
 
 #[derive(Clone, Debug)]
 struct ProductTypeDecl {
     name: String,
-    category: AlgebraicCategory,
+    category: Category,
     components: Vec<Type>,
     field_names: Vec<String>,
     eager_ops: bool,
@@ -977,7 +960,7 @@ struct ProductTypeDecl {
 #[derive(Clone, Debug)]
 struct CategoryTypeDecl {
     name: String,
-    category: AlgebraicCategory,
+    category: Category,
     base: Type,
     line: usize,
 }

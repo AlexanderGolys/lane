@@ -631,9 +631,7 @@ impl<'a> Env<'a> {
 }
 
 /// Builds the final category for promoted nominal types such as `Ab X = X`.
-fn category_type_promotions(
-    category_types: &[CategoryTypeDecl],
-) -> HashMap<String, AlgebraicCategory> {
+fn category_type_promotions(category_types: &[CategoryTypeDecl]) -> HashMap<String, Category> {
     category_types
         .iter()
         .filter(|decl| category_type_is_promotion(decl))
@@ -642,7 +640,7 @@ fn category_type_promotions(
 }
 
 /// Rewrites earlier references to promoted custom types to the final category.
-fn normalize_type_categories(ty: &Type, promotions: &HashMap<String, AlgebraicCategory>) -> Type {
+fn normalize_type_categories(ty: &Type, promotions: &HashMap<String, Category>) -> Type {
     match ty {
         Type::Custom { name, .. } => promotions
             .get(name)
@@ -672,7 +670,7 @@ fn normalize_type_categories(ty: &Type, promotions: &HashMap<String, AlgebraicCa
 /// Normalizes product component categories after all category promotions are known.
 fn normalize_product_type_decl(
     decl: &ProductTypeDecl,
-    promotions: &HashMap<String, AlgebraicCategory>,
+    promotions: &HashMap<String, Category>,
 ) -> ProductTypeDecl {
     let mut decl = decl.clone();
     decl.components = decl
@@ -686,7 +684,7 @@ fn normalize_product_type_decl(
 /// Normalizes category bases after all category promotions are known.
 fn normalize_category_type_decl(
     decl: &CategoryTypeDecl,
-    promotions: &HashMap<String, AlgebraicCategory>,
+    promotions: &HashMap<String, Category>,
 ) -> CategoryTypeDecl {
     let mut decl = decl.clone();
     decl.base = normalize_type_categories(&decl.base, promotions);
@@ -709,7 +707,7 @@ fn category_type_product_decl(decl: &CategoryTypeDecl) -> Option<ProductTypeDecl
 
 /// Type-checks helper logic for validate_product_type_decl.
 fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
-    if decl.category == AlgebraicCategory::DivRing {
+    if decl.category == Category::DivRing {
         return Err(Error::new(format!(
             "product type '{}' cannot be declared as DivRing",
             decl.name
@@ -738,7 +736,7 @@ fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
 /// Validates required category operations supplied by operator-reference declarations.
 fn validate_category_type_decl(decl: &CategoryTypeDecl, env: &Env<'_>) -> Result<(), Error> {
     validate_user_type(&decl.base)?;
-    if !has_category(&decl.base, AlgebraicCategory::Set) {
+    if !has_category(&decl.base, Category::Set) {
         return Err(Error::new(format!(
             "category type '{}' base {} does not satisfy Set",
             decl.name,
@@ -757,27 +755,27 @@ fn validate_inferred_category_type_decl(
     let ty = category_type_decl_type(decl);
     let ops = CategoryOps::new(env, &ty);
     match decl.category {
-        AlgebraicCategory::Ab => {
+        Category::Ab => {
             ops.require("zero", &decl.name)?;
             ops.require("add", &decl.name)?;
             ops.require("sub", &decl.name)?;
         }
-        AlgebraicCategory::Mon => {
+        Category::Mon => {
             ops.require("one", &decl.name)?;
             ops.require("mult", &decl.name)?;
         }
-        AlgebraicCategory::Grp => {
+        Category::Grp => {
             ops.require("e", &decl.name)?;
             ops.require("mult", &decl.name)?;
             ops.require("inv", &decl.name)?;
         }
-        AlgebraicCategory::Ring => {
+        Category::Ring => {
             validate_inferred_required_ops(decl, env, &ty, &["zero", "one", "add", "sub", "mult"])?;
         }
-        AlgebraicCategory::RVect => {
+        Category::RVect => {
             validate_inferred_required_ops(decl, env, &ty, &["zero", "add", "sub", "scale"])?;
         }
-        AlgebraicCategory::RAlg => {
+        Category::RAlg => {
             validate_inferred_required_ops(
                 decl,
                 env,
@@ -785,14 +783,14 @@ fn validate_inferred_category_type_decl(
                 &["zero", "one", "add", "sub", "mult", "scale"],
             )?;
         }
-        AlgebraicCategory::DivRing | AlgebraicCategory::RDivAlg => {
+        Category::DivRing | Category::RDivAlg => {
             return Err(Error::new(format!(
                 "category type '{}' does not support category {} yet",
                 decl.name,
                 category_name(decl.category)
             )));
         }
-        AlgebraicCategory::Set => unreachable!(),
+        Category::Set => unreachable!(),
     }
     Ok(())
 }
@@ -876,22 +874,22 @@ fn is_overloaded_value_name(name: &str) -> bool {
 }
 
 /// Type-checks helper logic for product_component_satisfies_category.
-fn product_component_satisfies_category(component: &Type, category: AlgebraicCategory) -> bool {
+fn product_component_satisfies_category(component: &Type, category: Category) -> bool {
     has_category(component, category)
-        || (category == AlgebraicCategory::Grp && has_category(component, AlgebraicCategory::Ab))
+        || (category == Category::Grp && has_category(component, Category::Ab))
 }
 
 /// Type-checks helper logic for product_category_supported.
-fn product_category_supported(category: AlgebraicCategory) -> bool {
+fn product_category_supported(category: Category) -> bool {
     matches!(
         category,
-        AlgebraicCategory::Ab
-            | AlgebraicCategory::Mon
-            | AlgebraicCategory::Grp
-            | AlgebraicCategory::Ring
-            | AlgebraicCategory::RVect
-            | AlgebraicCategory::RAlg
-            | AlgebraicCategory::Set
+        Category::Ab
+            | Category::Mon
+            | Category::Grp
+            | Category::Ring
+            | Category::RVect
+            | Category::RAlg
+            | Category::Set
     )
 }
 
@@ -1121,7 +1119,7 @@ fn infer_unary_value_expr(op: UnaryOp, expr: ValueExpr) -> Result<ValueExpr, Err
 fn infer_unary_type(op: UnaryOp, ty: &Type) -> Result<Type, Error> {
     match op {
         UnaryOp::Inv => {
-            if has_category(ty, AlgebraicCategory::Grp) {
+            if has_category(ty, Category::Grp) {
                 Ok(ty.clone())
             } else {
                 Err(Error::new(format!(
@@ -1146,9 +1144,9 @@ fn lift_param_name(lift_param: Option<&str>, name: &str) -> Result<String, Error
 fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error> {
     if left == right && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div) {
         let category = match op {
-            BinOp::Add | BinOp::Sub => AlgebraicCategory::Ab,
-            BinOp::Mul => AlgebraicCategory::Mon,
-            BinOp::Div => AlgebraicCategory::DivRing,
+            BinOp::Add | BinOp::Sub => Category::Ab,
+            BinOp::Mul => Category::Mon,
+            BinOp::Div => Category::DivRing,
             BinOp::Eq
             | BinOp::Ne
             | BinOp::Lt
@@ -1186,11 +1184,11 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
         }
     }
 
-    if has_category(left, AlgebraicCategory::RAlg) && right == &Type::Float {
+    if has_category(left, Category::RAlg) && right == &Type::Float {
         return Ok(left.clone());
     }
 
-    if left == &Type::Float && has_category(right, AlgebraicCategory::RAlg) {
+    if left == &Type::Float && has_category(right, Category::RAlg) {
         return Ok(right.clone());
     }
 
@@ -1203,13 +1201,13 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
     }
 
     if matches!(op, BinOp::Mul | BinOp::Div)
-        && has_category(left, AlgebraicCategory::RVect)
+        && has_category(left, Category::RVect)
         && right == &Type::Float
     {
         return Ok(left.clone());
     }
 
-    if op == BinOp::Mul && left == &Type::Float && has_category(right, AlgebraicCategory::RVect) {
+    if op == BinOp::Mul && left == &Type::Float && has_category(right, Category::RVect) {
         return Ok(right.clone());
     }
 
@@ -1236,8 +1234,8 @@ fn numeric_widen_cast_type_for_binary(actual: &Type, other: &Type) -> Option<Typ
     let target = if other == &Type::Int {
         Type::Int
     } else if other == &Type::Float
-        || has_category(other, AlgebraicCategory::RVect)
-        || has_category(other, AlgebraicCategory::RAlg)
+        || has_category(other, Category::RVect)
+        || has_category(other, Category::RAlg)
     {
         Type::Float
     } else {

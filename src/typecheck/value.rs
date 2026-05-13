@@ -869,7 +869,7 @@ fn collect_lifted_param_type(
 fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKind> {
     match requested {
         NeutralKind::Zero => {
-            if has_category(ty, AlgebraicCategory::Ab) {
+            if has_category(ty, Category::Ab) {
                 Some(NeutralKind::Zero)
             } else {
                 None
@@ -878,9 +878,9 @@ fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKin
         NeutralKind::One => {
             if matches!(ty, Type::Mat(rows, columns) if rows == columns) {
                 Some(NeutralKind::Identity)
-            } else if has_category(ty, AlgebraicCategory::Ring)
-                || has_category(ty, AlgebraicCategory::DivRing)
-                || has_category(ty, AlgebraicCategory::RAlg)
+            } else if has_category(ty, Category::Ring)
+                || has_category(ty, Category::DivRing)
+                || has_category(ty, Category::RAlg)
             {
                 Some(NeutralKind::One)
             } else {
@@ -888,7 +888,7 @@ fn neutral_kind_for_type(ty: &Type, requested: NeutralKind) -> Option<NeutralKin
             }
         }
         NeutralKind::Identity => {
-            if has_category(ty, AlgebraicCategory::Grp)
+            if has_category(ty, Category::Grp)
                 || matches!(ty, Type::Mat(rows, columns) if rows == columns)
             {
                 Some(NeutralKind::Identity)
@@ -1153,7 +1153,7 @@ fn infer_monoid_pow_call(
 
 /// Type-checks helper logic for is_monoid_pow_type.
 fn is_monoid_pow_type(ty: &Type) -> bool {
-    is_value_type(ty) && has_category(ty, AlgebraicCategory::Mon)
+    is_value_type(ty) && has_category(ty, Category::Mon)
 }
 
 /// Type-checks helper logic for infer_value_call.
