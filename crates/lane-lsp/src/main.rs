@@ -14,8 +14,8 @@ mod signature;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    CompletionItem, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
+    DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams, DocumentLink,
     DocumentLinkOptions, DocumentLinkParams, DocumentSymbolParams, DocumentSymbolResponse, Hover,
     HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
@@ -94,18 +94,7 @@ impl Backend {
 
     /// Converts lane completion catalog entries into LSP completion items.
     fn completion_items() -> Vec<CompletionItem> {
-        lane::lane_completion_items()
-            .into_iter()
-            .map(|item| CompletionItem {
-                label: item.label,
-                kind: Some(completion_kind(item.kind)),
-                detail: item.detail,
-                documentation: item
-                    .documentation
-                    .map(tower_lsp::lsp_types::Documentation::String),
-                ..CompletionItem::default()
-            })
-            .collect()
+        lane_lsp::completion::lsp_items()
     }
 
     /// Looks up hover text for a word using the compiler hover index.
@@ -298,19 +287,6 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         Ok(Some(semantic_tokens::tokens(&text).into()))
-    }
-}
-
-/// Maps lane completion kinds to LSP completion item kinds.
-fn completion_kind(kind: lane::LaneCompletionKind) -> CompletionItemKind {
-    match kind {
-        lane::LaneCompletionKind::Keyword => CompletionItemKind::KEYWORD,
-        lane::LaneCompletionKind::Module => CompletionItemKind::MODULE,
-        lane::LaneCompletionKind::Constructor => CompletionItemKind::CONSTRUCTOR,
-        lane::LaneCompletionKind::Function => CompletionItemKind::FUNCTION,
-        lane::LaneCompletionKind::Type => CompletionItemKind::CLASS,
-        lane::LaneCompletionKind::Category => CompletionItemKind::INTERFACE,
-        lane::LaneCompletionKind::Constant => CompletionItemKind::CONSTANT,
     }
 }
 

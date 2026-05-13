@@ -19,14 +19,14 @@ Install or rebuild the compiler CLI, LSP server, and bundled Tree-sitter parser:
 scripts/install-lane
 ```
 
-The installer runs `cargo install --path .`, `cargo install --path crates/lane-lsp`,
+The installer runs `cargo install --path crates/lane-cli`, `cargo install --path crates/lane-lsp`,
 and rebuilds `tree-sitter-lane/parser.so` from the generated parser sources. If
 the `tree-sitter` CLI is available, it regenerates the parser sources first.
 
 Install the compiler CLI by itself:
 
 ```sh
-cargo install --path .
+cargo install --path crates/lane-cli
 ```
 
 Install the LSP server by itself:
@@ -123,7 +123,7 @@ Usage:
   than jumping by visual feed block. Enter submits the current input, Shift-Enter
   (or Alt-Enter fallback) inserts a newline when supported by the terminal, Up and Down recall submitted
   input history across sessions, Left and Right move through the current input,
-  Tab completes to the longest unambiguous prefix using `lane-lsp` language items
+  Tab completes to the longest unambiguous prefix using the `lane-lsp` completion catalogue
   for Lane source and REPL command items for slash commands, Ctrl-F formats the
   current input, and Ctrl-C exits.
 - `lane SOURCE TARGET` writes generated GLSL to `TARGET`.
@@ -179,8 +179,9 @@ modules to `namespace`, raw GLSL bodies to `string`, type parameters such as
 `{n}` to `typeParameter`, and names declared with `provided` to normal variable
 declarations. Standalone type completions stay concrete (for example, `R`,
 `R2`, `R3`) and avoid generic placeholders such as `R{n}` that are not valid as
-direct `provided` type declarations. The REPL uses the same completion,
-formatting, and submitted-error handling.
+direct `provided` type declarations. The REPL is part of the CLI crate and
+reuses the `lane-lsp` completion catalogue, formatting API, and submitted-error
+handling.
 
 Neovim built-in LSP example:
 

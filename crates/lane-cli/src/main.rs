@@ -768,5 +768,5 @@ fn color<'a>(code: &'a str, text: &'a str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/cli.rs"]
+#[path = "../../../tests/unit/cli.rs"]
 mod tests;

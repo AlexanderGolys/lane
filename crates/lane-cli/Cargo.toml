@@ -1,0 +1,21 @@
+[package]
+name = "lane-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lane"
+path = "src/main.rs"
+
+[dependencies]
+ash = "0.38.0"
+ash-window = "0.13.0"
+crossterm = "0.29.0"
+lane = { path = "../.." }
+lane-lsp = { path = "../lane-lsp" }
+ratatui = "0.30.0"
+tree-sitter = "0.26.8"
+tree-sitter-glsl = "0.2.0"
+tree-sitter-highlight = "0.26.8"
+tree-sitter-language = "0.1.7"
+winit = "0.30.12"

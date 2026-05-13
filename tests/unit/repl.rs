@@ -748,7 +748,7 @@ fn input_shows_gray_completion_hint_without_inserting_it() {
 fn completion_hint_uses_selected_tab_completion_candidate() {
     let mut app = App::new();
     set_app_input(&mut app, "const Object output = Bal");
-    app.completion_matches = lane::lane_completion_items()
+    app.completion_matches = lane_lsp::completion::items()
         .into_iter()
         .filter(|item| matches!(item.label.as_str(), "Ball2D" | "Ball3D"))
         .collect();

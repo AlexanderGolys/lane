@@ -165,7 +165,7 @@ struct App {
     history_file: Option<PathBuf>,
     history_position: Option<usize>,
     history_draft: String,
-    completion_matches: Vec<lane::LaneCompletionItem>,
+    completion_matches: Vec<lane_lsp::completion::CompletionItem>,
     completion_index: usize,
     transcript: Vec<TranscriptEntry>,
     highlighter: SyntaxHighlighter,
@@ -929,11 +929,11 @@ impl App {
     }
 
     /// Return completion candidates for current context.
-    fn active_completion_items(&self) -> Vec<lane::LaneCompletionItem> {
+    fn active_completion_items(&self) -> Vec<lane_lsp::completion::CompletionItem> {
         if self.input.starts_with('/') {
             return repl_command_completion_items();
         }
-        lane::lane_completion_items()
+        lane_lsp::completion::items()
     }
 
     #[cfg(test)]
@@ -1236,7 +1236,10 @@ fn completion_token(input: &str) -> Option<(usize, String)> {
 }
 
 /// Choose the string to insert when completing with current match set.
-fn completion_target(prefix: &str, matches: &[lane::LaneCompletionItem]) -> Option<String> {
+fn completion_target(
+    prefix: &str,
+    matches: &[lane_lsp::completion::CompletionItem],
+) -> Option<String> {
     match matches {
         [] => None,
         [item] => Some(item.label.clone()),
@@ -1276,7 +1279,7 @@ fn is_completion_char(ch: char) -> bool {
 }
 
 /// Static command completion items for slash-command mode.
-fn repl_command_completion_items() -> Vec<lane::LaneCompletionItem> {
+fn repl_command_completion_items() -> Vec<lane_lsp::completion::CompletionItem> {
     [
         ("/help", "Show REPL command help"),
         (
@@ -1293,11 +1296,12 @@ fn repl_command_completion_items() -> Vec<lane::LaneCompletionItem> {
         ("/exit", "Exit the interactive shell"),
     ]
     .into_iter()
-    .map(|(label, detail)| lane::LaneCompletionItem {
-        label: label.to_string(),
-        kind: lane::LaneCompletionKind::Keyword,
-        detail: Some(detail.to_string()),
-        documentation: None,
+    .map(|(label, detail)| {
+        lane_lsp::completion::CompletionItem::new(
+            label,
+            lane_lsp::completion::CompletionKind::Keyword,
+        )
+        .with_detail(detail)
     })
     .collect()
 }
@@ -2047,7 +2051,7 @@ impl SyntaxHighlighter {
         let lane = HighlightConfiguration::new(
             LANGUAGE_LANE.into(),
             "lane",
-            include_str!("../tree-sitter-lane/queries/highlights.scm"),
+            include_str!("../../../tree-sitter-lane/queries/highlights.scm"),
             "",
             "",
         )
@@ -2179,5 +2183,5 @@ fn highlight_style(index: usize) -> Style {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/repl.rs"]
+#[path = "../../../tests/unit/repl.rs"]
 mod tests;

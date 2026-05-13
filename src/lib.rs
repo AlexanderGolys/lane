@@ -1,5 +1,5 @@
 //! Defines the core Lane compiler data model shared by every pass.
-//! This file owns the central AST, typed IR, categories, type names, and small utilities because those concepts must be visible to parsing, preprocessing, semantic analysis, postprocessing, emission, API entrypoints, and the REPL.
+//! This file owns the central AST, typed IR, categories, type names, and small utilities because those concepts must be visible to parsing, preprocessing, semantic analysis, postprocessing, emission, API entrypoints.
 //! It sits at the spine of the compiler pipeline: parse into these structures, transform them through the typed passes, then emit backend code from the same shared representation.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -10,9 +10,8 @@ pub use api::{
     compile_preview_fragment_from_path, compile_preview_vertex, compile_program,
     compile_program_from_path, compile_program_with_base_dir, compile_vulkan_preview_fragment,
     compile_vulkan_preview_fragment_from_path, compile_vulkan_preview_vertex, format_lane_source,
-    lane_completion_items, lane_diagnostics_with_base_dir, lane_hover_for_word, program_info,
-    program_info_with_base_dir, LaneCompletionItem, LaneCompletionKind, LaneDiagnostic,
-    ProgramInfo,
+    lane_diagnostics_with_base_dir, lane_hover_for_word, program_info, program_info_with_base_dir,
+    LaneDiagnostic, ProgramInfo,
 };
 mod emit;
 mod lexer;

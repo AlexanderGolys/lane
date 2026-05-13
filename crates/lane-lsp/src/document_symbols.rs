@@ -34,7 +34,9 @@ fn symbols_for_declaration(
             named_field_symbols(source, line_start_bytes, node, SymbolKind::INTERFACE)
         }
         "category_type_declaration" | "product_type_declaration" => {
-            named_field_symbols(source, line_start_bytes, node, SymbolKind::STRUCT)
+            type_declaration_head_symbol(source, line_start_bytes, node, SymbolKind::STRUCT)
+                .into_iter()
+                .collect()
         }
         "input_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::VARIABLE)
@@ -42,7 +44,15 @@ fn symbols_for_declaration(
         "arrow_function_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::FUNCTION)
         }
-        "binding_declaration" | "inferred_binding_declaration" => named_field_symbols(
+        "binding_declaration" => last_identifier_before_equals_symbol(
+            source,
+            line_start_bytes,
+            node,
+            binding_symbol_kind(source, node),
+        )
+        .into_iter()
+        .collect(),
+        "inferred_binding_declaration" => named_field_symbols(
             source,
             line_start_bytes,
             node,
@@ -81,8 +91,134 @@ fn named_field_symbols(
     let mut cursor = node.walk();
     node.children_by_field_name("name", &mut cursor)
         .filter(|name| name.is_named())
+        .filter(|name| {
+            name.parent()
+                .is_none_or(|parent| parent.kind() != "product_field_list")
+        })
+        .filter(|name| !is_inside_angle_list_before_equals(source, node, *name))
         .filter_map(|name| make_symbol(source, line_start_bytes, node, name, kind))
         .collect()
+}
+
+/// Returns true for generic/product-field names that should not become outline symbols.
+fn is_inside_angle_list_before_equals(source: &str, node: Node<'_>, name: Node<'_>) -> bool {
+    let before_name = &source[node.start_byte()..name.start_byte()];
+    let after_name = &source[name.end_byte()..node.end_byte()];
+    let last_angle = before_name.rfind('<');
+    let last_equals = before_name.rfind('=');
+    last_angle > last_equals && after_name.find('>') < after_name.find('=')
+}
+
+/// Produces the declaration symbol for typed value/function bindings.
+fn last_identifier_before_equals_symbol(
+    source: &str,
+    line_start_bytes: &[usize],
+    node: Node<'_>,
+    kind: SymbolKind,
+) -> Option<DocumentSymbol> {
+    let equals = source[node.start_byte()..node.end_byte()]
+        .find('=')
+        .map(|offset| node.start_byte() + offset)
+        .unwrap_or(node.end_byte());
+    let mut cursor = node.start_byte();
+    let mut seen = Vec::new();
+    while cursor < equals {
+        let Some(start_offset) = source[cursor..equals]
+            .char_indices()
+            .find_map(|(offset, ch)| (ch == '_' || ch.is_ascii_alphabetic()).then_some(offset))
+        else {
+            break;
+        };
+        let start = cursor + start_offset;
+        let end = source[start..equals]
+            .char_indices()
+            .find_map(|(offset, ch)| {
+                (!(ch == '_' || ch.is_ascii_alphanumeric())).then_some(start + offset)
+            })
+            .unwrap_or(equals);
+        seen.push((start, end));
+        cursor = end;
+    }
+    let angle = source[node.start_byte()..equals]
+        .find('<')
+        .map(|offset| node.start_byte() + offset);
+    let (name_start, name_end, kind) = if let Some(angle) = angle {
+        let (start, end) = seen.into_iter().rev().find(|(_, end)| *end <= angle)?;
+        (start, end, SymbolKind::STRUCT)
+    } else {
+        seen.into_iter()
+            .last()
+            .map(|(start, end)| (start, end, kind))?
+    };
+    make_text_symbol(source, line_start_bytes, node, name_start, name_end, kind)
+}
+
+/// Produces the declaration-head symbol for type declarations with nested named parameters.
+fn type_declaration_head_symbol(
+    source: &str,
+    line_start_bytes: &[usize],
+    node: Node<'_>,
+    kind: SymbolKind,
+) -> Option<DocumentSymbol> {
+    let mut cursor = node.start_byte();
+    let mut seen = Vec::new();
+    while cursor < node.end_byte() {
+        let Some(start_offset) = source[cursor..node.end_byte()]
+            .char_indices()
+            .find_map(|(offset, ch)| (ch == '_' || ch.is_ascii_alphabetic()).then_some(offset))
+        else {
+            break;
+        };
+        let start = cursor + start_offset;
+        let end = source[start..node.end_byte()]
+            .char_indices()
+            .find_map(|(offset, ch)| {
+                (!(ch == '_' || ch.is_ascii_alphanumeric())).then_some(start + offset)
+            })
+            .unwrap_or(node.end_byte());
+        seen.push((start, end));
+        cursor = end;
+        if source
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(|byte| *byte == b'<')
+        {
+            break;
+        }
+    }
+    let name_index = if seen
+        .first()
+        .is_some_and(|(start, end)| source[*start..*end].eq("const"))
+    {
+        2
+    } else {
+        1
+    };
+    let (name_start, name_end) = seen.get(name_index).copied()?;
+    make_text_symbol(source, line_start_bytes, node, name_start, name_end, kind)
+}
+
+/// Builds a symbol whose declaration name comes from explicit source byte bounds.
+fn make_text_symbol(
+    source: &str,
+    line_start_bytes: &[usize],
+    node: Node<'_>,
+    name_start: usize,
+    name_end: usize,
+    kind: SymbolKind,
+) -> Option<DocumentSymbol> {
+    let name = source[name_start..name_end].to_string();
+    Some(DocumentSymbol {
+        name,
+        detail: Some(detail_for_node(node).to_string()),
+        kind,
+        tags: None,
+        #[allow(deprecated)]
+        deprecated: None,
+        range: node_range(source, line_start_bytes, node),
+        selection_range: byte_range(source, line_start_bytes, name_start, name_end),
+        children: None,
+    })
 }
 
 /// Determines whether a binding should be surfaced as a constant or variable symbol.
@@ -144,8 +280,13 @@ fn node_text(source: &str, node: Node<'_>) -> Option<String> {
 
 /// Returns a symbol range for the given node based on precomputed line starts.
 fn node_range(source: &str, line_start_bytes: &[usize], node: Node<'_>) -> Range {
+    byte_range(source, line_start_bytes, node.start_byte(), node.end_byte())
+}
+
+/// Returns a range for explicit byte bounds based on precomputed line starts.
+fn byte_range(source: &str, line_start_bytes: &[usize], start: usize, end: usize) -> Range {
     Range::new(
-        position::byte_to_position(source, line_start_bytes, node.start_byte()),
-        position::byte_to_position(source, line_start_bytes, node.end_byte()),
+        position::byte_to_position(source, line_start_bytes, start),
+        position::byte_to_position(source, line_start_bytes, end),
     )
 }
