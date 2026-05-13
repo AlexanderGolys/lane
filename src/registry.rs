@@ -439,6 +439,50 @@ impl Default for Registry {
                     support_glsl: "mat2 _op_rot2D_matrix(float _angle) {\n    float _c = cos(_angle);\n    float _s = sin(_angle);\n    return mat2(vec2(_c, _s), vec2(-_s, _c));\n}\n\nvec3 _op_rot2D_inverse_point(vec3 _p, vec2 _anchor, float _angle) {\n    mat2 _r = _op_rot2D_matrix(_angle);\n    return vec3(_anchor + (transpose(_r) * (_p.xy - _anchor)), _p.z);\n}",
                 },
             ),
+            (
+                "withMaterial",
+                ObjectOpDef {
+                    name: "withMaterial",
+                    value_arg_types: vec![Type::Generic("Material".to_string())],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "_op_with_material",
+                    support_glsl: "",
+                },
+            ),
+            (
+                "withBounds",
+                ObjectOpDef {
+                    name: "withBounds",
+                    value_arg_types: vec![Type::Generic("Bounds".to_string())],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "_op_with_bounds",
+                    support_glsl: "",
+                },
+            ),
+            (
+                "withLipschitz",
+                ObjectOpDef {
+                    name: "withLipschitz",
+                    value_arg_types: vec![Type::Float],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "_op_with_lipschitz",
+                    support_glsl: "",
+                },
+            ),
+            (
+                "withBlend",
+                ObjectOpDef {
+                    name: "withBlend",
+                    value_arg_types: vec![Type::Generic("Blend".to_string())],
+                    object_arg_count: 1,
+                    associative_binary: false,
+                    glsl_name: "_op_with_blend",
+                    support_glsl: "",
+                },
+            ),
         ]);
 
         let value_funcs = HashMap::from([

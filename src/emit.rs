@@ -597,7 +597,9 @@ impl TypedProgram {
                 continue;
             }
             if let Some(op) = registry.object_ops.get(name.as_str()) {
-                blocks.push(op.support_glsl.to_string());
+                if !op.support_glsl.is_empty() {
+                    blocks.push(op.support_glsl.to_string());
+                }
             }
             if let Some(support_glsl) = builtin_type_support_glsl(name.as_str()) {
                 if emitted_builtin_support.insert(name.clone()) {
@@ -3769,6 +3771,22 @@ fn emit_object_expr(
                 return emit_object_expr(
                     &object_args[0],
                     &rotated_point,
+                    ambient_dimension,
+                    object_bindings,
+                    helper_names,
+                    scene_input_names,
+                );
+            }
+            if matches!(
+                glsl_name.as_str(),
+                "_op_with_material"
+                    | "_op_with_bounds"
+                    | "_op_with_lipschitz"
+                    | "_op_with_blend"
+            ) {
+                return emit_object_expr(
+                    &object_args[0],
+                    point_expr,
                     ambient_dimension,
                     object_bindings,
                     helper_names,

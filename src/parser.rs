@@ -327,6 +327,12 @@ impl<'a> Parser<'a> {
         allow_final_output: bool,
         allow_raw_glsl: bool,
     ) -> Result<Decl, Error> {
+        if line.trim_start().starts_with("generate ") {
+            return Err(Error::new(
+                "generate declarations have been removed; use 'const Object name = value'",
+            ));
+        }
+
         if let Some(category_type) =
             parse_category_type_decl(line, line_number, custom_types, ambient_dimension)?
         {

@@ -2681,6 +2681,18 @@ fn emits_union_operator() {
 }
 
 #[test]
+fn accepts_object_metadata_operators_without_changing_sdf() {
+    let source = "const RVect Paint<color, weight> = R3 x R\nconst Set Bounds3D<min, max, finite> = R3 x R3 x Bool\nconst Paint paint = Paint((1, 0, 0), 0.8)\nconst Bounds3D bounds = Bounds3D((-1, -1, -1), (1, 1, 1), true)\nconst Object ball = withBlend(0.5)(withLipschitz(1)(withBounds(bounds)(withMaterial(paint)(Ball3D(r=2)))))\nconst Object output = ball\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("return sdf0_Ball3D(p, ParamBall3D(2.0));"));
+    assert!(!glsl.contains("_op_with_material"));
+    assert!(!glsl.contains("_op_with_bounds"));
+    assert!(!glsl.contains("_op_with_lipschitz"));
+    assert!(!glsl.contains("_op_with_blend"));
+}
+
+#[test]
 fn emits_associative_union_operator_with_four_args() {
     let source = "Object a = Ball3D(r=4)\nObject b = Ball3D(r=3) + (1, 0, 0)\nObject c = Ball3D(r=2) + (2, 0, 0)\nObject d = Ball3D(r=1) + (3, 0, 0)\nconst Object output = union(a, b, c, d)\n";
     let glsl = compile_program(source).unwrap();

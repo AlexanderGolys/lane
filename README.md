@@ -1101,6 +1101,33 @@ Object c = smoothUnion(.2)(a, b)
 const Object output = c
 ```
 
+### Object Properties
+
+Object property operators attach metadata while preserving the object's SDF.
+The current compiler type-checks the payloads and keeps the metadata operators
+out of generated distance code; later passes can use the same surface for
+material lookup, finite bounds, Lipschitz certificates, and distance-aware
+material blending.
+
+```lane
+const RVect Paint<color, weight> = R3 x R
+const Set Bounds3D<min, max, finite> = R3 x R3 x Bool
+
+const Paint paint = Paint((1, 0, 0), .8)
+const Bounds3D bounds = Bounds3D((-1, -1, -1), (1, 1, 1), true)
+
+Object ball =
+    withBlend(.5)(
+    withLipschitz(1)(
+    withBounds(bounds)(
+    withMaterial(paint)(Ball3D(r=1)))))
+```
+
+`withMaterial` accepts any Lane value, so material data can be a dedicated
+`Material`, a color vector, or another convex-space value. `withBounds` accepts
+any bounds record, `withLipschitz` stores a scalar placeholder certificate, and
+`withBlend` accepts a blend descriptor for future material interpolation.
+
 ### 3D Primitive Constructors
 
 ```lane
