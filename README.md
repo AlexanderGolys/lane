@@ -155,6 +155,11 @@ Usage:
 - CLI failures are printed on stderr with an error type prefix such as
   `lane::Error:` or `std::io::Error:`. In an interactive terminal, the whole
   diagnostic is colored red.
+- Internally, Lane now has explicit preprocessing and postprocessing passes.
+  The preprocessor canonicalizes Lane surface syntax before typechecking; the
+  typed postprocessor lowers toward GLSL-oriented core syntax. Rust-defined
+  objects are tracked as either core syntax/backend machinery or candidates to
+  move into `std`.
 
 ## LSP
 
@@ -251,14 +256,16 @@ directives as errors.
 ### `#prec VALUE`
 
 `#prec` sets the finite-difference epsilon used by generated SDF gradients and
-all differential builtins. The default is `0.01`. The value must be a positive
-float literal.
+the differential operators provided by `std`. The default is `0.01`. The value
+must be a positive float literal.
 
 ```lane
+#import std
 #prec 0.002
 provided Hom(R3, R) density
 provided R3 p
-R3 normal = gradient(density)(p)
+Hom(R3, R3) normal_field = gradient(density)
+R3 normal = normal_field(p)
 Func(R, R) slope = grad(sin)
 const Object output = Ball3D(r=slope(0) + density(normal))
 ```
@@ -461,10 +468,12 @@ const Object output = shell
 Object bindings also expose function getters:
 
 ```lane
+#import std
 Object shell = Ball3D(r=2)
 R d = shell.sdf([0, 0, 0])
 R3 normal = shell.grad([0, 0, 0])
-R3 finite_diff_normal = gradient(shell.sdf)([0, 0, 0])
+Hom(R3, R3) finite_diff_normal_field = gradient(shell.sdf)
+R3 finite_diff_normal = finite_diff_normal_field([0, 0, 0])
 const Object output = Ball3D(r=d + length(normal + finite_diff_normal))
 ```
 
@@ -1062,11 +1071,13 @@ const Object output = rot2D(0.5)(Box2D(a=1, b=.5)) // anchor=0
 const Object output = rot2D()(Box2D(a=1, b=.5))    // angle=0
 ```
 
-### Differential Builtins
+### Standard Differential Operators
 
-Differential builtins lower directly during emission.
+Differential operators live in the standard library. Import `std` before using
+them.
 
 ```lane
+#import std
 Func(R, R) slope = derivative(sin)
 Func(R, R) slope_default = grad(sin)
 ```
@@ -1075,32 +1086,41 @@ For scalar fields, `derivative`, `gradient`, and `grad` all produce the
 finite-difference gradient in the domain dimension.
 
 ```lane
+#import std
 provided Hom(R3, R) density
 provided R3 p
-R3 n = gradient(density)(p)
+Hom(R3, R3) density_gradient = gradient(density)
+R3 n = density_gradient(p)
 ```
 
 Partial derivatives are named by axis and are available where the input
 dimension includes that axis:
 
 ```lane
+#import std
 provided Hom(R3, R) density
 provided R3 p
-R along_x = dfdx(density)(p)
-R along_y = dfdy(density)(p)
-R along_z = dfdz(density)(p)
+Hom(R3, R) density_x = dfdx(density)
+Hom(R3, R) density_y = dfdy(density)
+Hom(R3, R) density_z = dfdz(density)
+R along_x = density_x(p)
+R along_y = density_y(p)
+R along_z = density_z(p)
 ```
 
 For vector-valued functions, `derivative` returns the corresponding Jacobian
 matrix. Divergence is available for same-dimensional vector fields:
 
 ```lane
+#import std
 provided Hom(R2, R3) field
 provided Hom(R3, R3) flow
 provided R2 uv
 provided R3 p
-Mat2x3 jacobian = derivative(field)(uv)
-R outflow = divergence(flow)(p)
+Hom(R2, Mat2x3) field_derivative = derivative(field)
+Hom(R3, R) flow_divergence = divergence(flow)
+Mat2x3 jacobian = field_derivative(uv)
+R outflow = flow_divergence(p)
 ```
 
 ## Object Expressions

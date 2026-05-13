@@ -196,13 +196,13 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("extrude: Hom(R, Hom(Object, Object))"));
     assert!(stdout.contains("rot: Hom(R3 × R3 × R, Isom3)"));
     assert!(stdout.contains("rot2D: Hom(R2 × R, Isom2)"));
-    assert!(stdout.contains("derivative: Hom(Hom(R, R), Hom(R, R))"));
-    assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
-    assert!(stdout.contains("dfdx: Hom(Hom(R3, R), Hom(R3, R))"));
-    assert!(stdout.contains("dfdy: Hom(Hom(R3, R), Hom(R3, R))"));
-    assert!(stdout.contains("dfdz: Hom(Hom(R3, R), Hom(R3, R))"));
-    assert!(stdout.contains("dfdw: Hom(Hom(R4, R), Hom(R4, R))"));
-    assert!(stdout.contains("divergence: Hom(Hom(R3, R3), Hom(R3, R))"));
+    assert!(!stdout.contains("derivative: Hom(Hom(R, R), Hom(R, R))"));
+    assert!(!stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
+    assert!(!stdout.contains("dfdx: Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(!stdout.contains("dfdy: Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(!stdout.contains("dfdz: Hom(Hom(R3, R), Hom(R3, R))"));
+    assert!(!stdout.contains("dfdw: Hom(Hom(R4, R), Hom(R4, R))"));
+    assert!(!stdout.contains("divergence: Hom(Hom(R3, R3), Hom(R3, R))"));
     assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
     assert!(stdout.contains("inv: Hom(C, C)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
@@ -328,16 +328,16 @@ fn shows_builtin_category_detail_from_cli() {
 }
 
 #[test]
-fn shows_differential_builtin_object_detail_from_cli() {
+fn no_longer_lists_std_differential_objects_as_builtins() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
         .args(["list", "gradient"])
         .output()
         .unwrap();
 
-    assert!(output.status.success());
+    assert!(!output.status.success());
 
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(stdout, "gradient: Hom(Hom(R3, R), Hom(R3, R3))\n");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unknown builtin object 'gradient'"));
 }
 
 #[test]
@@ -418,7 +418,7 @@ fn list_command_lists_builtin_objects() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("DivRing: Cat"));
-    assert!(stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
+    assert!(!stdout.contains("gradient: Hom(Hom(R3, R), Hom(R3, R3))"));
 }
 
 #[test]

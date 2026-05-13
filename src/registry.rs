@@ -666,83 +666,6 @@ impl Default for Registry {
                     listed: false,
                 },
             ),
-            (
-                "derivative",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::func(Type::Float, Type::Float),
-                        Type::func(Type::Float, Type::Float),
-                    ),
-                    support_glsl: None,
-                    listed: true,
-                },
-            ),
-            (
-                "dfdx",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Float),
-                    ),
-                    support_glsl: None,
-                    listed: true,
-                },
-            ),
-            (
-                "dfdy",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Float),
-                    ),
-                    support_glsl: None,
-                    listed: true,
-                },
-            ),
-            (
-                "dfdz",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Float),
-                    ),
-                    support_glsl: None,
-                    listed: true,
-                },
-            ),
-            (
-                "dfdw",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::func(Type::Vec4, Type::Float),
-                        Type::func(Type::Vec4, Type::Float),
-                    ),
-                    support_glsl: None,
-                    listed: true,
-                },
-            ),
-            (
-                "gradient",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::func(Type::Vec3, Type::Float),
-                        Type::func(Type::Vec3, Type::Vec3),
-                    ),
-                    support_glsl: None,
-                    listed: true,
-                },
-            ),
-            (
-                "divergence",
-                ValueFuncDef {
-                    ty: Type::func(
-                        Type::func(Type::Vec3, Type::Vec3),
-                        Type::func(Type::Vec3, Type::Float),
-                    ),
-                    support_glsl: None,
-                    listed: true,
-                },
-            ),
         ]);
 
         Self {
@@ -750,6 +673,105 @@ impl Default for Registry {
             object_ops,
             value_funcs,
         }
+    }
+}
+
+impl Registry {
+    /// Classifies every Rust-defined object so migration work has an explicit
+    /// checklist instead of an implicit grab bag of compiler special cases.
+    pub(super) fn rust_defined_objects(&self) -> Vec<RustDefinedObject> {
+        let mut objects = Vec::new();
+        for category in CATEGORY_DEFS.iter() {
+            objects.push(RustDefinedObject {
+                name: category.name.to_string(),
+                kind: RustDefinedObjectKind::Category,
+                role: RustDefinedObjectRole::CoreSyntax,
+                reason: "category names are part of the current type/category checker".to_string(),
+            });
+        }
+        for ty in BUILTIN_TYPE_DEFS.iter() {
+            objects.push(RustDefinedObject {
+                name: ty.display_name.to_string(),
+                kind: RustDefinedObjectKind::Type,
+                role: rust_defined_type_role(ty),
+                reason: rust_defined_type_reason(ty).to_string(),
+            });
+        }
+        for name in self.primitives.keys() {
+            objects.push(RustDefinedObject {
+                name: (*name).to_string(),
+                kind: RustDefinedObjectKind::Primitive,
+                role: RustDefinedObjectRole::StdMovable,
+                reason: "SDF constructor with backend support; should become a std definition once Lane can express primitive objects".to_string(),
+            });
+        }
+        for op in self.object_ops.values() {
+            objects.push(RustDefinedObject {
+                name: op.name.to_string(),
+                kind: RustDefinedObjectKind::ObjectOperator,
+                role: RustDefinedObjectRole::StdMovable,
+                reason: "object combinator; not syntactically special after importable definitions exist".to_string(),
+            });
+        }
+        for (name, func) in &self.value_funcs {
+            objects.push(RustDefinedObject {
+                name: (*name).to_string(),
+                kind: RustDefinedObjectKind::Function,
+                role: RustDefinedObjectRole::StdMovable,
+                reason: if func.support_glsl.is_some() {
+                    "Rust currently owns support GLSL; migrate behind std/raw-GLSL definitions where possible"
+                } else {
+                    "pre-registered ordinary function overload; should be provided by std unless it is true backend syntax"
+                }
+                .to_string(),
+            });
+        }
+        for (name, _) in glsl_builtin_value_func_overloads() {
+            objects.push(RustDefinedObject {
+                name: name.to_string(),
+                kind: RustDefinedObjectKind::Function,
+                role: RustDefinedObjectRole::StdMovable,
+                reason: "GLSL builtin exposed as Lane function; keep only as backend hook or import through std".to_string(),
+            });
+        }
+        objects.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| format!("{:?}", left.kind).cmp(&format!("{:?}", right.kind)))
+        });
+        objects.dedup_by(|left, right| left.name == right.name && left.kind == right.kind);
+        objects
+    }
+}
+
+fn rust_defined_type_role(ty: &BuiltinTypeDef) -> RustDefinedObjectRole {
+    match &ty.ty {
+        Type::Complex | Type::Quat | Type::Isom2 | Type::Isom3 => RustDefinedObjectRole::StdMovable,
+        _ => RustDefinedObjectRole::CoreSyntax,
+    }
+}
+
+fn rust_defined_type_reason(ty: &BuiltinTypeDef) -> &'static str {
+    match &ty.ty {
+        Type::Complex | Type::Quat | Type::Isom2 | Type::Isom3 => {
+            "concrete algebraic type with Rust GLSL/category support; should become std Lane code"
+        }
+        Type::Object | Type::Object2D => {
+            "core SDF object type used by the object/typechecker boundary"
+        }
+        Type::Bool | Type::Float | Type::Int | Type::Vec2 | Type::Vec3 | Type::Vec4 => {
+            "core scalar/vector backend type"
+        }
+        Type::Unit
+        | Type::Mat(_, _)
+        | Type::Func(_, _)
+        | Type::Product(_)
+        | Type::Custom { .. }
+        | Type::Generic(_)
+        | Type::VecGeneric(_)
+        | Type::MatGeneric(_, _)
+        | Type::Power(_, _)
+        | Type::Array(_) => "core typechecker representation",
     }
 }
 

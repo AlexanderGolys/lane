@@ -15,6 +15,8 @@ mod module_loader;
 pub use module_loader::resolve_import_path;
 pub(crate) use module_loader::{is_placeholder_ident, rename_expr, ModuleLoader};
 mod parser;
+mod postprocess;
+mod preprocess;
 mod registry;
 mod typecheck;
 
@@ -120,6 +122,13 @@ pub fn known_builtin_object(name: &str) -> Option<KnownBuiltinObjectDetail> {
     registry.known_builtin_object(name)
 }
 
+/// Returns the current Rust-defined language surface classified by whether it
+/// is core syntax/backend machinery or a candidate for migration into `std`.
+pub fn rust_defined_objects() -> Vec<RustDefinedObject> {
+    let registry = Registry::default();
+    registry.rust_defined_objects()
+}
+
 /// Resolves a preregistered object definition by name.
 pub fn preregistered_object(name: &str) -> Option<PreregisteredObject> {
     let registry = Registry::default();
@@ -222,8 +231,32 @@ pub enum KnownBuiltinObjectKind {
     Category,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RustDefinedObjectKind {
+    Category,
+    Type,
+    Function,
+    Primitive,
+    ObjectOperator,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RustDefinedObjectRole {
+    CoreSyntax,
+    StdMovable,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RustDefinedObject {
+    pub name: String,
+    pub kind: RustDefinedObjectKind,
+    pub role: RustDefinedObjectRole,
+    pub reason: String,
+}
+
 pub const TYPE_METATYPE_NAME: &str = "Type";
 pub const CATEGORY_METATYPE_NAME: &str = "Cat";
+const INTERNAL_DIFFERENTIAL_EPSILON_NAME: &str = "_lane_differential_epsilon";
 
 /// Returns all built-in scalar/matrix type names and aliases.
 pub fn known_type_names() -> Vec<&'static str> {
@@ -965,53 +998,6 @@ struct CategoryTypeDecl {
     line: usize,
 }
 
-/// Returns the internal helper name for a neutral-slot declaration such as `A 0 = z`.
-fn neutral_decl_helper_name(name: &str, ty: &Type) -> Option<String> {
-    let type_name = ty.type_name();
-    match name {
-        "0" => Some(format!("__zero_{type_name}")),
-        "1" => Some(format!("__one_{type_name}")),
-        "e" if matches!(ty, Type::Custom { .. } | Type::Isom2 | Type::Isom3) => {
-            Some(format!("__e_{type_name}"))
-        }
-        _ => None,
-    }
-}
-
-/// Returns the internal helper name for an operator-reference declaration such as
-/// `Hom(A × A, A) &+ = add`.
-fn operator_decl_helper_name(name: &str, ty: &Type) -> Result<Option<String>, Error> {
-    let Some(op_name) = normalized_operator_decl_name(name) else {
-        return Ok(None);
-    };
-    let Type::Func(_input, _output) = ty else {
-        return Err(Error::new(format!(
-            "operator declaration '{name}' must have a function type"
-        )));
-    };
-    let helper = match op_name {
-        "+" => Some("__add".to_string()),
-        "*" => Some("__mult".to_string()),
-        "/" => Some("__div".to_string()),
-        "~" => Some("__inv".to_string()),
-        "-" => Some("__sub".to_string()),
-        _ => {
-            return Err(Error::new(format!(
-                "unsupported operator declaration '&{op_name}'"
-            )))
-        }
-    };
-    Ok(helper)
-}
-
-/// Normalizes operator-reference declaration names, accepting both `&+` and `&(+)`.
-fn normalized_operator_decl_name(name: &str) -> Option<&str> {
-    let rest = name.strip_prefix('&')?;
-    rest.strip_prefix('(')
-        .and_then(|inner| inner.strip_suffix(')'))
-        .or(Some(rest))
-}
-
 #[derive(Clone, Debug)]
 struct FuncDecl {
     name: String,
@@ -1255,30 +1241,6 @@ enum ValueExpr {
         index: usize,
         ty: Type,
     },
-    Derivative {
-        epsilon: Box<ValueExpr>,
-        func: FunctionExpr,
-        at: Box<ValueExpr>,
-        ty: Type,
-    },
-    Partial {
-        axis: usize,
-        epsilon: Box<ValueExpr>,
-        func: FunctionExpr,
-        at: Box<ValueExpr>,
-        ty: Type,
-    },
-    Gradient {
-        epsilon: Box<ValueExpr>,
-        func: FunctionExpr,
-        at: Box<ValueExpr>,
-        ty: Type,
-    },
-    Divergence {
-        epsilon: Box<ValueExpr>,
-        func: FunctionExpr,
-        at: Box<ValueExpr>,
-    },
 }
 
 impl ValueExpr {
@@ -1308,10 +1270,6 @@ impl ValueExpr {
             Self::Matrix { columns, rows } => Type::Mat(rows.len(), *columns),
             Self::MatrixBasis { ty, .. } => ty.clone(),
             Self::UnitVectorBasis { ty, .. } => ty.clone(),
-            Self::Derivative { ty, .. } => ty.clone(),
-            Self::Partial { ty, .. } => ty.clone(),
-            Self::Gradient { ty, .. } => ty.clone(),
-            Self::Divergence { .. } => Type::Float,
         }
     }
 
@@ -1386,98 +1344,6 @@ enum PointwiseCallArg {
         expected: Type,
     },
     Value(Box<ValueExpr>),
-}
-
-/// Performs `apply_function_expr` behavior.
-fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
-    match &func.kind {
-        FunctionExprKind::Named(name) => ValueExpr::Call {
-            func: name.clone(),
-            args: vec![arg],
-            ty: func.output.clone(),
-        },
-        FunctionExprKind::Operator(op) => {
-            let (left, right) = operator_function_args(func, arg);
-            ValueExpr::Binary {
-                op: *op,
-                left: Box::new(left),
-                right: Box::new(right),
-                ty: func.output.clone(),
-            }
-        }
-        FunctionExprKind::Projection { index, field } => {
-            apply_projection_function(*index, field.as_deref(), &func.input, &func.output, arg)
-        }
-        FunctionExprKind::Diagonal { dimension } => {
-            product_value(std::iter::repeat_n(arg, *dimension).collect())
-        }
-        FunctionExprKind::ObjectGetter {
-            object,
-            getter,
-            captures,
-        } => ValueExpr::ObjectGetterCall {
-            object: object.clone(),
-            getter: *getter,
-            point: Box::new(arg),
-            captures: captures.clone(),
-            ty: func.output.clone(),
-        },
-        FunctionExprKind::Compose(outer, inner) => {
-            let inner_value = apply_function_expr(inner, arg);
-            apply_function_expr(outer, inner_value)
-        }
-        FunctionExprKind::PointwiseBinary { op, left, right } => ValueExpr::Binary {
-            op: *op,
-            left: Box::new(apply_pointwise_call_arg(left, arg.clone())),
-            right: Box::new(apply_pointwise_call_arg(right, arg)),
-            ty: func.output.clone(),
-        },
-        FunctionExprKind::PointwiseUnary { op, arg: call_arg } => ValueExpr::Unary {
-            op: *op,
-            expr: Box::new(apply_pointwise_call_arg(call_arg, arg)),
-            ty: func.output.clone(),
-        },
-        FunctionExprKind::PointwiseCall { func: name, args } => ValueExpr::Call {
-            func: name.clone(),
-            args: args
-                .iter()
-                .map(|call_arg| apply_pointwise_call_arg(call_arg, arg.clone()))
-                .collect(),
-            ty: func.output.clone(),
-        },
-        FunctionExprKind::PointwiseConditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => ValueExpr::Conditional {
-            condition: Box::new(apply_pointwise_call_arg(condition, arg.clone())),
-            then_branch: Box::new(apply_pointwise_call_arg(then_branch, arg.clone())),
-            else_branch: Box::new(apply_pointwise_call_arg(else_branch, arg)),
-            ty: func.output.clone(),
-        },
-        FunctionExprKind::ProductSameDomain(funcs) => product_value(
-            funcs
-                .iter()
-                .map(|func| apply_function_expr(func, arg.clone()))
-                .collect(),
-        ),
-        FunctionExprKind::ProductTensor(left, right) => {
-            let left_arg = ValueExpr::Index {
-                array: Box::new(arg.clone()),
-                index: Box::new(ValueExpr::Int(0)),
-                ty: left.input.clone(),
-            };
-            let right_arg = ValueExpr::Index {
-                array: Box::new(arg),
-                index: Box::new(ValueExpr::Int(1)),
-                ty: right.input.clone(),
-            };
-            product_value(vec![
-                apply_function_expr(left, left_arg),
-                apply_function_expr(right, right_arg),
-            ])
-        }
-    }
 }
 
 /// Performs `apply_projection_function` behavior.
@@ -1560,17 +1426,6 @@ fn operator_function_args(func: &FunctionExpr, arg: ValueExpr) -> (ValueExpr, Va
             },
         ),
         _ => unreachable!("operator function expects a binary domain"),
-    }
-}
-
-/// Performs `apply_pointwise_call_arg` behavior.
-fn apply_pointwise_call_arg(call_arg: &PointwiseCallArg, arg: ValueExpr) -> ValueExpr {
-    match call_arg {
-        PointwiseCallArg::Function {
-            func,
-            expected: expected_ty,
-        } => cast_value_for_expected_type(apply_function_expr(func, arg), expected_ty),
-        PointwiseCallArg::Value(value) => value.as_ref().clone(),
     }
 }
 
@@ -1675,6 +1530,14 @@ struct RawGlslRefs {
     funcs: BTreeSet<String>,
     values: BTreeSet<String>,
     object_getters: BTreeSet<String>,
+}
+
+impl RawGlslRefs {
+    fn extend(&mut self, other: Self) {
+        self.funcs.extend(other.funcs);
+        self.values.extend(other.values);
+        self.object_getters.extend(other.object_getters);
+    }
 }
 
 #[derive(Clone, Debug)]

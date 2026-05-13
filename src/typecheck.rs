@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    postprocess::{apply_function_expr, postprocess_typed_program},
+    *,
+};
 include!("typecheck/raw_glsl.rs");
 
 impl TypedProgram {
@@ -23,20 +26,17 @@ impl TypedProgram {
         let mut env = Env::new(
             registry,
             program.ambient_dimension,
-            program.derivative_epsilon,
             &program.inputs,
             &product_types,
             &category_types,
         );
+        env.insert_value(INTERNAL_DIFFERENTIAL_EPSILON_NAME.to_string(), Type::Float)?;
 
         let mut typed_inputs = Vec::new();
         for input in &program.inputs {
             let ty = normalize_type_categories(&input.ty, &category_promotions);
             validate_user_type(&ty).map_err(|err| err.with_line(input.line))?;
-            let name = operator_decl_helper_name(&input.name, &ty)
-                .map_err(|err| err.with_line(input.line))?
-                .or_else(|| neutral_decl_helper_name(&input.name, &ty))
-                .unwrap_or_else(|| input.name.clone());
+            let name = input.name.clone();
             if matches!(ty, Type::Func(_, _)) {
                 env.insert_func(name.clone(), ty.clone())
                     .map_err(|err| err.with_line(input.line))?;
@@ -53,9 +53,7 @@ impl TypedProgram {
         for func in &program.funcs {
             let ty = normalize_type_categories(&func.ty, &category_promotions);
             validate_user_type(&ty).map_err(|err| err.with_line(func.line))?;
-            let name = operator_decl_helper_name(&func.name, &ty)
-                .map_err(|err| err.with_line(func.line))?
-                .unwrap_or_else(|| func.name.clone());
+            let name = func.name.clone();
             env.insert_func_with_templates(
                 name,
                 ty,
@@ -68,9 +66,7 @@ impl TypedProgram {
         for binding in &program.value_bindings {
             let ty = normalize_type_categories(&binding.ty, &category_promotions);
             validate_user_type(&ty).map_err(|err| err.with_line(binding.line))?;
-            let name = neutral_decl_helper_name(&binding.name, &ty)
-                .unwrap_or_else(|| binding.name.clone());
-            env.insert_value(name, ty)
+            env.insert_value(binding.name.clone(), ty)
                 .map_err(|err| err.with_line(binding.line))?;
         }
 
@@ -115,9 +111,7 @@ impl TypedProgram {
                                 infer_lifted_value_function(&binding.expr, &env)
                             {
                                 let ty = Type::func(input.clone(), output.clone());
-                                let name = operator_decl_helper_name(&binding.name, &ty)
-                                    .map_err(|err| err.with_line(binding.line))?
-                                    .unwrap_or_else(|| binding.name.clone());
+                                let name = binding.name.clone();
                                 env.insert_func(name.clone(), ty)
                                     .map_err(|err| err.with_line(binding.line))?;
                                 typed_funcs.push(TypedFunc {
@@ -135,9 +129,7 @@ impl TypedProgram {
                             let func = infer_function_expr(&binding.expr, &env)
                                 .map_err(|_| value_err.with_line(binding.line))?;
                             let ty = Type::func(func.input.clone(), func.output.clone());
-                            let name = operator_decl_helper_name(&binding.name, &ty)
-                                .map_err(|err| err.with_line(binding.line))?
-                                .unwrap_or_else(|| binding.name.clone());
+                            let name = binding.name.clone();
                             env.insert_func(name.clone(), ty)
                                 .map_err(|err| err.with_line(binding.line))?;
                             typed_funcs.push(TypedFunc {
@@ -310,12 +302,7 @@ impl TypedProgram {
                 ))
                 .with_line(func.line));
             }
-            let name = operator_decl_helper_name(
-                &func.name,
-                &Type::func(input_ty.clone(), output_ty.clone()),
-            )
-            .map_err(|err| err.with_line(func.line))?
-            .unwrap_or_else(|| func.name.clone());
+            let name = func.name.clone();
             typed_funcs.push(TypedFunc {
                 name,
                 input: input_ty,
@@ -334,11 +321,9 @@ impl TypedProgram {
                 .map_err(|err| err.with_line(binding.line))?;
             ensure_type(&expr.ty(), &ty, &format!("binding '{}'", binding.name))
                 .map_err(|err| err.with_line(binding.line))?;
-            let name = neutral_decl_helper_name(&binding.name, &ty)
-                .unwrap_or_else(|| binding.name.clone());
             env.update_array_len(&binding.name, expr.array_len());
             typed_value_bindings.push(TypedValueBinding {
-                name,
+                name: binding.name.clone(),
                 ty,
                 expr,
                 generated: binding.generated,
@@ -378,7 +363,23 @@ impl TypedProgram {
             });
         }
 
-        Ok(Self {
+        if typed_funcs.iter().any(|func| {
+            func.raw_glsl_refs
+                .values
+                .contains(INTERNAL_DIFFERENTIAL_EPSILON_NAME)
+        }) {
+            typed_value_bindings.insert(
+                0,
+                TypedValueBinding {
+                    name: INTERNAL_DIFFERENTIAL_EPSILON_NAME.to_string(),
+                    ty: Type::Float,
+                    expr: ValueExpr::Float(program.derivative_epsilon),
+                    generated: true,
+                },
+            );
+        }
+
+        Ok(postprocess_typed_program(Self {
             ambient_dimension: program.ambient_dimension,
             gradient_epsilon: program.gradient_epsilon,
             product_types,
@@ -387,7 +388,7 @@ impl TypedProgram {
             funcs: typed_funcs,
             value_bindings: typed_value_bindings,
             bindings: typed_bindings,
-        })
+        }))
     }
 }
 
@@ -395,7 +396,6 @@ impl TypedProgram {
 struct Env<'a> {
     registry: &'a Registry,
     ambient_dimension: ShapeDimension,
-    derivative_epsilon: f64,
     product_types: HashMap<String, ProductTypeDecl>,
     values: HashMap<String, ValueInfo>,
     funcs: HashMap<String, Vec<FunctionInfo>>,
@@ -422,7 +422,6 @@ impl<'a> Env<'a> {
     fn new(
         registry: &'a Registry,
         ambient_dimension: ShapeDimension,
-        derivative_epsilon: f64,
         _inputs: &[InputDecl],
         product_types: &[ProductTypeDecl],
         category_types: &[CategoryTypeDecl],
@@ -482,7 +481,6 @@ impl<'a> Env<'a> {
         Self {
             registry,
             ambient_dimension,
-            derivative_epsilon,
             product_types: product_types
                 .iter()
                 .cloned()

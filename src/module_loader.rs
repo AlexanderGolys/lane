@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::*;
+use super::{
+    preprocess::{is_compiler_helper_name, preprocess_program},
+    *,
+};
 
 pub(crate) struct ModuleLoader {
     base_dir: PathBuf,
@@ -27,7 +30,7 @@ impl ModuleLoader {
         expand_referenced_name_templates(&mut merged);
         reject_duplicate_product_types(&merged)?;
         merged.imports.clear();
-        Ok(merged)
+        preprocess_program(merged)
     }
 
     /// Performs `load_document` behavior.
@@ -42,7 +45,7 @@ impl ModuleLoader {
         expand_referenced_name_templates(&mut merged);
         reject_duplicate_product_types(&merged)?;
         merged.imports.clear();
-        Ok(merged)
+        preprocess_program(merged)
     }
 
     /// Performs `expand_program` behavior.
@@ -796,7 +799,7 @@ fn add_private_module_rename_if(
     should_add: bool,
     module_key: &str,
 ) {
-    if should_add {
+    if should_add && !is_compiler_helper_name(original) {
         add_private_module_rename(renames, original, module_key);
     }
 }

@@ -2,8 +2,8 @@ use lane::{
     compile_program as compile_program_with_float_suffixes, compile_program_from_path,
     compile_vulkan_preview_fragment, known_builtin_object, known_builtin_objects,
     known_preregistered_objects, known_primitive, known_primitives, known_primitives_by_dimension,
-    lane_diagnostics_with_base_dir, preregistered_object, Error, PreregisteredObjectKind,
-    ShapeDimension,
+    lane_diagnostics_with_base_dir, preregistered_object, rust_defined_objects, Error,
+    PreregisteredObjectKind, RustDefinedObjectKind, RustDefinedObjectRole, ShapeDimension,
 };
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -370,33 +370,19 @@ fn lists_builtin_lane_objects() {
     assert!(objects
         .iter()
         .any(|object| { object.name == "rot2D" && object.ty == "Hom(R2 × R, Isom2)" }));
-    assert!(objects
-        .iter()
-        .any(|object| { object.name == "derivative" && object.ty == "Hom(Hom(R, R), Hom(R, R))" }));
-    assert!(objects.iter().any(|object| {
-        object.name == "gradient" && object.ty == "Hom(Hom(R3, R), Hom(R3, R3))"
-    }));
-    assert!(objects
-        .iter()
-        .any(|object| object.name == "dfdx" && object.ty == "Hom(Hom(R3, R), Hom(R3, R))"));
-    assert!(objects
-        .iter()
-        .any(|object| object.name == "dfdy" && object.ty == "Hom(Hom(R3, R), Hom(R3, R))"));
-    assert!(objects
-        .iter()
-        .any(|object| object.name == "dfdz" && object.ty == "Hom(Hom(R3, R), Hom(R3, R))"));
-    assert!(objects
-        .iter()
-        .any(|object| object.name == "dfdw" && object.ty == "Hom(Hom(R4, R), Hom(R4, R))"));
+    assert!(!objects.iter().any(|object| object.name == "derivative"));
+    assert!(!objects.iter().any(|object| object.name == "gradient"));
+    assert!(!objects.iter().any(|object| object.name == "dfdx"));
+    assert!(!objects.iter().any(|object| object.name == "dfdy"));
+    assert!(!objects.iter().any(|object| object.name == "dfdz"));
+    assert!(!objects.iter().any(|object| object.name == "dfdw"));
     assert!(!objects.iter().any(|object| object.name == "partialX"));
     assert!(!objects.iter().any(|object| object.name == "partialY"));
     assert!(!objects.iter().any(|object| object.name == "partialZ"));
     assert!(!objects
         .iter()
         .any(|object| object.name == "directionalDerivative"));
-    assert!(objects.iter().any(|object| {
-        object.name == "divergence" && object.ty == "Hom(Hom(R3, R3), Hom(R3, R))"
-    }));
+    assert!(!objects.iter().any(|object| object.name == "divergence"));
     assert!(objects
         .iter()
         .any(|object| object.name == "sin" && object.ty == "Hom(Rn, Rn) | Hom(C, C)"));
@@ -420,7 +406,6 @@ fn looks_up_builtin_object_detail() {
     let complex = known_builtin_object("C").unwrap();
     let quat = known_builtin_object("H").unwrap();
     let field = known_builtin_object("DivRing").unwrap();
-    let gradient = known_builtin_object("gradient").unwrap();
 
     assert_eq!(revolution.ty, "Hom(R, Hom(Object2D, Object))");
     assert!(revolution
@@ -462,14 +447,39 @@ fn looks_up_builtin_object_detail() {
         .contains("Isom3 rot(vec3 binormal, vec3 anchor, float angle)"));
     assert_eq!(field.ty, "Cat");
     assert_eq!(field.body, "");
-    assert_eq!(gradient.ty, "Hom(Hom(R3, R), Hom(R3, R3))");
-    assert_eq!(gradient.body, "");
+    assert!(known_builtin_object("gradient").is_none());
     let clamp = known_builtin_object("clamp").unwrap();
     assert!(clamp.ty.contains("Hom(Rn × Rn × Rn, Rn)"));
     assert!(clamp.ty.contains("Hom(Rn × R × R, Rn)"));
     assert_eq!(clamp.body, "");
     let determinant = known_builtin_object("determinant").unwrap();
     assert_eq!(determinant.ty, "Hom(Mat{n}, R)");
+}
+
+#[test]
+fn classifies_rust_defined_objects_by_core_vs_std_movable_role() {
+    let objects = rust_defined_objects();
+    let real = objects
+        .iter()
+        .find(|object| object.name == "R" && object.kind == RustDefinedObjectKind::Type)
+        .unwrap();
+    let complex = objects
+        .iter()
+        .find(|object| object.name == "C" && object.kind == RustDefinedObjectKind::Type)
+        .unwrap();
+    let ball = objects
+        .iter()
+        .find(|object| object.name == "Ball3D" && object.kind == RustDefinedObjectKind::Primitive)
+        .unwrap();
+    let category = objects
+        .iter()
+        .find(|object| object.name == "Ring" && object.kind == RustDefinedObjectKind::Category)
+        .unwrap();
+
+    assert_eq!(real.role, RustDefinedObjectRole::CoreSyntax);
+    assert_eq!(category.role, RustDefinedObjectRole::CoreSyntax);
+    assert_eq!(complex.role, RustDefinedObjectRole::StdMovable);
+    assert_eq!(ball.role, RustDefinedObjectRole::StdMovable);
 }
 
 #[test]
@@ -799,61 +809,78 @@ fn emits_glsl_float_literals_with_f_suffixes() {
 #[test]
 fn supports_derivative_operator_in_function_bodies() {
     let source =
-        "Func(Float, Float) slope = derivative(sin)\nconst Object output = Ball3D(r=slope(0))\n";
+        "#import std\nFunc(Float, Float) slope = derivative(sin)\nconst Object output = Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float slope(float _t) {"));
-    assert!(glsl.contains("(sin((_t + 0.01)) - sin((_t - 0.01))) / (2.0 * 0.01)"));
+    assert!(glsl.contains("sin(_t + _lane_differential_epsilon)"));
+    assert!(glsl.contains("sin(_t - _lane_differential_epsilon)"));
+}
+
+#[test]
+fn differential_operators_require_std_import() {
+    let source =
+        "Func(Float, Float) slope = derivative(sin)\nconst Object output = Ball3D(r=slope(0))\n";
+    let error = compile_program(source).unwrap_err().to_string();
+
+    assert!(error.contains("unknown function 'derivative'"));
 }
 
 #[test]
 fn supports_partial_derivative_aliases() {
-    let source = "provided Hom(R3, R) density\nprovided R3 p\nR dx = dfdx(density)(p)\nR dy = dfdy(density)(p)\nR dz = dfdz(density)(p)\nconst Object output = Ball3D(r=dx + dy + dz)\n";
+    let source = "#import std\nprovided Hom(R3, R) density\nprovided R3 p\nHom(R3, R) dx_field = dfdx(density)\nHom(R3, R) dy_field = dfdy(density)\nHom(R3, R) dz_field = dfdz(density)\nR dx = dx_field(p)\nR dy = dy_field(p)\nR dz = dz_field(p)\nconst Object output = Ball3D(r=dx + dy + dz)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float dx = ((density((p + vec3(0.01, 0.0, 0.0)))"));
-    assert!(glsl.contains("float dy = ((density((p + vec3(0.0, 0.01, 0.0)))"));
-    assert!(glsl.contains("float dz = ((density((p + vec3(0.0, 0.0, 0.01)))"));
+    assert!(glsl.contains("float dx_field(vec3 _t)"));
+    assert!(glsl.contains("density(_t + vec3(_lane_differential_epsilon, 0.0, 0.0))"));
+    assert!(glsl.contains("float dy_field(vec3 _t)"));
+    assert!(glsl.contains("density(_t + vec3(0.0, _lane_differential_epsilon, 0.0))"));
+    assert!(glsl.contains("float dz_field(vec3 _t)"));
+    assert!(glsl.contains("density(_t + vec3(0.0, 0.0, _lane_differential_epsilon))"));
 }
 
 #[test]
 fn derivative_of_vector_field_returns_matrix() {
-    let source = "provided Hom(R2, R3) field\nprovided Hom(Mat2x3, R) measure\nprovided R2 p\nMat2x3 jacobian = derivative(field)(p)\nconst Object output = Ball3D(r=measure(jacobian))\n";
+    let source = "#import std\nprovided Hom(R2, R3) field\nprovided Hom(Mat2x3, R) measure\nprovided R2 p\nHom(R2, Mat2x3) jacobian_field = derivative(field)\nMat2x3 jacobian = jacobian_field(p)\nconst Object output = Ball3D(r=measure(jacobian))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("mat3x2 jacobian = transpose(mat2x3("));
-    assert!(glsl.contains("field((p + vec2(0.01, 0.0)))"));
-    assert!(glsl.contains("field((p - vec2(0.0, 0.01)))"));
+    assert!(glsl.contains("mat3x2 jacobian_field(vec2 _t)"));
+    assert!(glsl.contains("return transpose(mat2x3("));
+    assert!(glsl.contains("field(_t + vec2(_lane_differential_epsilon, 0.0))"));
+    assert!(glsl.contains("field(_t - vec2(0.0, _lane_differential_epsilon))"));
 }
 
 #[test]
 fn divergence_accepts_same_dimensional_vector_fields() {
-    let source = "provided Hom(R2, R2) flow\nprovided R2 p\nR outflow = divergence(flow)(p)\nconst Object output = Ball3D(r=outflow)\n";
+    let source = "#import std\nprovided Hom(R2, R2) flow\nprovided R2 p\nHom(R2, R) div_flow = divergence(flow)\nR outflow = div_flow(p)\nconst Object output = Ball3D(r=outflow)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float outflow = (((flow((p + vec2(0.01, 0.0)))).x"));
-    assert!(glsl.contains("+ ((flow((p + vec2(0.0, 0.01)))).y"));
+    assert!(glsl.contains("float div_flow(vec2 _t)"));
+    assert!(glsl.contains("flow(_t + vec2(_lane_differential_epsilon, 0.0))"));
+    assert!(glsl.contains("flow(_t + vec2(0.0, _lane_differential_epsilon))"));
     assert!(!glsl.contains(".z -"));
 }
 
 #[test]
 fn supports_default_gradient_operator_for_scalar_functions() {
-    let source = "Func(Float, Float) slope = grad(sin)\nconst Object output = Ball3D(r=slope(0))\n";
+    let source = "#import std\nFunc(Float, Float) slope = grad(sin)\nconst Object output = Ball3D(r=slope(0))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float slope(float _t) {"));
-    assert!(glsl.contains("(sin((_t + 0.01)) - sin((_t - 0.01))) / (2.0 * 0.01)"));
+    assert!(glsl.contains("sin(_t + _lane_differential_epsilon)"));
+    assert!(glsl.contains("sin(_t - _lane_differential_epsilon)"));
 }
 
 #[test]
 fn supports_default_gradient_operator_for_scalar_fields() {
     let source =
-        "provided Hom(R3, R) density\nprovided Hom(R3, R) measure\nprovided R3 p\nR3 normal = gradient(density)(p)\nconst Object output = Ball3D(r=measure(normal))\n";
+        "#import std\nprovided Hom(R3, R) density\nprovided Hom(R3, R) measure\nprovided R3 p\nHom(R3, R3) normal_field = gradient(density)\nR3 normal = normal_field(p)\nconst Object output = Ball3D(r=measure(normal))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec3 normal = vec3("));
-    assert!(glsl.contains("density((p + vec3(0.01, 0.0, 0.0)))"));
-    assert!(glsl.contains("density((p - vec3(0.0, 0.0, 0.01)))"));
+    assert!(glsl.contains("vec3 normal_field(vec3 _t)"));
+    assert!(glsl.contains("density(_t + vec3(_lane_differential_epsilon, 0.0, 0.0))"));
+    assert!(glsl.contains("density(_t - vec3(0.0, 0.0, _lane_differential_epsilon))"));
+    assert!(glsl.contains("vec3 normal = normal_field(p);"));
 }
 
 #[test]
@@ -1312,7 +1339,7 @@ fn raw_glsl_placeholders_reject_non_nameable_function_operators() {
         .unwrap_err()
         .to_string();
 
-    assert!(error.contains("cannot be rendered as a GLSL reference"));
+    assert!(error.contains("unknown raw GLSL placeholder 'gradient'"));
     fs::remove_dir_all(dir).unwrap();
 }
 
@@ -1380,6 +1407,15 @@ fn supports_pointwise_function_arithmetic_support_dependencies() {
     assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
     assert!(glsl.contains("vec2 h(float _t)"));
     assert!(glsl.contains("return mult_C(f(_t), g(_t));"));
+}
+
+#[test]
+fn lowers_pointwise_custom_operator_functions_to_core_calls() {
+    let source = "provided Set X\nprovided X zeroX\nprovided Hom(X x X, X) addX\nAb X = X\nX 0 = zeroX\nHom(X x X, X) &+ = (left, right) |-> addX(left, right)\nHom(X x X, X) &- = (left, right) |-> addX(left, right)\nprovided Hom(R, X) f\nprovided Hom(R, X) g\nHom(R, X) h = f + g\nprovided R t\nprovided Hom(X, R) measure\nR radius = measure(h(t))\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("X h(float _t)"));
+    assert!(glsl.contains("return __add(f(_t), g(_t));"));
 }
 
 #[test]
@@ -2020,13 +2056,14 @@ fn directive_2d_uses_object2d_ambient_space() {
 
 #[test]
 fn directive_prec_sets_default_differential_precision() {
-    let source = "#prec 0.002\nprovided Hom(R3, R) density\nprovided R3 p\nFunc(R, R) slope = grad(sin)\nR3 normal = gradient(density)(p)\nconst Object output = Ball3D(r=slope(0) + density(normal))\n";
+    let source = "#import std\n#prec 0.002\nprovided Hom(R3, R) density\nprovided R3 p\nFunc(R, R) slope = grad(sin)\nHom(R3, R3) normal_field = gradient(density)\nR3 normal = normal_field(p)\nconst Object output = Ball3D(r=slope(0) + density(normal))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float eps = 0.002;"));
-    assert!(glsl.contains("(sin((_t + 0.002)) - sin((_t - 0.002))) / (2.0 * 0.002)"));
-    assert!(glsl.contains("density((p + vec3(0.002, 0.0, 0.0)))"));
-    assert!(glsl.contains("density((p - vec3(0.0, 0.0, 0.002)))"));
+    assert!(glsl.contains("const float _lane_differential_epsilon = 0.002;"));
+    assert!(glsl.contains("sin(_t + _lane_differential_epsilon)"));
+    assert!(glsl.contains("density(_t + vec3(_lane_differential_epsilon, 0.0, 0.0))"));
+    assert!(glsl.contains("density(_t - vec3(0.0, 0.0, _lane_differential_epsilon))"));
 }
 
 #[test]
@@ -2127,13 +2164,13 @@ fn object_sdf_and_grad_getters_emit_helpers_for_plain_bindings() {
 
 #[test]
 fn object_sdf_getter_closure_uses_provided_inputs_as_globals() {
-    let source = "provided R time\nObject shell = Ball3D(r=1 + time)\nR3 p0 = (0, 0, 0)\nR3 g = gradient(shell.sdf)(p0)\nconst Object output = Ball3D(r=length(g))\n";
+    let source = "#import std\nprovided R time\nObject shell = Ball3D(r=1 + time)\nR3 p0 = (0, 0, 0)\nHom(R3, R3) shell_grad = gradient(shell.sdf)\nR3 g = shell_grad(p0)\nconst Object output = Ball3D(r=length(g))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_shell(vec3 p) {"));
     assert!(glsl.contains("return sdf0_Ball3D(p, ParamBall3D((1.0 + time)));"));
-    assert!(glsl.contains("vec3 g = vec3("));
-    assert!(glsl.contains("sdf_shell((p0 + vec3(0.01, 0.0, 0.0)))"));
+    assert!(glsl.contains("vec3 shell_grad(vec3 _t)"));
+    assert!(glsl.contains("sdf_shell(_t + vec3(_lane_differential_epsilon, 0.0, 0.0))"));
 }
 
 #[test]

@@ -854,86 +854,6 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
             }
         }
         ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
-        ValueExpr::Derivative {
-            epsilon, func, at, ..
-        }
-        | ValueExpr::Gradient {
-            epsilon, func, at, ..
-        }
-        | ValueExpr::Divergence { epsilon, func, at } => {
-            collect_object_getter_value_refs(epsilon, names);
-            collect_object_getter_function_refs(func, names);
-            collect_object_getter_value_refs(at, names);
-        }
-        ValueExpr::Partial {
-            epsilon, func, at, ..
-        } => {
-            collect_object_getter_value_refs(epsilon, names);
-            collect_object_getter_function_refs(func, names);
-            collect_object_getter_value_refs(at, names);
-        }
-    }
-}
-
-/// Performs `collect_object_getter_function_refs` behavior.
-fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet<String>) {
-    match &func.kind {
-        FunctionExprKind::Named(_) => {}
-        FunctionExprKind::Operator(_) => {}
-        FunctionExprKind::Projection { .. } | FunctionExprKind::Diagonal { .. } => {}
-        FunctionExprKind::ObjectGetter {
-            object, captures, ..
-        } => {
-            names.insert(object.clone());
-            for capture in captures {
-                collect_object_getter_value_refs(capture, names);
-            }
-        }
-        FunctionExprKind::Compose(outer, inner) => {
-            collect_object_getter_function_refs(outer, names);
-            collect_object_getter_function_refs(inner, names);
-        }
-        FunctionExprKind::PointwiseBinary { left, right, .. } => {
-            collect_object_getter_pointwise_call_arg_refs(left, names);
-            collect_object_getter_pointwise_call_arg_refs(right, names);
-        }
-        FunctionExprKind::PointwiseUnary { arg, .. } => {
-            collect_object_getter_pointwise_call_arg_refs(arg, names);
-        }
-        FunctionExprKind::PointwiseCall { args, .. } => {
-            for arg in args {
-                collect_object_getter_pointwise_call_arg_refs(arg, names);
-            }
-        }
-        FunctionExprKind::PointwiseConditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            collect_object_getter_pointwise_call_arg_refs(condition, names);
-            collect_object_getter_pointwise_call_arg_refs(then_branch, names);
-            collect_object_getter_pointwise_call_arg_refs(else_branch, names);
-        }
-        FunctionExprKind::ProductSameDomain(funcs) => {
-            for func in funcs {
-                collect_object_getter_function_refs(func, names);
-            }
-        }
-        FunctionExprKind::ProductTensor(left, right) => {
-            collect_object_getter_function_refs(left, names);
-            collect_object_getter_function_refs(right, names);
-        }
-    }
-}
-
-/// Performs `collect_object_getter_pointwise_call_arg_refs` behavior.
-fn collect_object_getter_pointwise_call_arg_refs(
-    arg: &PointwiseCallArg,
-    names: &mut BTreeSet<String>,
-) {
-    match arg {
-        PointwiseCallArg::Function { func, .. } => collect_object_getter_function_refs(func, names),
-        PointwiseCallArg::Value(value) => collect_object_getter_value_refs(value, names),
     }
 }
 
@@ -1953,16 +1873,6 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
             }
         }
         ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
-        ValueExpr::Derivative { epsilon, at, .. }
-        | ValueExpr::Gradient { epsilon, at, .. }
-        | ValueExpr::Divergence { epsilon, at, .. } => {
-            collect_concat_helpers(epsilon, helpers);
-            collect_concat_helpers(at, helpers);
-        }
-        ValueExpr::Partial { epsilon, at, .. } => {
-            collect_concat_helpers(epsilon, helpers);
-            collect_concat_helpers(at, helpers);
-        }
     }
 }
 
@@ -2055,16 +1965,6 @@ fn collect_conditional_helpers(
             }
         }
         ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
-        ValueExpr::Derivative { epsilon, at, .. }
-        | ValueExpr::Partial { epsilon, at, .. }
-        | ValueExpr::Gradient { epsilon, at, .. } => {
-            collect_conditional_helpers(epsilon, helpers);
-            collect_conditional_helpers(at, helpers);
-        }
-        ValueExpr::Divergence { epsilon, at, .. } => {
-            collect_conditional_helpers(epsilon, helpers);
-            collect_conditional_helpers(at, helpers);
-        }
     }
 }
 
@@ -2114,6 +2014,9 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
                 && is_global_const_value_expr(then_branch, names)
                 && is_global_const_value_expr(else_branch, names)
         }
+        ValueExpr::Call { func, args, .. } if is_glsl_core_syntax_call(func) => args
+            .iter()
+            .all(|arg| is_global_const_value_expr(arg, names)),
         ValueExpr::Call {
             args,
             ty: Type::Custom { .. } | Type::Isom2 | Type::Isom3 | Type::Vec4,
@@ -2127,11 +2030,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
         | ValueExpr::Call { .. }
         | ValueExpr::MonoidPow { .. }
         | ValueExpr::ObjectGetterCall { .. }
-        | ValueExpr::FieldAccess { .. }
-        | ValueExpr::Derivative { .. }
-        | ValueExpr::Partial { .. }
-        | ValueExpr::Gradient { .. }
-        | ValueExpr::Divergence { .. } => false,
+        | ValueExpr::FieldAccess { .. } => false,
     }
 }
 
@@ -2284,16 +2183,6 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             }
         }
         ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
-        ValueExpr::Derivative { epsilon, at, .. }
-        | ValueExpr::Gradient { epsilon, at, .. }
-        | ValueExpr::Divergence { epsilon, at, .. } => {
-            collect_value_refs(epsilon, names);
-            collect_value_refs(at, names);
-        }
-        ValueExpr::Partial { epsilon, at, .. } => {
-            collect_value_refs(epsilon, names);
-            collect_value_refs(at, names);
-        }
     }
 }
 
@@ -2392,13 +2281,6 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             }
         }
         ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
-        ValueExpr::Derivative { epsilon, at, .. }
-        | ValueExpr::Partial { epsilon, at, .. }
-        | ValueExpr::Gradient { epsilon, at, .. }
-        | ValueExpr::Divergence { epsilon, at, .. } => {
-            collect_value_function_refs(epsilon, names);
-            collect_value_function_refs(at, names);
-        }
     }
 }
 
@@ -2530,7 +2412,13 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
                     names.insert("complex:log".to_string());
                 }
             }
-            if func != "rot" {
+            if let Some(name) = core_operator_call_support_name(func, args) {
+                names.insert(name);
+            }
+            if func != "rot"
+                && !is_glsl_native_core_operator_call(func, args)
+                && !is_glsl_core_syntax_call(func)
+            {
                 names.insert(func.clone());
             }
             for arg in args {
@@ -2628,101 +2516,6 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             }
         }
         ValueExpr::MatrixBasis { .. } | ValueExpr::UnitVectorBasis { .. } => {}
-        ValueExpr::Derivative {
-            epsilon, func, at, ..
-        }
-        | ValueExpr::Gradient {
-            epsilon, func, at, ..
-        }
-        | ValueExpr::Divergence { epsilon, func, at } => {
-            collect_value_support(epsilon, names);
-            collect_function_support(func, names);
-            collect_value_support(at, names);
-        }
-        ValueExpr::Partial {
-            epsilon, func, at, ..
-        } => {
-            collect_value_support(epsilon, names);
-            collect_function_support(func, names);
-            collect_value_support(at, names);
-        }
-    }
-}
-
-/// Performs `collect_function_support` behavior.
-fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
-    match &func.kind {
-        FunctionExprKind::Named(name) => {
-            names.insert(name.clone());
-        }
-        FunctionExprKind::Operator(op) => {
-            if let Some((left, right)) = operator_function_support_types(&func.input) {
-                if let Some(name) = binary_support_name(*op, &left, &right) {
-                    names.insert(name);
-                }
-            }
-        }
-        FunctionExprKind::Projection { .. } | FunctionExprKind::Diagonal { .. } => {}
-        FunctionExprKind::ObjectGetter { captures, .. } => {
-            for capture in captures {
-                collect_value_support(capture, names);
-            }
-        }
-        FunctionExprKind::Compose(outer, inner) => {
-            collect_function_support(outer, names);
-            collect_function_support(inner, names);
-        }
-        FunctionExprKind::PointwiseBinary { left, right, .. } => {
-            collect_pointwise_call_arg_support(left, names);
-            collect_pointwise_call_arg_support(right, names);
-        }
-        FunctionExprKind::PointwiseUnary { op, arg } => {
-            if let Some(name) = unary_support_name(*op, &func.output) {
-                names.insert(name);
-            }
-            collect_pointwise_call_arg_support(arg, names);
-        }
-        FunctionExprKind::PointwiseCall { func, args } => {
-            names.insert(func.clone());
-            for arg in args {
-                collect_pointwise_call_arg_support(arg, names);
-            }
-        }
-        FunctionExprKind::PointwiseConditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            collect_pointwise_call_arg_support(condition, names);
-            collect_pointwise_call_arg_support(then_branch, names);
-            collect_pointwise_call_arg_support(else_branch, names);
-        }
-        FunctionExprKind::ProductSameDomain(funcs) => {
-            for func in funcs {
-                collect_function_support(func, names);
-            }
-        }
-        FunctionExprKind::ProductTensor(left, right) => {
-            collect_function_support(left, names);
-            collect_function_support(right, names);
-        }
-    }
-}
-
-/// Performs `collect_pointwise_call_arg_support` behavior.
-fn collect_pointwise_call_arg_support(arg: &PointwiseCallArg, names: &mut BTreeSet<String>) {
-    match arg {
-        PointwiseCallArg::Function { func, .. } => collect_function_support(func, names),
-        PointwiseCallArg::Value(value) => collect_value_support(value, names),
-    }
-}
-
-/// Performs `operator_function_support_types` behavior.
-fn operator_function_support_types(input: &Type) -> Option<(Type, Type)> {
-    match input {
-        Type::Vec2 => Some((Type::Float, Type::Float)),
-        Type::Product(parts) if parts.len() == 2 => Some((parts[0].clone(), parts[1].clone())),
-        _ => None,
     }
 }
 
@@ -2738,7 +2531,13 @@ fn emit_value_expr(
         ValueExpr::Int(value) => value.to_string(),
         ValueExpr::Neutral { kind, ty } => emit_neutral_value(*kind, ty),
         ValueExpr::Var { name, .. } => emit_value_name(name, value_names),
-        ValueExpr::Call { func, args, .. } => {
+        ValueExpr::Call { func, args, ty } => {
+            if let Some(expr) = emit_glsl_core_syntax_call(func, args, helper_names, value_names) {
+                return expr;
+            }
+            if let Some(expr) = emit_core_operator_call(func, args, ty, helper_names, value_names) {
+                return expr;
+            }
             if let Some(reordered) =
                 emit_scalar_first_min_max(func, args, helper_names, value_names)
             {
@@ -2881,22 +2680,6 @@ fn emit_value_expr(
             index,
             ty,
         } => emit_unit_vector_basis(*dimension, *index, ty),
-        ValueExpr::Derivative {
-            epsilon, func, at, ..
-        } => emit_scalar_derivative(func, epsilon, at, helper_names, value_names),
-        ValueExpr::Partial {
-            axis,
-            epsilon,
-            func,
-            at,
-            ..
-        } => emit_partial_derivative(*axis, func, epsilon, at, helper_names, value_names),
-        ValueExpr::Gradient {
-            epsilon, func, at, ..
-        } => emit_gradient(func, epsilon, at, helper_names, value_names),
-        ValueExpr::Divergence { epsilon, func, at } => {
-            emit_divergence(func, epsilon, at, helper_names, value_names)
-        }
     }
 }
 
@@ -2920,6 +2703,173 @@ fn emit_value_name(name: &str, value_names: &HashMap<String, String>) -> String 
         }
     }
     name.to_string()
+}
+
+fn emit_core_operator_call(
+    func: &str,
+    args: &[ValueExpr],
+    _ty: &Type,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> Option<String> {
+    let [left, right] = args else {
+        return None;
+    };
+    let op = core_operator_call_binop(func)?;
+    if !glsl_native_binary_operator_types(op, &left.ty(), &right.ty()) {
+        return None;
+    }
+    Some(emit_binary_expr(op, left, right, helper_names, value_names))
+}
+
+fn emit_glsl_core_syntax_call(
+    func: &str,
+    args: &[ValueExpr],
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> Option<String> {
+    match (func, args) {
+        ("__vec2", [x, y]) => Some(format!(
+            "vec2({}, {})",
+            emit_value_expr(x, helper_names, value_names),
+            emit_value_expr(y, helper_names, value_names)
+        )),
+        ("__vec3", [x, y, z]) => Some(format!(
+            "vec3({}, {}, {})",
+            emit_value_expr(x, helper_names, value_names),
+            emit_value_expr(y, helper_names, value_names),
+            emit_value_expr(z, helper_names, value_names)
+        )),
+        ("__vec4", [x, y, z, w]) => Some(format!(
+            "vec4({}, {}, {}, {})",
+            emit_value_expr(x, helper_names, value_names),
+            emit_value_expr(y, helper_names, value_names),
+            emit_value_expr(z, helper_names, value_names),
+            emit_value_expr(w, helper_names, value_names)
+        )),
+        ("__index", [array, index]) => Some(format!(
+            "{}[{}]",
+            emit_value_expr(array, helper_names, value_names),
+            emit_value_expr(index, helper_names, value_names)
+        )),
+        (field, [value]) => {
+            let field = field.strip_prefix("__field_")?;
+            Some(format!(
+                "({}).{}",
+                emit_value_expr(value, helper_names, value_names),
+                field
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn is_glsl_core_syntax_call(func: &str) -> bool {
+    matches!(func, "__vec2" | "__vec3" | "__vec4" | "__index") || func.starts_with("__field_")
+}
+
+fn is_glsl_native_core_operator_call(func: &str, args: &[ValueExpr]) -> bool {
+    let [left, right] = args else {
+        return false;
+    };
+    core_operator_call_binop(func)
+        .is_some_and(|op| glsl_native_binary_operator_types(op, &left.ty(), &right.ty()))
+}
+
+fn core_operator_call_support_name(func: &str, args: &[ValueExpr]) -> Option<String> {
+    match (func, args) {
+        ("__add", [left, right]) | ("__sub", [left, right]) | ("__mult", [left, right])
+            if left.ty() == right.ty() =>
+        {
+            let Type::Custom { name, .. } = left.ty() else {
+                return None;
+            };
+            let op = match func {
+                "__add" => ProductOp::Add,
+                "__sub" => ProductOp::Sub,
+                "__mult" => ProductOp::Mult,
+                _ => unreachable!(),
+            };
+            Some(product_type_op_support_name(&name, op))
+        }
+        ("__scale", [value, scalar]) if scalar.ty() == Type::Float => {
+            let Type::Custom { name, .. } = value.ty() else {
+                return None;
+            };
+            Some(product_type_op_support_name(&name, ProductOp::Scale))
+        }
+        ("__inv", [value]) => {
+            let Type::Custom { name, .. } = value.ty() else {
+                return None;
+            };
+            Some(product_type_op_support_name(&name, ProductOp::Inv))
+        }
+        _ => None,
+    }
+}
+
+fn core_operator_call_binop(func: &str) -> Option<BinOp> {
+    match func {
+        "__add" => Some(BinOp::Add),
+        "__sub" => Some(BinOp::Sub),
+        "__mult" => Some(BinOp::Mul),
+        "__div" => Some(BinOp::Div),
+        _ => None,
+    }
+}
+
+fn glsl_native_binary_operator_types(op: BinOp, left: &Type, right: &Type) -> bool {
+    match op {
+        BinOp::Add | BinOp::Sub => {
+            left == right
+                && matches!(
+                    left,
+                    Type::Bool
+                        | Type::Float
+                        | Type::Int
+                        | Type::Complex
+                        | Type::Quat
+                        | Type::Vec2
+                        | Type::Vec3
+                        | Type::Vec4
+                        | Type::Mat(_, _)
+                )
+        }
+        BinOp::Mul => match (left, right) {
+            (Type::Bool, Type::Bool)
+            | (Type::Float, Type::Float)
+            | (Type::Int, Type::Int)
+            | (Type::Vec2, Type::Vec2)
+            | (Type::Vec3, Type::Vec3)
+            | (Type::Vec4, Type::Vec4)
+            | (Type::Mat(_, _), Type::Mat(_, _)) => left == right,
+            (Type::Float, ty) | (ty, Type::Float) => {
+                matches!(ty, Type::Vec2 | Type::Vec3 | Type::Vec4 | Type::Mat(_, _))
+            }
+            _ => false,
+        },
+        BinOp::Div => match (left, right) {
+            (Type::Bool, Type::Bool)
+            | (Type::Float, Type::Float)
+            | (Type::Int, Type::Int)
+            | (Type::Vec2, Type::Vec2)
+            | (Type::Vec3, Type::Vec3)
+            | (Type::Vec4, Type::Vec4)
+            | (Type::Mat(_, _), Type::Mat(_, _)) => left == right,
+            (ty, Type::Float) => {
+                matches!(ty, Type::Vec2 | Type::Vec3 | Type::Vec4 | Type::Mat(_, _))
+            }
+            _ => false,
+        },
+        BinOp::Eq
+        | BinOp::Ne
+        | BinOp::Lt
+        | BinOp::Le
+        | BinOp::Gt
+        | BinOp::Ge
+        | BinOp::Product
+        | BinOp::Compose => false,
+    }
 }
 
 /// Performs `product_projection_source_name` behavior.
@@ -3297,16 +3247,6 @@ fn unary_support_name(op: UnaryOp, ty: &Type) -> Option<String> {
     }
 }
 
-/// Performs `emit_function_application` behavior.
-fn emit_function_application(
-    func: &FunctionExpr,
-    arg: ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    emit_value_expr(&apply_function_expr(func, arg), helper_names, value_names)
-}
-
 /// Performs `emit_sdf_gradient_expr` behavior.
 fn emit_sdf_gradient_expr(
     function_name: &str,
@@ -3406,239 +3346,6 @@ fn emit_sdf_call(
         .collect::<Vec<_>>()
         .join(", ");
     format!("{}({})", function_name, args)
-}
-
-/// Performs `emit_scalar_derivative` behavior.
-fn emit_scalar_derivative(
-    func: &FunctionExpr,
-    epsilon: &ValueExpr,
-    at: &ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    emit_derivative(func, epsilon, at, helper_names, value_names)
-}
-
-/// Performs `emit_partial_derivative` behavior.
-fn emit_partial_derivative(
-    axis: usize,
-    func: &FunctionExpr,
-    epsilon: &ValueExpr,
-    at: &ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    emit_axis_derivative(axis, func, epsilon, at, helper_names, value_names)
-}
-
-/// Performs `emit_gradient` behavior.
-fn emit_gradient(
-    func: &FunctionExpr,
-    epsilon: &ValueExpr,
-    at: &ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    emit_derivative(func, epsilon, at, helper_names, value_names)
-}
-
-/// Performs `emit_derivative` behavior.
-fn emit_derivative(
-    func: &FunctionExpr,
-    epsilon: &ValueExpr,
-    at: &ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    let input_dim = derivative_emit_dimension(&func.input).unwrap_or_else(|| {
-        panic!(
-            "cannot emit derivative for non-vector input type in function '{}'",
-            function_signature(func)
-        )
-    });
-    let output_dim = derivative_emit_dimension(&func.output).unwrap_or_else(|| {
-        panic!(
-            "cannot emit derivative for non-vector output type in function '{}'",
-            function_signature(func)
-        )
-    });
-    if input_dim == 1 {
-        return emit_axis_derivative(0, func, epsilon, at, helper_names, value_names);
-    }
-    if output_dim == 1 {
-        let components = (0..input_dim)
-            .map(|axis| emit_axis_derivative(axis, func, epsilon, at, helper_names, value_names))
-            .collect::<Vec<_>>();
-        return format!(
-            "{}({})",
-            vector_constructor(input_dim),
-            components.join(", ")
-        );
-    }
-    let rows = (0..input_dim)
-        .map(|axis| emit_axis_derivative(axis, func, epsilon, at, helper_names, value_names))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "transpose({}({}))",
-        matrix_constructor_type(input_dim, output_dim),
-        rows
-    )
-}
-
-/// Performs `emit_axis_derivative` behavior.
-fn emit_axis_derivative(
-    axis: usize,
-    func: &FunctionExpr,
-    epsilon: &ValueExpr,
-    at: &ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    let plus = emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Add);
-    let minus = emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Sub);
-    let twice = ValueExpr::Binary {
-        op: BinOp::Mul,
-        left: Box::new(ValueExpr::Float(2.0)),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Float,
-    };
-    format!(
-        "(({} - {}) / {})",
-        emit_function_application(func, plus, helper_names, value_names),
-        emit_function_application(func, minus, helper_names, value_names),
-        emit_value_expr(&twice, helper_names, value_names)
-    )
-}
-
-/// Performs `derivative_emit_dimension` behavior.
-fn derivative_emit_dimension(ty: &Type) -> Option<usize> {
-    match ty {
-        Type::Float => Some(1),
-        Type::Vec2 => Some(2),
-        Type::Vec3 => Some(3),
-        Type::Vec4 => Some(4),
-        _ => None,
-    }
-}
-
-/// Performs `vector_constructor` behavior.
-fn vector_constructor(dimension: usize) -> &'static str {
-    match dimension {
-        2 => "vec2",
-        3 => "vec3",
-        4 => "vec4",
-        _ => panic!("vector constructor expected 2/3/4 dimensions, got {dimension}"),
-    }
-}
-
-/// Performs `emit_axis_offset` behavior.
-fn emit_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: BinOp) -> ValueExpr {
-    let ty = base.ty();
-    let offset = match ty {
-        Type::Float => epsilon,
-        Type::Vec2 => ValueExpr::Vec2(
-            Box::new(if axis == 0 {
-                epsilon.clone()
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-            Box::new(if axis == 1 {
-                epsilon
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-        ),
-        Type::Vec3 => ValueExpr::Vec3(
-            Box::new(if axis == 0 {
-                epsilon.clone()
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-            Box::new(if axis == 1 {
-                epsilon.clone()
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-            Box::new(if axis == 2 {
-                epsilon
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-        ),
-        Type::Vec4 => ValueExpr::Vec4(
-            Box::new(if axis == 0 {
-                epsilon.clone()
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-            Box::new(if axis == 1 {
-                epsilon.clone()
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-            Box::new(if axis == 2 {
-                epsilon.clone()
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-            Box::new(if axis == 3 {
-                epsilon
-            } else {
-                ValueExpr::Float(0.0)
-            }),
-        ),
-        _ => panic!("axis offset only supports float/vec2/vec3/vec4, got {ty:?}"),
-    };
-    ValueExpr::Binary {
-        op,
-        left: Box::new(base),
-        right: Box::new(offset),
-        ty,
-    }
-}
-
-/// Performs `emit_divergence` behavior.
-fn emit_divergence(
-    func: &FunctionExpr,
-    epsilon: &ValueExpr,
-    at: &ValueExpr,
-    helper_names: &HashMap<String, String>,
-    value_names: &HashMap<String, String>,
-) -> String {
-    let dimension = derivative_emit_dimension(&func.input).unwrap_or_else(|| {
-        panic!(
-            "cannot emit divergence for non-vector input type in function '{}'",
-            function_signature(func)
-        )
-    });
-    let twice = ValueExpr::Binary {
-        op: BinOp::Mul,
-        left: Box::new(ValueExpr::Float(2.0)),
-        right: Box::new(epsilon.clone()),
-        ty: Type::Float,
-    };
-    let denom = emit_value_expr(&twice, helper_names, value_names);
-    let components = ["x", "y", "z", "w"];
-    let terms = (0..dimension)
-        .map(|axis| {
-            let plus = emit_function_application(
-                func,
-                emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Add),
-                helper_names,
-                value_names,
-            );
-            let minus = emit_function_application(
-                func,
-                emit_axis_offset(at.clone(), epsilon.clone(), axis, BinOp::Sub),
-                helper_names,
-                value_names,
-            );
-            let component = components[axis];
-            format!("(({plus}).{component} - ({minus}).{component}) / {denom}")
-        })
-        .collect::<Vec<_>>();
-    format!("({})", terms.join(" + "))
 }
 
 /// Performs `emit_object_expr` behavior.
@@ -3913,13 +3620,6 @@ fn primitive_value_field<'a>(
                 .join(", ");
             panic!("primitive field '{name}' not found; available fields: [{available_fields}]")
         })
-}
-
-fn function_signature(func: &FunctionExpr) -> String {
-    match &func.kind {
-        FunctionExprKind::Named(name) => name.clone(),
-        kind => format!("expr:{kind:?}"),
-    }
 }
 
 /// Performs `emit_polygon_vertices` behavior.

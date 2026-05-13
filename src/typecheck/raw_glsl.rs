@@ -22,6 +22,7 @@ fn innermost_output_ty(ty: &Type) -> &Type {
 struct RawGlslCapture {
     ty: Type,
     glsl_ref: String,
+    refs: RawGlslRefs,
 }
 
 #[derive(Clone)]
@@ -100,6 +101,7 @@ fn raw_glsl_capture_bindings(
                 RawGlslCapture {
                     ty: capture_ty.clone(),
                     glsl_ref: param,
+                    refs: RawGlslRefs::default(),
                 },
             );
         }
@@ -125,6 +127,7 @@ fn raw_glsl_capture_bindings(
             RawGlslCapture {
                 ty,
                 glsl_ref: param.clone(),
+                refs: RawGlslRefs::default(),
             },
         );
     }
@@ -201,6 +204,7 @@ fn raw_glsl_placeholder_ref(
         if matches!(capture.ty, Type::Func(_, _)) {
             refs.funcs.insert(capture.glsl_ref.clone());
         }
+        refs.extend(capture.refs.clone());
         return Ok(capture.glsl_ref.clone());
     }
 
@@ -596,6 +600,7 @@ fn raw_glsl_template_capture(
             Ok(RawGlslCapture {
                 ty,
                 glsl_ref: name.clone(),
+                refs: RawGlslRefs::default(),
             })
         }
         Type::Func(_, _) => {
@@ -608,6 +613,7 @@ fn raw_glsl_template_capture(
                         return Ok(RawGlslCapture {
                             ty: input_ty.clone(),
                             glsl_ref: name.clone(),
+                            refs: RawGlslRefs::default(),
                         });
                     }
                 }
@@ -619,9 +625,11 @@ fn raw_glsl_template_capture(
                 function_output(input_ty)?,
             )?;
             let glsl_ref = raw_glsl_function_expr_ref(&func)?;
+            let refs = raw_glsl_function_expr_refs(&func);
             Ok(RawGlslCapture {
                 ty: input_ty.clone(),
                 glsl_ref,
+                refs,
             })
         }
         _ if is_value_type(input_ty) => {
@@ -638,6 +646,7 @@ fn raw_glsl_template_capture(
             Ok(RawGlslCapture {
                 ty,
                 glsl_ref: name.clone(),
+                refs: RawGlslRefs::default(),
             })
         }
         _ => Err(Error::new(format!(
@@ -684,6 +693,156 @@ fn raw_glsl_function_expr_ref(func: &FunctionExpr) -> Result<String, Error> {
         _ => Err(Error::new(
             "raw GLSL template function arguments must have a GLSL reference",
         )),
+    }
+}
+
+fn raw_glsl_function_expr_refs(func: &FunctionExpr) -> RawGlslRefs {
+    let mut refs = RawGlslRefs::default();
+    collect_raw_glsl_function_expr_refs(func, &mut refs);
+    refs
+}
+
+fn collect_raw_glsl_function_expr_refs(func: &FunctionExpr, refs: &mut RawGlslRefs) {
+    match &func.kind {
+        FunctionExprKind::Named(name) => {
+            refs.funcs.insert(name.clone());
+        }
+        FunctionExprKind::Operator(_)
+        | FunctionExprKind::Projection { .. }
+        | FunctionExprKind::Diagonal { .. } => {}
+        FunctionExprKind::ObjectGetter {
+            object, captures, ..
+        } => {
+            refs.object_getters.insert(object.clone());
+            for capture in captures {
+                collect_value_refs_for_raw_glsl_capture(capture, refs);
+            }
+        }
+        FunctionExprKind::Compose(outer, inner) => {
+            collect_raw_glsl_function_expr_refs(outer, refs);
+            collect_raw_glsl_function_expr_refs(inner, refs);
+        }
+        FunctionExprKind::PointwiseBinary { left, right, .. } => {
+            collect_pointwise_arg_refs_for_raw_glsl_capture(left, refs);
+            collect_pointwise_arg_refs_for_raw_glsl_capture(right, refs);
+        }
+        FunctionExprKind::PointwiseUnary { arg, .. } => {
+            collect_pointwise_arg_refs_for_raw_glsl_capture(arg, refs);
+        }
+        FunctionExprKind::PointwiseCall { func, args } => {
+            refs.funcs.insert(func.clone());
+            for arg in args {
+                collect_pointwise_arg_refs_for_raw_glsl_capture(arg, refs);
+            }
+        }
+        FunctionExprKind::PointwiseConditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_pointwise_arg_refs_for_raw_glsl_capture(condition, refs);
+            collect_pointwise_arg_refs_for_raw_glsl_capture(then_branch, refs);
+            collect_pointwise_arg_refs_for_raw_glsl_capture(else_branch, refs);
+        }
+        FunctionExprKind::ProductSameDomain(funcs) => {
+            for func in funcs {
+                collect_raw_glsl_function_expr_refs(func, refs);
+            }
+        }
+        FunctionExprKind::ProductTensor(left, right) => {
+            collect_raw_glsl_function_expr_refs(left, refs);
+            collect_raw_glsl_function_expr_refs(right, refs);
+        }
+    }
+}
+
+fn collect_pointwise_arg_refs_for_raw_glsl_capture(arg: &PointwiseCallArg, refs: &mut RawGlslRefs) {
+    match arg {
+        PointwiseCallArg::Function { func, .. } => collect_raw_glsl_function_expr_refs(func, refs),
+        PointwiseCallArg::Value(value) => collect_value_refs_for_raw_glsl_capture(value, refs),
+    }
+}
+
+fn collect_value_refs_for_raw_glsl_capture(value: &ValueExpr, refs: &mut RawGlslRefs) {
+    match value {
+        ValueExpr::Var { name, .. } => {
+            refs.values.insert(name.clone());
+        }
+        ValueExpr::Call { func, args, .. } => {
+            refs.funcs.insert(func.clone());
+            for arg in args {
+                collect_value_refs_for_raw_glsl_capture(arg, refs);
+            }
+        }
+        ValueExpr::ObjectGetterCall {
+            object,
+            point,
+            captures,
+            ..
+        } => {
+            refs.object_getters.insert(object.clone());
+            collect_value_refs_for_raw_glsl_capture(point, refs);
+            for capture in captures {
+                collect_value_refs_for_raw_glsl_capture(capture, refs);
+            }
+        }
+        ValueExpr::NumericWidenCast { value, .. } | ValueExpr::FieldAccess { value, .. } => {
+            collect_value_refs_for_raw_glsl_capture(value, refs);
+        }
+        ValueExpr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_value_refs_for_raw_glsl_capture(condition, refs);
+            collect_value_refs_for_raw_glsl_capture(then_branch, refs);
+            collect_value_refs_for_raw_glsl_capture(else_branch, refs);
+        }
+        ValueExpr::Index { array, index, .. } => {
+            collect_value_refs_for_raw_glsl_capture(array, refs);
+            collect_value_refs_for_raw_glsl_capture(index, refs);
+        }
+        ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
+            collect_value_refs_for_raw_glsl_capture(left, refs);
+            collect_value_refs_for_raw_glsl_capture(right, refs);
+        }
+        ValueExpr::Unary { expr, .. } => collect_value_refs_for_raw_glsl_capture(expr, refs),
+        ValueExpr::Array { elements, .. } | ValueExpr::Product(elements) => {
+            for element in elements {
+                collect_value_refs_for_raw_glsl_capture(element, refs);
+            }
+        }
+        ValueExpr::Vec2(x, y) => {
+            collect_value_refs_for_raw_glsl_capture(x, refs);
+            collect_value_refs_for_raw_glsl_capture(y, refs);
+        }
+        ValueExpr::Vec3(x, y, z) => {
+            collect_value_refs_for_raw_glsl_capture(x, refs);
+            collect_value_refs_for_raw_glsl_capture(y, refs);
+            collect_value_refs_for_raw_glsl_capture(z, refs);
+        }
+        ValueExpr::Vec4(x, y, z, w) => {
+            collect_value_refs_for_raw_glsl_capture(x, refs);
+            collect_value_refs_for_raw_glsl_capture(y, refs);
+            collect_value_refs_for_raw_glsl_capture(z, refs);
+            collect_value_refs_for_raw_glsl_capture(w, refs);
+        }
+        ValueExpr::Matrix { rows, .. } => {
+            for row in rows {
+                collect_value_refs_for_raw_glsl_capture(row, refs);
+            }
+        }
+        ValueExpr::MonoidPow { exponent, base, .. } => {
+            collect_value_refs_for_raw_glsl_capture(exponent, refs);
+            collect_value_refs_for_raw_glsl_capture(base, refs);
+        }
+        ValueExpr::Bool(_)
+        | ValueExpr::Float(_)
+        | ValueExpr::Int(_)
+        | ValueExpr::Neutral { .. }
+        | ValueExpr::MatrixBasis { .. }
+        | ValueExpr::UnitVectorBasis { .. } => {}
     }
 }
 

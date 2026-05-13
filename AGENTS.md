@@ -11,7 +11,9 @@
 - Treat shapes as objects denoting SDFs.
 - Primitive definitions are based on `ParamShape` records and `sdf0_Shape` local-space evaluators.
 - Keep transforms outside primitive parameter records.
-- Prefer small typed passes: parse, typecheck, desugar, then emit GLSL.
+- Prefer small typed passes: parse to surface AST, preprocess/desugar into the current Lane core syntax, typecheck, postprocess into GLSL-oriented core syntax, then emit GLSL.
+- When adding a Rust-defined object, classify it as either syntactically essential core machinery or as a temporary `std`-movable object. Prefer moving secondary objects into Lane modules instead of expanding Rust registries.
+- Keep the compiler/std split similar to C++: the compiler should provide only minimal syntax, typechecking, overload/module machinery, directives, and backend hooks. Objects constructible in Lane belong in `std` and must be imported explicitly rather than hardcoded in Rust.
 - Keep `ROADMAP.md` as a progress tracker for desired language/compiler features. When a feature works only partially, record both an example that works now and an example that should work in the final general version but does not yet. After design discussions or implementation work that changes feature scope, update the roadmap status and examples in the same pass.
 - After making a change in tree-sitter grammar, always make sure to generate new grammar with `tree-sitter generate`
 - If you've finished making changes make sure to install the new version with:

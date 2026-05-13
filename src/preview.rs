@@ -218,19 +218,22 @@ impl Renderer {
         let surface_format =
             unsafe { choose_surface_format(&surface_loader, physical_device, surface)? };
         let size = window.inner_size();
+        let swapchain_context = SwapchainCreateContext {
+            device: &device,
+            swapchain_loader: &swapchain_loader,
+            surface_loader: &surface_loader,
+            physical_device,
+            surface,
+            surface_format,
+            vertex_spv: &shaders.vertex_spv,
+            fragment_spv: &shaders.fragment_spv,
+        };
         let resources = unsafe {
             create_swapchain_resources(
-                &device,
-                &swapchain_loader,
-                &surface_loader,
-                physical_device,
-                surface,
-                surface_format,
+                &swapchain_context,
                 size.width,
                 size.height,
                 vk::SwapchainKHR::null(),
-                &shaders.vertex_spv,
-                &shaders.fragment_spv,
             )?
         };
         let command_pool_info = vk::CommandPoolCreateInfo::default()
@@ -278,20 +281,18 @@ impl Renderer {
 
     /// Rebuilds swapchain state and dependent objects after size changes or errors.
     unsafe fn recreate_swapchain(&mut self, width: u32, height: u32) -> Result<(), Box<dyn Error>> {
+        let swapchain_context = SwapchainCreateContext {
+            device: &self.device,
+            swapchain_loader: &self.swapchain_loader,
+            surface_loader: &self.surface_loader,
+            physical_device: self.physical_device,
+            surface: self.surface,
+            surface_format: self.surface_format,
+            vertex_spv: &self.vertex_spv,
+            fragment_spv: &self.fragment_spv,
+        };
         let resources = unsafe {
-            create_swapchain_resources(
-                &self.device,
-                &self.swapchain_loader,
-                &self.surface_loader,
-                self.physical_device,
-                self.surface,
-                self.surface_format,
-                width,
-                height,
-                self.swapchain,
-                &self.vertex_spv,
-                &self.fragment_spv,
-            )?
+            create_swapchain_resources(&swapchain_context, width, height, self.swapchain)?
         };
         unsafe {
             self.device.device_wait_idle()?;
@@ -524,35 +525,47 @@ unsafe fn choose_present_mode(
     Ok(vk::PresentModeKHR::FIFO)
 }
 
-/// Creates swapchain plus all dependent render resources for a given extent and assets.
-unsafe fn create_swapchain_resources(
-    device: &ash::Device,
-    swapchain_loader: &ash::khr::swapchain::Device,
-    surface_loader: &ash::khr::surface::Instance,
+struct SwapchainCreateContext<'a> {
+    device: &'a ash::Device,
+    swapchain_loader: &'a ash::khr::swapchain::Device,
+    surface_loader: &'a ash::khr::surface::Instance,
     physical_device: vk::PhysicalDevice,
     surface: vk::SurfaceKHR,
     surface_format: vk::SurfaceFormatKHR,
+    vertex_spv: &'a [u8],
+    fragment_spv: &'a [u8],
+}
+
+/// Creates swapchain plus all dependent render resources for a given extent and assets.
+unsafe fn create_swapchain_resources(
+    context: &SwapchainCreateContext<'_>,
     width: u32,
     height: u32,
     old_swapchain: vk::SwapchainKHR,
-    vertex_spv: &[u8],
-    fragment_spv: &[u8],
 ) -> Result<SwapchainResources, Box<dyn Error>> {
     let capabilities = unsafe {
-        surface_loader.get_physical_device_surface_capabilities(physical_device, surface)?
+        context
+            .surface_loader
+            .get_physical_device_surface_capabilities(context.physical_device, context.surface)?
     };
     let extent = choose_extent(&capabilities, width.max(1), height.max(1));
-    let present_mode = unsafe { choose_present_mode(surface_loader, physical_device, surface)? };
+    let present_mode = unsafe {
+        choose_present_mode(
+            context.surface_loader,
+            context.physical_device,
+            context.surface,
+        )?
+    };
     let min_image_count = if capabilities.max_image_count > 0 {
         (capabilities.min_image_count + 1).min(capabilities.max_image_count)
     } else {
         capabilities.min_image_count + 1
     };
     let swapchain_info = vk::SwapchainCreateInfoKHR::default()
-        .surface(surface)
+        .surface(context.surface)
         .min_image_count(min_image_count)
-        .image_format(surface_format.format)
-        .image_color_space(surface_format.color_space)
+        .image_format(context.surface_format.format)
+        .image_color_space(context.surface_format.color_space)
         .image_extent(extent)
         .image_array_layers(1)
         .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
@@ -562,18 +575,31 @@ unsafe fn create_swapchain_resources(
         .present_mode(present_mode)
         .clipped(true)
         .old_swapchain(old_swapchain);
-    let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_info, None)? };
-    let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+    let swapchain = unsafe {
+        context
+            .swapchain_loader
+            .create_swapchain(&swapchain_info, None)?
+    };
+    let images = unsafe { context.swapchain_loader.get_swapchain_images(swapchain)? };
     let image_views = images
         .iter()
-        .map(|image| unsafe { create_image_view(device, *image, surface_format.format) })
+        .map(|image| unsafe {
+            create_image_view(context.device, *image, context.surface_format.format)
+        })
         .collect::<Result<Vec<_>, _>>()?;
-    let render_pass = unsafe { create_render_pass(device, surface_format.format)? };
-    let (pipeline_layout, pipeline) =
-        unsafe { create_pipeline(device, render_pass, extent, vertex_spv, fragment_spv)? };
+    let render_pass = unsafe { create_render_pass(context.device, context.surface_format.format)? };
+    let (pipeline_layout, pipeline) = unsafe {
+        create_pipeline(
+            context.device,
+            render_pass,
+            extent,
+            context.vertex_spv,
+            context.fragment_spv,
+        )?
+    };
     let framebuffers = image_views
         .iter()
-        .map(|view| unsafe { create_framebuffer(device, render_pass, *view, extent) })
+        .map(|view| unsafe { create_framebuffer(context.device, render_pass, *view, extent) })
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(SwapchainResources {

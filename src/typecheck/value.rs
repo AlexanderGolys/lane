@@ -36,31 +36,10 @@ fn infer_value_expr(
         )),
         Expr::Index { array, index } => infer_index_expr(array, index, env, lift_param),
         Expr::Call { callee, args } => {
-            if let Expr::Operator(op) = &**callee {
-                if args.len() != 2 {
-                    return Err(Error::new(format!(
-                        "operator '&{}' expects 2 argument(s), got {}",
-                        op.symbol(),
-                        args.len()
-                    )));
-                }
-                return infer_value_expr(
-                    &Expr::Binary {
-                        op: *op,
-                        left: Box::new(args[0].clone()),
-                        right: Box::new(args[1].clone()),
-                    },
-                    env,
-                    lift_param,
-                );
-            }
             if let Some(result) = infer_array_builtin(expr, env, lift_param)? {
                 return Ok(result);
             }
             if let Some(result) = infer_rot_builtin(callee, args, env, lift_param)? {
-                return Ok(result);
-            }
-            if let Some(result) = infer_differential_builtin(expr, env, lift_param)? {
                 return Ok(result);
             }
             let name = match &**callee {
@@ -610,11 +589,11 @@ fn infer_conditional_value_expr(
     let else_branch = match else_branch {
         Some(else_branch) => {
             let else_branch = infer_value_expr(else_branch, env, lift_param)?;
-            match cast_value_to_type(else_branch, &output_ty) {
-                Ok(else_branch) => else_branch,
-                Err(else_branch) => {
+            match cast_value_to_type(&else_branch, &output_ty) {
+                Some(else_branch) => else_branch,
+                None => {
                     let else_ty = else_branch.ty();
-                    let Ok(then_branch) = cast_value_to_type(then_branch, &else_ty) else {
+                    let Some(then_branch) = cast_value_to_type(&then_branch, &else_ty) else {
                         return Err(Error::new(format!(
                             "conditional branches have incompatible types {} and {}",
                             format_type(&output_ty),
@@ -677,17 +656,17 @@ fn infer_conditional_value_expr_for_type(
 }
 
 /// Type-checks helper logic for cast_value_to_type.
-fn cast_value_to_type(value: ValueExpr, expected_ty: &Type) -> Result<ValueExpr, ValueExpr> {
+fn cast_value_to_type(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
     if types_compatible_for_expected(&value.ty(), expected_ty) {
-        return Ok(value);
+        return Some(value.clone());
     }
-    if let Some(cast) = try_numeric_widen_cast_value(&value, expected_ty) {
-        return Ok(cast);
+    if let Some(cast) = try_numeric_widen_cast_value(value, expected_ty) {
+        return Some(cast);
     }
-    if let Some(cast) = try_neutral_cast_value(&value, expected_ty) {
-        return Ok(cast);
+    if let Some(cast) = try_neutral_cast_value(value, expected_ty) {
+        return Some(cast);
     }
-    Err(value)
+    None
 }
 
 /// Type-checks helper logic for zero_value_for_type.
@@ -854,13 +833,6 @@ fn collect_lifted_param_type(
         }
         ValueExpr::MatrixBasis { .. } => {}
         ValueExpr::UnitVectorBasis { .. } => {}
-        ValueExpr::Derivative { epsilon, at, .. }
-        | ValueExpr::Partial { epsilon, at, .. }
-        | ValueExpr::Gradient { epsilon, at, .. }
-        | ValueExpr::Divergence { epsilon, at, .. } => {
-            collect_lifted_param_type(epsilon, name, ty)?;
-            collect_lifted_param_type(at, name, ty)?;
-        }
     }
     Ok(())
 }
@@ -1698,242 +1670,6 @@ fn is_array_element_type(ty: &Type) -> bool {
             | Type::Vec4
             | Type::Mat(_, _)
     )
-}
-
-/// Type-checks helper logic for infer_differential_builtin.
-fn infer_differential_builtin(
-    expr: &Expr,
-    env: &Env<'_>,
-    lift_param: Option<&str>,
-) -> Result<Option<ValueExpr>, Error> {
-    let (name, args) = match flatten_call(expr) {
-        Ok(parts) => parts,
-        Err(_) => return Ok(None),
-    };
-
-    let result = match name.as_str() {
-        "derivative" => Some(infer_derivative_builtin(&args, env, lift_param)?),
-        "dfdx" => Some(infer_partial_builtin(&args, env, lift_param, 0)?),
-        "dfdy" => Some(infer_partial_builtin(&args, env, lift_param, 1)?),
-        "dfdz" => Some(infer_partial_builtin(&args, env, lift_param, 2)?),
-        "dfdw" => Some(infer_partial_builtin(&args, env, lift_param, 3)?),
-        "gradient" | "grad" => Some(infer_gradient_builtin(&args, env, lift_param)?),
-        "divergence" => Some(infer_divergence_builtin(&args, env, lift_param)?),
-        _ => None,
-    };
-
-    Ok(result)
-}
-
-/// Type-checks helper logic for infer_derivative_builtin.
-fn infer_derivative_builtin(
-    args: &[&Expr],
-    env: &Env<'_>,
-    lift_param: Option<&str>,
-) -> Result<ValueExpr, Error> {
-    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
-        return Err(Error::new(
-            "derivative expects a unary function and an evaluation point",
-        ));
-    }
-    let (func, at) =
-        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
-    let ty = derivative_output_type(&func.input, &func.output)
-        .ok_or_else(|| Error::new("derivative expects Hom(Rn, Rm) for n,m in 1..4"))?;
-    Ok(ValueExpr::Derivative {
-        epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
-        func,
-        at: Box::new(at),
-        ty,
-    })
-}
-
-/// Type-checks helper logic for infer_partial_builtin.
-fn infer_partial_builtin(
-    args: &[&Expr],
-    env: &Env<'_>,
-    lift_param: Option<&str>,
-    axis: usize,
-) -> Result<ValueExpr, Error> {
-    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
-        return Err(Error::new(
-            "partial derivative expects a field and an evaluation point",
-        ));
-    }
-    let (func, at) =
-        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
-    let input_dim = derivative_dimension(&func.input)
-        .ok_or_else(|| Error::new("partial derivative expects Hom(Rn, Rm) for n,m in 1..4"))?;
-    if axis >= input_dim {
-        return Err(Error::new(format!(
-            "partial derivative axis {} is not valid for {}",
-            axis + 1,
-            format_type(&func.input)
-        )));
-    }
-    Ok(ValueExpr::Partial {
-        axis,
-        epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
-        ty: func.output.clone(),
-        func,
-        at: Box::new(at),
-    })
-}
-
-/// Type-checks helper logic for infer_differential_func_and_point.
-fn infer_differential_func_and_point(
-    func_arg: &Expr,
-    at_arg: Option<&Expr>,
-    env: &Env<'_>,
-    lift_param: Option<&str>,
-) -> Result<(FunctionExpr, ValueExpr), Error> {
-    let candidates = infer_function_expr_candidates(func_arg, env)?
-        .into_iter()
-        .filter(|func| {
-            derivative_dimension(&func.input).is_some()
-                && derivative_dimension(&func.output).is_some()
-        })
-        .collect::<Vec<_>>();
-    let Some(at_arg) = at_arg else {
-        let Some(lift_param) = lift_param else {
-            return Err(Error::new(
-                "differential operator needs an evaluation point",
-            ));
-        };
-        let matches = candidates
-            .into_iter()
-            .filter(|func| func.input == Type::Float)
-            .collect::<Vec<_>>();
-        if matches.len() != 1 {
-            return Err(Error::new(
-                "differential operator could not infer a scalar lifted function",
-            ));
-        }
-        let func = matches.into_iter().next().unwrap();
-        return Ok((
-            func,
-            ValueExpr::Var {
-                name: lift_param.to_string(),
-                ty: Type::Float,
-                array_len: None,
-            },
-        ));
-    };
-    let mut matches = Vec::new();
-    for func in candidates {
-        if let Ok(at) = infer_value_expr_for_type(at_arg, &func.input, env, None) {
-            if ensure_type(&at.ty(), &func.input, "differential evaluation point").is_ok() {
-                matches.push((func, at));
-            }
-        }
-    }
-    match matches.len() {
-        1 => Ok(matches.pop().unwrap()),
-        0 => Err(Error::new(
-            "differential operator has no matching function overload",
-        )),
-        _ => Err(Error::new("ambiguous differential operator overload")),
-    }
-}
-
-/// Type-checks helper logic for derivative_dimension.
-fn derivative_dimension(ty: &Type) -> Option<usize> {
-    match ty {
-        Type::Float => Some(1),
-        Type::Vec2 => Some(2),
-        Type::Vec3 => Some(3),
-        Type::Vec4 => Some(4),
-        _ => None,
-    }
-}
-
-/// Type-checks helper logic for derivative_output_type.
-fn derivative_output_type(input: &Type, output: &Type) -> Option<Type> {
-    let input_dim = derivative_dimension(input)?;
-    let output_dim = derivative_dimension(output)?;
-    if input_dim == 1 && output_dim == 1 {
-        Some(Type::Float)
-    } else if input_dim == 1 {
-        Some(vector_type(output_dim))
-    } else if output_dim == 1 {
-        Some(vector_type(input_dim))
-    } else {
-        Some(Type::Mat(input_dim, output_dim))
-    }
-}
-
-/// Type-checks helper logic for infer_gradient_builtin.
-fn infer_gradient_builtin(
-    args: &[&Expr],
-    env: &Env<'_>,
-    lift_param: Option<&str>,
-) -> Result<ValueExpr, Error> {
-    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
-        return Err(Error::new(
-            "gradient expects a scalar field and an evaluation point",
-        ));
-    }
-    let (func, at) =
-        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
-    if func.output != Type::Float {
-        return Err(Error::new("gradient expects a scalar-valued field"));
-    }
-    let ty = derivative_output_type(&func.input, &func.output)
-        .ok_or_else(|| Error::new("gradient expects Hom(Rn, R) for n in 1..4"))?;
-    if func.input == Type::Float {
-        Ok(ValueExpr::Derivative {
-            epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
-            func,
-            at: Box::new(at),
-            ty,
-        })
-    } else {
-        Ok(ValueExpr::Gradient {
-            epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
-            func,
-            at: Box::new(at),
-            ty,
-        })
-    }
-}
-
-/// Type-checks helper logic for infer_divergence_builtin.
-fn infer_divergence_builtin(
-    args: &[&Expr],
-    env: &Env<'_>,
-    lift_param: Option<&str>,
-) -> Result<ValueExpr, Error> {
-    if args.len() != 2 && !(args.len() == 1 && lift_param.is_some()) {
-        return Err(Error::new(
-            "divergence expects a vector field and an evaluation point",
-        ));
-    }
-    let (func, at) =
-        infer_differential_func_and_point(args[0], args.get(1).copied(), env, lift_param)?;
-    let input_dim = divergence_dimension(&func.input)
-        .ok_or_else(|| Error::new("divergence expects Hom(Rn, Rn) for n in 2..4"))?;
-    let output_dim = divergence_dimension(&func.output)
-        .ok_or_else(|| Error::new("divergence expects Hom(Rn, Rn) for n in 2..4"))?;
-    if input_dim != output_dim {
-        return Err(Error::new(
-            "divergence expects a same-dimensional vector field",
-        ));
-    }
-    Ok(ValueExpr::Divergence {
-        epsilon: Box::new(ValueExpr::Float(env.derivative_epsilon)),
-        func,
-        at: Box::new(at),
-    })
-}
-
-/// Type-checks helper logic for divergence_dimension.
-fn divergence_dimension(ty: &Type) -> Option<usize> {
-    match ty {
-        Type::Vec2 => Some(2),
-        Type::Vec3 => Some(3),
-        Type::Vec4 => Some(4),
-        _ => None,
-    }
 }
 
 /// Type-checks helper logic for infer_vec2_list_expr.
