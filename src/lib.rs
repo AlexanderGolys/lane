@@ -1,3 +1,7 @@
+//! Defines the core Lane compiler data model shared by every pass.
+//! This file owns the central AST, typed IR, categories, type names, and small utilities because those concepts must be visible to parsing, preprocessing, semantic analysis, postprocessing, emission, API entrypoints, and the REPL.
+//! It sits at the spine of the compiler pipeline: parse into these structures, transform them through the typed passes, then emit backend code from the same shared representation.
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
@@ -11,6 +15,7 @@ pub use api::{
     ProgramInfo,
 };
 mod emit;
+mod lexer;
 mod module_loader;
 pub use module_loader::resolve_import_path;
 pub(crate) use module_loader::{is_placeholder_ident, rename_expr, ModuleLoader};

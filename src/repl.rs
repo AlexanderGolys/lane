@@ -1,3 +1,7 @@
+//! Implements the interactive Lane REPL and transcript UI.
+//! The REPL is separated from compiler passes because it manages terminal input, history, rendering, slash commands, incremental source accumulation, and user-facing diagnostics.
+//! It is an interactive outer entrypoint that repeatedly invokes the API/compiler pipeline.
+
 use std::fs;
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;

@@ -1,3 +1,7 @@
+//! Builds and describes compiler-provided primitives, object operators, and backend intrinsics.
+//! The registry is isolated so unavoidable Rust-defined hooks are declared in one place while ordinary algebraic/library behavior can migrate into Lane modules.
+//! It feeds parser/typechecker lookup and emission support decisions throughout the pipeline.
+
 use super::*;
 
 impl Default for Registry {

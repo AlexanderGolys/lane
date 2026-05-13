@@ -1,3 +1,7 @@
+//! Implements LSP formatting helpers for Lane documents.
+//! Formatting is isolated from semantic compiler passes because it rewrites source presentation while preserving meaning.
+//! It runs in the editor tooling pipeline when the LSP receives formatting requests.
+
 use tower_lsp::lsp_types::{Position, Range};
 
 /// Returns a full-document range from first to last line for formatting edits.

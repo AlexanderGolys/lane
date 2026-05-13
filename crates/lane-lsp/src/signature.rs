@@ -1,3 +1,7 @@
+//! Computes LSP signature help for Lane calls and constructors.
+//! Signature help is isolated because it combines cursor-position analysis with compiler/API knowledge to serve editor UI requests.
+//! It belongs to the LSP tooling pipeline and queries source context around the active call site.
+
 use tower_lsp::lsp_types::{
     ParameterInformation, ParameterLabel, Position, SignatureHelp, SignatureInformation,
 };

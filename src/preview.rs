@@ -1,3 +1,7 @@
+//! Builds preview shaders and runs optional Vulkan preview support.
+//! Preview logic is separate from the compiler passes because it deals with shader packaging, graphics API setup, timing, and runtime diagnostics rather than Lane semantics.
+//! It is an outer tooling/backend subsystem invoked from API or CLI after GLSL has been generated.
+
 use ash::vk;
 use std::error::Error;
 use std::ffi::CString;

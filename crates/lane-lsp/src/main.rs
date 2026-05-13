@@ -1,3 +1,7 @@
+//! Runs the Lane Language Server Protocol service.
+//! The LSP server is separate from the compiler crate so editor transport, document state, diagnostics, formatting, links, symbols, semantic tokens, and signature help stay in editor tooling.
+//! It is an external tooling layer that calls the compiler/API pipeline for editor feedback.
+
 use std::sync::Arc;
 
 mod document_symbols;

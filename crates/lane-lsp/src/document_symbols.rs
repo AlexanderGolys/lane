@@ -1,3 +1,7 @@
+//! Extracts LSP document symbols from Lane source.
+//! Symbol extraction is separated from diagnostics and semantic tokens because editors need a structural outline built from syntax positions rather than typed compiler output.
+//! It belongs to the LSP/editor tooling stage after parsing source text for navigation features.
+
 use crate::position;
 use tower_lsp::lsp_types::{DocumentSymbol, Range, SymbolKind};
 use tree_sitter::Node;

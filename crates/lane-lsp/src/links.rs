@@ -1,3 +1,7 @@
+//! Builds LSP document links for Lane imports.
+//! Link generation is separated because it maps source directives to filesystem URLs for editor navigation, not compiler semantics.
+//! It runs in the LSP tooling layer alongside diagnostics and other editor features.
+
 use std::path::Path;
 
 use tower_lsp::lsp_types::{DocumentLink, Position, Range, Url};

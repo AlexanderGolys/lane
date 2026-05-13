@@ -1,3 +1,7 @@
+//! Resolves `#import` directives and merges module declarations into a program.
+//! Module loading is distinct from parsing because imports need filesystem lookup, cycle detection, line-offset management, and private-name mangling across files.
+//! It runs after parsing module directives and before preprocessing/typechecking so imported definitions participate in the normal compiler pipeline.
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};

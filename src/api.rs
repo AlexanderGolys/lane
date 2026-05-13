@@ -1,3 +1,7 @@
+//! Exposes the public API used by the CLI, REPL, LSP, tests, and embedding callers.
+//! This layer is separated from the compiler passes so external entrypoints can compile, format, inspect, list, and preview Lane programs without knowing pass internals.
+//! It orchestrates the full processing pipeline from source loading through parse, module loading, preprocessing, semantic analysis, postprocessing, and emission.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

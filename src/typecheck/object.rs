@@ -1,3 +1,7 @@
+// Type-checks Lane object expressions denoting SDF objects.
+// Object inference is separated because primitive constructors, object operators, transforms, and metadata live on the SDF/object side rather than the scalar value side.
+// It is part of semantic analysis and produces typed object IR used by GLSL emission.
+
 /// Type-checks helper logic for infer_object_expr.
 fn infer_object_expr(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
     match expr {

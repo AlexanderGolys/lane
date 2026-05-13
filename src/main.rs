@@ -1,3 +1,7 @@
+//! Implements the command-line interface for Lane.
+//! CLI handling is kept separate from compiler logic so argument parsing, file IO, listing commands, preview commands, and process exits do not leak into the language passes.
+//! It is an outer entrypoint that invokes the API pipeline and reports results to the shell.
+
 use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Read};

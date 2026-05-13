@@ -1,3 +1,7 @@
+//! Produces LSP semantic tokens for Lane syntax.
+//! Semantic highlighting is separated from compiler typechecking because editor coloring needs fast source classification with Lane-specific taxonomy.
+//! It runs in the LSP tooling pipeline after reading document text and before returning semantic-token responses.
+
 use std::collections::HashSet;
 
 use tower_lsp::lsp_types::{

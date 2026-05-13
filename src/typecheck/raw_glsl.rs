@@ -1,3 +1,7 @@
+// Validates and records raw GLSL module templates.
+// Raw GLSL handling is isolated because it is the controlled backend escape hatch for helpers that cannot yet be expressed as pure Lane.
+// It participates in semantic analysis by checking template placeholders and recording dependencies for later emission.
+
 /// Type-checks raw GLSL runtime output typing.
 fn raw_glsl_runtime_output_ty<'a>(body: &FuncBody, output_ty: &'a Type) -> &'a Type {
     if matches!(

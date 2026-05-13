@@ -1,3 +1,7 @@
+//! Performs syntax-only Lane canonicalization before semantic analysis.
+//! Preprocessing is separated so surface spellings like operator declarations and neutral declarations become ordinary helper names before the typechecker reasons about them.
+//! It runs after parsing and module loading, and before semantic analysis, preserving the program's meaning while reducing the language surface.
+
 use super::*;
 
 /// Canonicalizes pure surface syntax before semantic analysis.

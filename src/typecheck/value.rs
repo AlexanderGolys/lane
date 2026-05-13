@@ -1,3 +1,7 @@
+// Type-checks Lane value expressions.
+// Value inference is separated from the main typecheck coordinator because literals, calls, operators, products, arrays, casts, fields, and lifted pointwise values have dense local rules.
+// It is part of semantic analysis and produces typed value IR consumed by postprocessing and emission.
+
 /// Type-checks helper logic for infer_value_expr.
 fn infer_value_expr(
     expr: &Expr,

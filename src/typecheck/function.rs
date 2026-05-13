@@ -1,3 +1,7 @@
+// Type-checks Lane function expressions.
+// Function inference is separated because composition, projection, diagonal maps, pointwise lifting, structural products, and callable values have rules distinct from ordinary value expressions.
+// It is part of semantic analysis and produces typed function IR that later lowers into value calls during postprocessing.
+
 /// Type-checks helper logic for infer_function_expr.
 fn infer_function_expr(expr: &Expr, env: &Env<'_>) -> Result<FunctionExpr, Error> {
     let candidates = infer_function_expr_candidates(expr, env)?;

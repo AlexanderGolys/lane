@@ -1,3 +1,7 @@
+//! Converts between LSP positions and Lane source offsets or word ranges.
+//! Position utilities are separated because many LSP features need consistent UTF-8/line-column handling independent of compiler passes.
+//! They support editor tooling stages such as completions, links, signatures, symbols, and semantic tokens.
+
 use tower_lsp::lsp_types::Position;
 
 /// Checks if a character is valid as part of Lane identifiers in source text.

@@ -1,3 +1,7 @@
+//! Emits GLSL from typed and postprocessed Lane programs.
+//! Emission is separate from semantic analysis so backend syntax, helper ordering, support-code generation, object SDF functions, and GLSL naming stay out of the language rules.
+//! It is the backend stage after preprocessing, typechecking, and postprocessing have reduced Lane into typed core operations.
+
 use super::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

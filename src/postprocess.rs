@@ -1,3 +1,7 @@
+//! Lowers typed Lane IR into the smaller core expected by emission.
+//! Postprocessing is separated from semantic analysis so type-directed syntax such as pointwise functions, custom operators, fields, indexing, and constructors can become ordinary core calls after types are known.
+//! It runs after typechecking and before GLSL emission.
+
 use super::*;
 
 /// Lowers typed semantic expressions into the smaller core used by emission.

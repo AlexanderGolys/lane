@@ -1,35 +1,11 @@
+//! Parses Lane source text into the untyped AST and declaration lists.
+//! Parsing is its own subsystem because it recognizes concrete syntax, directives, module documents, type signatures, and source-line locations before any semantic meaning is assigned.
+//! It is the first compiler pass, producing syntax that preprocessing and semantic analysis can transform and validate.
+
 use super::*;
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum Token {
-    Ident(String),
-    Number(String),
-    StringLiteral(String),
-    LParen,
-    RParen,
-    LBracket,
-    RBracket,
-    Colon,
-    Comma,
-    Equal,
-    EqualEqual,
-    BangEqual,
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Tilde,
-    Amp,
-    Dot,
-    At,
-    Arrow,
-}
-
+use super::lexer::{tokenize, Token};
 pub(super) struct Parser<'a> {
     source: &'a str,
 }
@@ -1367,137 +1343,6 @@ impl ExprParser {
     fn peek_n(&self, offset: usize) -> Option<&Token> {
         self.tokens.get(self.index + offset)
     }
-}
-
-/// Performs `tokenize` behavior.
-fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
-    let mut tokens = Vec::new();
-    let chars: Vec<char> = source.chars().collect();
-    let mut index = 0;
-
-    while index < chars.len() {
-        let ch = chars[index];
-        if ch.is_whitespace() {
-            index += 1;
-            continue;
-        }
-        if ch == '"' {
-            index += 1;
-            let start = index;
-            while index < chars.len() && chars[index] != '"' {
-                index += 1;
-            }
-            tokens.push(Token::StringLiteral(chars[start..index].iter().collect()));
-            if index < chars.len() {
-                index += 1;
-            }
-            continue;
-        }
-        if ch == '|' && chars.get(index + 1) == Some(&'-') && chars.get(index + 2) == Some(&'>') {
-            tokens.push(Token::Arrow);
-            index += 3;
-            continue;
-        }
-        if ch == '=' && chars.get(index + 1) == Some(&'=') {
-            tokens.push(Token::EqualEqual);
-            index += 2;
-            continue;
-        }
-        if ch == '!' && chars.get(index + 1) == Some(&'=') {
-            tokens.push(Token::BangEqual);
-            index += 2;
-            continue;
-        }
-        if ch == '<' && chars.get(index + 1) == Some(&'=') {
-            tokens.push(Token::LessEqual);
-            index += 2;
-            continue;
-        }
-        if ch == '>' && chars.get(index + 1) == Some(&'=') {
-            tokens.push(Token::GreaterEqual);
-            index += 2;
-            continue;
-        }
-        if ch.is_ascii_digit()
-            || (ch == '.' && chars.get(index + 1).is_some_and(|c| c.is_ascii_digit()))
-        {
-            let start = index;
-            index += 1;
-            while index < chars.len() && (chars[index].is_ascii_digit() || chars[index] == '.') {
-                index += 1;
-            }
-            if index < chars.len() && matches!(chars[index], 'e' | 'E') {
-                let exponent_start = index;
-                index += 1;
-                if index < chars.len() && matches!(chars[index], '+' | '-') {
-                    index += 1;
-                }
-                let digit_start = index;
-                while index < chars.len() && chars[index].is_ascii_digit() {
-                    index += 1;
-                }
-                if digit_start == index {
-                    index = exponent_start;
-                }
-            }
-            tokens.push(Token::Number(chars[start..index].iter().collect()));
-            continue;
-        }
-        if ch.is_ascii_alphabetic() || ch == '_' {
-            let start = index;
-            index += 1;
-            while index < chars.len()
-                && (chars[index].is_ascii_alphanumeric() || chars[index] == '_')
-            {
-                index += 1;
-            }
-            while index < chars.len() && chars[index] == '{' {
-                let brace_start = index;
-                index += 1;
-                let inner_start = index;
-                while index < chars.len()
-                    && (chars[index].is_ascii_alphanumeric() || chars[index] == '_')
-                {
-                    index += 1;
-                }
-                if inner_start == index || index >= chars.len() || chars[index] != '}' {
-                    index = brace_start;
-                    break;
-                }
-                index += 1;
-            }
-            tokens.push(Token::Ident(chars[start..index].iter().collect()));
-            continue;
-        }
-        let token = match ch {
-            '(' => Token::LParen,
-            ')' => Token::RParen,
-            '[' => Token::LBracket,
-            ']' => Token::RBracket,
-            ':' => Token::Colon,
-            ',' => Token::Comma,
-            '=' => Token::Equal,
-            '<' => Token::Less,
-            '>' => Token::Greater,
-            '+' => Token::Plus,
-            '-' => Token::Minus,
-            '*' => Token::Star,
-            '/' => Token::Slash,
-            '~' => Token::Tilde,
-            '&' => Token::Amp,
-            '.' => Token::Dot,
-            '@' => Token::At,
-            _ => {
-                return Err(Error::new(format!(
-                    "unsupported token '{ch}' in expression"
-                )))
-            }
-        };
-        tokens.push(token);
-        index += 1;
-    }
-
-    Ok(tokens)
 }
 
 /// Performs `parse_type_with_custom_types_for_ambient` behavior.

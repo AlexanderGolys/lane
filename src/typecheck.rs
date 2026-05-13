@@ -1,3 +1,7 @@
+//! Coordinates Lane semantic analysis and typed IR construction.
+//! This file owns the environment, category validation, overload tables, and pass orchestration because semantic checks need a global view of values, functions, objects, product types, and imported declarations.
+//! It runs after preprocessing and before typed postprocessing/emission.
+
 use super::{
     postprocess::{apply_function_expr, postprocess_typed_program},
     *,
