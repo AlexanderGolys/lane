@@ -43,6 +43,14 @@ cargo run -- test.lane test.glsl
 cargo run -p lane-lsp
 ```
 
+Fixture tests live under `tests/fixtures/`. Add `.lane` files to
+`tests/fixtures/compile-pass/` when the only requirement is successful
+compilation. Add matching `.lane` and `.glsl` files to
+`tests/fixtures/glsl-compare/` when generated GLSL should be compared with a
+ground-truth file. The GLSL comparison ignores declaration order and allows
+renaming generated functions or variables by adding or removing a single leading
+underscore.
+
 ## CLI
 
 ```text

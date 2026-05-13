@@ -1,0 +1,2 @@
+provided R time
+const Object output = Ball3D(r=1 + time)
