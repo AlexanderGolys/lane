@@ -703,6 +703,9 @@ fn parse_category_type_decl(
 fn split_category_type_ops(source: &str) -> Option<(&str, &str)> {
     let source = source.strip_suffix('}')?;
     let (base, ops) = source.rsplit_once('{')?;
+    if !ops.contains(':') {
+        return None;
+    }
     Some((base.trim(), ops.trim()))
 }
 
