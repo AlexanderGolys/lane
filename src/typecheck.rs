@@ -1175,13 +1175,13 @@ fn infer_binary_type(op: BinOp, left: &Type, right: &Type) -> Result<Type, Error
     }
 
     if left == &Type::Bool {
-        if let Some(cast_ty) = bool_numeric_cast_type_for_binary(right) {
+        if let Some(cast_ty) = numeric_widen_cast_type_for_binary(left, right) {
             return infer_binary_type(op, &cast_ty, right);
         }
     }
 
     if right == &Type::Bool {
-        if let Some(cast_ty) = bool_numeric_cast_type_for_binary(left) {
+        if let Some(cast_ty) = numeric_widen_cast_type_for_binary(right, left) {
             return infer_binary_type(op, left, &cast_ty);
         }
     }
@@ -1231,44 +1231,26 @@ fn is_ordered_comparable_type(ty: &Type) -> bool {
     matches!(ty, Type::Float | Type::Int)
 }
 
-/// Type-checks helper logic for bool_numeric_cast_type_for_binary.
-fn bool_numeric_cast_type_for_binary(other: &Type) -> Option<Type> {
-    if other == &Type::Int {
-        Some(Type::Int)
+/// Type-checks helper logic for numeric_widen_cast_type_for_binary.
+fn numeric_widen_cast_type_for_binary(actual: &Type, other: &Type) -> Option<Type> {
+    let target = if other == &Type::Int {
+        Type::Int
     } else if other == &Type::Float
         || has_category(other, AlgebraicCategory::RVect)
         || has_category(other, AlgebraicCategory::RAlg)
     {
-        Some(Type::Float)
+        Type::Float
     } else {
-        None
-    }
-}
-
-/// Type-checks helper logic for try_int_literal_cast_value.
-fn try_int_literal_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
-    if expected_ty != &Type::Int {
-        return None;
-    }
-    let ValueExpr::Float(value) = value else {
         return None;
     };
-    let rounded = value.round();
-    if (value - rounded).abs() < f64::EPSILON {
-        Some(ValueExpr::Int(rounded as i64))
-    } else {
-        None
-    }
+    numeric_widen_cast_type(actual, &target)
 }
 
-/// Type-checks helper logic for try_bool_to_number_cast_value.
-fn try_bool_to_number_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
-    if !matches!(expected_ty, Type::Float | Type::Int) || value.ty() != Type::Bool {
-        return None;
-    }
-    Some(ValueExpr::BoolToNumberCast {
+/// Type-checks helper logic for try_numeric_widen_cast_value.
+fn try_numeric_widen_cast_value(value: &ValueExpr, expected_ty: &Type) -> Option<ValueExpr> {
+    numeric_widen_cast_type(&value.ty(), expected_ty).map(|ty| ValueExpr::NumericWidenCast {
         value: Box::new(value.clone()),
-        ty: expected_ty.clone(),
+        ty,
     })
 }
 

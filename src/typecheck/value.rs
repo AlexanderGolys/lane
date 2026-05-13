@@ -120,25 +120,17 @@ fn infer_value_expr(
                 (BinOp::Mul, Type::Isom3) => {
                     infer_value_expr_for_type(right, &Type::Vec3, env, lift_param)?
                 }
+                (BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge, Type::Int) => {
+                    infer_value_expr_for_type(right, &Type::Int, env, lift_param)?
+                }
                 _ => infer_value_expr(right, env, lift_param)?,
             };
             let (left, right, ty) = match infer_binary_type(*op, &left.ty(), &right.ty()) {
                 Ok(ty) => (left, right, ty),
                 Err(original_err) => {
-                    if let Some(right_cast) = try_int_literal_cast_value(&right, &left.ty()) {
-                        if let Ok(ty) = infer_binary_type(*op, &left.ty(), &right_cast.ty()) {
-                            (left, right_cast, ty)
-                        } else {
-                            return Err(original_err);
-                        }
-                    } else if let Some(left_cast) = try_int_literal_cast_value(&left, &right.ty()) {
-                        if let Ok(ty) = infer_binary_type(*op, &left_cast.ty(), &right.ty()) {
-                            (left_cast, right, ty)
-                        } else {
-                            return Err(original_err);
-                        }
-                    } else if let Some(right_cast) =
-                        try_bool_to_number_cast_value(&right, &left.ty())
+                    if let Some(right_cast) =
+                        numeric_widen_cast_type_for_binary(&right.ty(), &left.ty())
+                            .and_then(|ty| try_numeric_widen_cast_value(&right, &ty))
                     {
                         if let Ok(ty) = infer_binary_type(*op, &left.ty(), &right_cast.ty()) {
                             (left, right_cast, ty)
@@ -146,7 +138,8 @@ fn infer_value_expr(
                             return Err(original_err);
                         }
                     } else if let Some(left_cast) =
-                        try_bool_to_number_cast_value(&left, &right.ty())
+                        numeric_widen_cast_type_for_binary(&left.ty(), &right.ty())
+                            .and_then(|ty| try_numeric_widen_cast_value(&left, &ty))
                     {
                         if let Ok(ty) = infer_binary_type(*op, &left_cast.ty(), &right.ty()) {
                             (left_cast, right, ty)
@@ -318,6 +311,9 @@ fn infer_value_expr_for_type(
     match (expected_ty, expr) {
         (Type::Bool, Expr::Bool(value)) => Ok(ValueExpr::Bool(*value)),
         (_, Expr::Number(value)) if (*value - 0.0).abs() < f64::EPSILON => {
+            if expected_ty == &Type::Int {
+                return infer_int_expr(expr, env, lift_param);
+            }
             if expected_ty == &Type::Float {
                 return infer_value_expr(expr, env, lift_param);
             }
@@ -330,6 +326,9 @@ fn infer_value_expr_for_type(
             infer_value_expr(expr, env, lift_param)
         }
         (_, Expr::Number(value)) if (*value - 1.0).abs() < f64::EPSILON => {
+            if expected_ty == &Type::Int {
+                return infer_int_expr(expr, env, lift_param);
+            }
             if expected_ty == &Type::Float {
                 return infer_value_expr(expr, env, lift_param);
             }
@@ -517,20 +516,14 @@ fn infer_value_expr_for_type(
         }
         (Type::Float, _) => {
             let value = infer_value_expr(expr, env, lift_param)?;
-            if let Some(cast) = try_bool_to_number_cast_value(&value, expected_ty) {
-                return Ok(cast);
-            }
-            Ok(value)
+            Ok(try_numeric_widen_cast_value(&value, expected_ty).unwrap_or(value))
         }
         (Type::Int, _) => {
             if matches!(expr, Expr::Number(_)) {
                 return infer_int_expr(expr, env, lift_param);
             }
             let value = infer_value_expr(expr, env, lift_param)?;
-            if let Some(cast) = try_bool_to_number_cast_value(&value, expected_ty) {
-                return Ok(cast);
-            }
-            Ok(value)
+            Ok(try_numeric_widen_cast_value(&value, expected_ty).unwrap_or(value))
         }
         (
             Type::Array(element_ty),
@@ -688,10 +681,7 @@ fn cast_value_to_type(value: ValueExpr, expected_ty: &Type) -> Result<ValueExpr,
     if types_compatible_for_expected(&value.ty(), expected_ty) {
         return Ok(value);
     }
-    if let Some(cast) = try_int_literal_cast_value(&value, expected_ty) {
-        return Ok(cast);
-    }
-    if let Some(cast) = try_bool_to_number_cast_value(&value, expected_ty) {
+    if let Some(cast) = try_numeric_widen_cast_value(&value, expected_ty) {
         return Ok(cast);
     }
     if let Some(cast) = try_neutral_cast_value(&value, expected_ty) {
@@ -802,7 +792,7 @@ fn collect_lifted_param_type(
             collect_lifted_param_type(exponent, name, ty)?;
             collect_lifted_param_type(base, name, ty)?;
         }
-        ValueExpr::BoolToNumberCast { value, .. } => {
+        ValueExpr::NumericWidenCast { value, .. } => {
             collect_lifted_param_type(value, name, ty)?;
         }
         ValueExpr::Conditional {
@@ -1123,6 +1113,11 @@ fn infer_product_domain_call(
         0 => Ok(None),
         1 => Ok(candidates.pop().map(|(_, candidate)| candidate)),
         _ if candidates[0].0 < candidates[1].0 => Ok(Some(candidates.remove(0).1)),
+        _ if tied_candidates_are_neutral_casts(candidates.iter().map(|(_, candidate)| candidate))
+        => {
+            candidates.sort_by_key(|(_, candidate)| value_call_signature_key(candidate));
+            Ok(Some(candidates.remove(0).1))
+        }
         _ => Err(Error::new(format!(
             "ambiguous overload for '{}' with provided argument(s)",
             name
@@ -1219,7 +1214,7 @@ fn infer_value_call(
         }
     }
 
-    candidates.sort_by_key(|(cost, _, _)| *cost);
+    candidates.sort_by_key(|(cost, _, args)| (*cost, value_signature_key(args)));
     let Some((best_cost, best_output, best_args)) = candidates.first().cloned() else {
         if overloads.len() == 1 {
             if let Some(err) = first_arg_error {
@@ -1231,10 +1226,16 @@ fn infer_value_call(
             name
         )));
     };
-    if candidates
+    let tied = candidates
         .iter()
         .skip(1)
-        .any(|(cost, _, _)| *cost == best_cost)
+        .filter(|(cost, _, _)| *cost == best_cost)
+        .collect::<Vec<_>>();
+    if !tied.is_empty()
+        && !candidates
+            .iter()
+            .take(tied.len() + 1)
+            .all(|(_, _, args)| args.iter().any(|arg| matches!(arg, ValueExpr::Neutral { .. })))
     {
         return Err(Error::new(format!(
             "ambiguous overload for '{}' with provided argument(s)",
@@ -1252,6 +1253,39 @@ fn infer_value_call(
 fn call_arg_cost(actual: &Type, expected: &Type, arg: &ValueExpr) -> usize {
     usize::from(!types_match(actual, expected))
         + usize::from(matches!(arg, ValueExpr::Neutral { .. }))
+        + usize::from(matches!(arg, ValueExpr::NumericWidenCast { .. }))
+}
+
+/// Checks whether all tied candidates are caused by neutral literal casts.
+fn tied_candidates_are_neutral_casts<'a>(candidates: impl Iterator<Item = &'a ValueExpr>) -> bool {
+    let candidates = candidates.collect::<Vec<_>>();
+    !candidates.is_empty()
+        && candidates
+            .iter()
+            .all(|candidate| value_call_args(candidate).is_some_and(|args| args.iter().any(|arg| matches!(arg, ValueExpr::Neutral { .. }))))
+}
+
+/// Returns a stable key for choosing between equivalent neutral-literal overloads.
+fn value_call_signature_key(candidate: &ValueExpr) -> String {
+    value_call_args(candidate)
+        .map(value_signature_key)
+        .unwrap_or_default()
+}
+
+/// Returns the argument list for a value call candidate.
+fn value_call_args(candidate: &ValueExpr) -> Option<&[ValueExpr]> {
+    match candidate {
+        ValueExpr::Call { args, .. } => Some(args),
+        _ => None,
+    }
+}
+
+/// Formats an argument-type signature for deterministic neutral overload selection.
+fn value_signature_key(args: &[ValueExpr]) -> String {
+    args.iter()
+        .map(|arg| format_type(&arg.ty()))
+        .collect::<Vec<_>>()
+        .join(" x ")
 }
 
 /// Type-checks helper logic for call_inputs_and_output.

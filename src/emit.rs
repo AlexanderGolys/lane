@@ -782,7 +782,7 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
             collect_object_getter_value_refs(exponent, names);
             collect_object_getter_value_refs(base, names);
         }
-        ValueExpr::BoolToNumberCast { value, .. } => {
+        ValueExpr::NumericWidenCast { value, .. } => {
             collect_object_getter_value_refs(value, names);
         }
         ValueExpr::Conditional {
@@ -1885,7 +1885,7 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
             collect_concat_helpers(exponent, helpers);
             collect_concat_helpers(base, helpers);
         }
-        ValueExpr::BoolToNumberCast { value, .. } => {
+        ValueExpr::NumericWidenCast { value, .. } => {
             collect_concat_helpers(value, helpers);
         }
         ValueExpr::Conditional {
@@ -1991,7 +1991,7 @@ fn collect_conditional_helpers(
             collect_conditional_helpers(exponent, helpers);
             collect_conditional_helpers(base, helpers);
         }
-        ValueExpr::BoolToNumberCast { value, .. } => {
+        ValueExpr::NumericWidenCast { value, .. } => {
             collect_conditional_helpers(value, helpers);
         }
         ValueExpr::Conditional {
@@ -2103,7 +2103,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
             is_global_const_value_expr(left, names) && is_global_const_value_expr(right, names)
         }
         ValueExpr::Unary { expr, .. } => is_global_const_value_expr(expr, names),
-        ValueExpr::BoolToNumberCast { value, .. } => is_global_const_value_expr(value, names),
+        ValueExpr::NumericWidenCast { value, .. } => is_global_const_value_expr(value, names),
         ValueExpr::Conditional {
             condition,
             then_branch,
@@ -2216,7 +2216,7 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_refs(exponent, names);
             collect_value_refs(base, names);
         }
-        ValueExpr::BoolToNumberCast { value, .. } => {
+        ValueExpr::NumericWidenCast { value, .. } => {
             collect_value_refs(value, names);
         }
         ValueExpr::Conditional {
@@ -2315,7 +2315,7 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_function_refs(exponent, names);
             collect_value_function_refs(base, names);
         }
-        ValueExpr::BoolToNumberCast { value, .. } => {
+        ValueExpr::NumericWidenCast { value, .. } => {
             collect_value_function_refs(value, names);
         }
         ValueExpr::Conditional {
@@ -2543,7 +2543,7 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_support(exponent, names);
             collect_value_support(base, names);
         }
-        ValueExpr::BoolToNumberCast { value, .. } => {
+        ValueExpr::NumericWidenCast { value, .. } => {
             collect_value_support(value, names);
         }
         ValueExpr::Conditional {
@@ -2761,13 +2761,8 @@ fn emit_value_expr(
             emit_value_expr(exponent, helper_names, value_names),
             emit_value_expr(base, helper_names, value_names)
         ),
-        ValueExpr::BoolToNumberCast { value, ty } => {
-            let value = emit_value_expr(value, helper_names, value_names);
-            match ty {
-                Type::Float => format!("({value} ? 1.0 : 0.0)"),
-                Type::Int => format!("({value} ? 1 : 0)"),
-                _ => panic!("invalid bool cast target type {ty:?}"),
-            }
+        ValueExpr::NumericWidenCast { value, ty } => {
+            emit_numeric_widen_cast(value, ty, helper_names, value_names)
         }
         ValueExpr::Conditional {
             condition,
@@ -3025,18 +3020,18 @@ fn emit_binary_expr(
 ) -> String {
     let left_ty = left.ty();
     let right_ty = right.ty();
-    if left_ty == Type::Bool {
-        if let Some(cast_ty) = bool_numeric_cast_type_for_emit(&right_ty) {
-            let left = ValueExpr::BoolToNumberCast {
+    if let Some(cast_ty) = numeric_widen_cast_type_for_emit(&left_ty, &right_ty) {
+        if left_ty != cast_ty {
+            let left = ValueExpr::NumericWidenCast {
                 value: Box::new(left.clone()),
                 ty: cast_ty,
             };
             return emit_binary_expr(op, &left, right, helper_names, value_names);
         }
     }
-    if right_ty == Type::Bool {
-        if let Some(cast_ty) = bool_numeric_cast_type_for_emit(&left_ty) {
-            let right = ValueExpr::BoolToNumberCast {
+    if let Some(cast_ty) = numeric_widen_cast_type_for_emit(&right_ty, &left_ty) {
+        if right_ty != cast_ty {
+            let right = ValueExpr::NumericWidenCast {
                 value: Box::new(right.clone()),
                 ty: cast_ty,
             };
@@ -3109,18 +3104,36 @@ fn emit_unary_expr(
     }
 }
 
-/// Performs `bool_numeric_cast_type_for_emit` behavior.
-fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
-    if other == &Type::Int {
-        Some(Type::Int)
+/// Emits a scalar inclusion cast along `Bool -> Int -> Float -> Complex`.
+fn emit_numeric_widen_cast(
+    value: &ValueExpr,
+    ty: &Type,
+    helper_names: &HashMap<String, String>,
+    value_names: &HashMap<String, String>,
+) -> String {
+    let actual = value.ty();
+    let value = emit_value_expr(value, helper_names, value_names);
+    match (&actual, ty) {
+        (Type::Bool, Type::Int) => format!("({value} ? 1 : 0)"),
+        (Type::Bool, Type::Float) => format!("({value} ? 1.0 : 0.0)"),
+        (Type::Int, Type::Float) => format!("float({value})"),
+        _ => panic!("invalid numeric widening cast {actual:?} -> {ty:?}"),
+    }
+}
+
+/// Performs `numeric_widen_cast_type_for_emit` behavior.
+fn numeric_widen_cast_type_for_emit(actual: &Type, other: &Type) -> Option<Type> {
+    let target = if other == &Type::Int {
+        Type::Int
     } else if other == &Type::Float
         || has_category(other, AlgebraicCategory::RVect)
         || has_category(other, AlgebraicCategory::RAlg)
     {
-        Some(Type::Float)
+        Type::Float
     } else {
-        None
-    }
+        return None;
+    };
+    numeric_widen_cast_type(actual, &target)
 }
 
 /// Performs `emit_custom_binary_expr` behavior.

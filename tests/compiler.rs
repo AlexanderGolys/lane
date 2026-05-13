@@ -1752,15 +1752,28 @@ fn supports_bool_field_values_and_builtins() {
 
 #[test]
 fn casts_bool_values_to_expected_numeric_types() {
-    let source = "provided Bool flag\nprovided Hom(R, Bool) pred\nprovided Hom(Z, R) measure\nprovided Z count\nconst R literal = true\nR variable = flag\nR call = pred(0)\nR mixed = 2 + flag\nZ total = count + pred(1)\nR radius = literal + variable + call + mixed + measure(total)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided Bool flag\nprovided Hom(R, Bool) pred\nprovided Hom(Z, R) measure\nprovided Z count\nconst R literal = true\nR variable = flag\nR call = pred(0)\nR from_int = count\nR mixed = 2 + flag\nR mixed_int = count + 1.5\nZ total = count + pred(1)\nR radius = literal + variable + call + from_int + mixed + mixed_int + measure(total)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("const float literal = (true ? 1.0 : 0.0);"));
     assert!(glsl.contains("float variable = (flag ? 1.0 : 0.0);"));
     assert!(glsl.contains("float call = (pred(0.0) ? 1.0 : 0.0);"));
+    assert!(glsl.contains("float from_int = float(count);"));
     assert!(glsl.contains("float mixed = (2.0 + (flag ? 1.0 : 0.0));"));
+    assert!(glsl.contains("float mixed_int = (float(count) + 1.5);"));
     assert!(glsl.contains("int total = (count + (pred(1.0) ? 1 : 0));"));
     assert!(glsl.contains("measure(total)"));
+}
+
+#[test]
+fn rejects_numeric_casts_against_the_widening_direction() {
+    let source = "provided R scalar\nZ bad = scalar\nconst Object output = Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+    assert!(err.contains("binding 'bad' expected Z, got R"));
+
+    let source = "provided R scalar\nC bad = scalar\nconst Object output = Ball3D(r=1)\n";
+    let err = compile_program(source).unwrap_err().to_string();
+    assert!(err.contains("binding 'bad' expected C, got R"));
 }
 
 #[test]
@@ -1847,12 +1860,12 @@ fn resolves_overloaded_calls_with_exact_numeric_match_before_neutral_casts() {
 }
 
 #[test]
-fn rejects_ambiguous_overloaded_neutral_casts() {
+fn resolves_neutral_cast_overload_ties_lexicographically() {
     let source =
-        "provided Hom(C, C) f\nprovided Hom(H, H) f\na = f(0)\nconst Object output = Ball3D(r=1)\n";
-    let err = compile_program(source).unwrap_err().to_string();
+        "provided Hom(C, R) f\nprovided Hom(H, R) f\nR radius = f(0)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
 
-    assert!(err.contains("ambiguous overload for 'f'"));
+    assert!(glsl.contains("float radius = f(vec2(0.0, 0.0));"));
 }
 
 #[test]

@@ -1202,7 +1202,7 @@ enum ValueExpr {
         base: Box<ValueExpr>,
         ty: Type,
     },
-    BoolToNumberCast {
+    NumericWidenCast {
         value: Box<ValueExpr>,
         ty: Type,
     },
@@ -1309,7 +1309,7 @@ impl ValueExpr {
             Self::Var { ty, .. } => ty.clone(),
             Self::Call { ty, .. } => ty.clone(),
             Self::MonoidPow { ty, .. } => ty.clone(),
-            Self::BoolToNumberCast { ty, .. } => ty.clone(),
+            Self::NumericWidenCast { ty, .. } => ty.clone(),
             Self::Conditional { ty, .. } => ty.clone(),
             Self::ObjectGetterCall { ty, .. } => ty.clone(),
             Self::FieldAccess { ty, .. } => ty.clone(),
@@ -1596,13 +1596,24 @@ fn cast_value_for_expected_type(value: ValueExpr, expected_ty: &Type) -> ValueEx
     if value.ty() == *expected_ty {
         return value;
     }
-    if value.ty() == Type::Bool && matches!(expected_ty, Type::Float | Type::Int) {
-        return ValueExpr::BoolToNumberCast {
+    if numeric_widen_cast_type(&value.ty(), expected_ty).is_some() {
+        return ValueExpr::NumericWidenCast {
             value: Box::new(value),
             ty: expected_ty.clone(),
         };
     }
     value
+}
+
+/// Returns the widening target for the scalar inclusion chain `Bool -> Int -> Float`.
+fn numeric_widen_cast_type(actual: &Type, expected: &Type) -> Option<Type> {
+    if actual == expected {
+        return None;
+    }
+    match (actual, expected) {
+        (Type::Bool, Type::Int | Type::Float) | (Type::Int, Type::Float) => Some(expected.clone()),
+        _ => None,
+    }
 }
 
 /// Performs `product_value` behavior.
