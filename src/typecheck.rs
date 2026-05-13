@@ -4,7 +4,19 @@ include!("typecheck/raw_glsl.rs");
 impl TypedProgram {
     /// Type-checks helper logic for from_program.
     pub(super) fn from_program(program: &Program, registry: &Registry) -> Result<Self, Error> {
-        for product_type in &program.product_types {
+        let category_promotions = category_type_promotions(&program.category_types);
+        let product_types = program
+            .product_types
+            .iter()
+            .map(|decl| normalize_product_type_decl(decl, &category_promotions))
+            .collect::<Vec<_>>();
+        let category_types = program
+            .category_types
+            .iter()
+            .map(|decl| normalize_category_type_decl(decl, &category_promotions))
+            .collect::<Vec<_>>();
+
+        for product_type in &product_types {
             validate_product_type_decl(product_type)
                 .map_err(|err| err.with_line(product_type.line))?;
         }
@@ -13,24 +25,40 @@ impl TypedProgram {
             program.ambient_dimension,
             program.derivative_epsilon,
             &program.inputs,
-            &program.product_types,
+            &product_types,
+            &category_types,
         );
 
+        let mut typed_inputs = Vec::new();
         for input in &program.inputs {
-            validate_user_type(&input.ty).map_err(|err| err.with_line(input.line))?;
-            if matches!(input.ty, Type::Func(_, _)) {
-                env.insert_func(input.name.clone(), input.ty.clone())
+            let ty = normalize_type_categories(&input.ty, &category_promotions);
+            validate_user_type(&ty).map_err(|err| err.with_line(input.line))?;
+            let name = operator_decl_helper_name(&input.name, &ty)
+                .map_err(|err| err.with_line(input.line))?
+                .or_else(|| neutral_decl_helper_name(&input.name, &ty))
+                .unwrap_or_else(|| input.name.clone());
+            if matches!(ty, Type::Func(_, _)) {
+                env.insert_func(name.clone(), ty.clone())
                     .map_err(|err| err.with_line(input.line))?;
             } else {
-                env.insert_value(input.name.clone(), input.ty.clone())
+                env.insert_value(name.clone(), ty.clone())
                     .map_err(|err| err.with_line(input.line))?;
             }
+            typed_inputs.push(InputDecl {
+                name,
+                ty,
+                line: input.line,
+            });
         }
         for func in &program.funcs {
-            validate_user_type(&func.ty).map_err(|err| err.with_line(func.line))?;
+            let ty = normalize_type_categories(&func.ty, &category_promotions);
+            validate_user_type(&ty).map_err(|err| err.with_line(func.line))?;
+            let name = operator_decl_helper_name(&func.name, &ty)
+                .map_err(|err| err.with_line(func.line))?
+                .unwrap_or_else(|| func.name.clone());
             env.insert_func_with_templates(
-                func.name.clone(),
-                func.ty.clone(),
+                name,
+                ty,
                 raw_glsl_template_info(&func.name, &func.body),
                 lane_closure_template_info(&func.body),
             )
@@ -38,18 +66,22 @@ impl TypedProgram {
         }
 
         for binding in &program.value_bindings {
-            validate_user_type(&binding.ty).map_err(|err| err.with_line(binding.line))?;
-            env.insert_value(binding.name.clone(), binding.ty.clone())
+            let ty = normalize_type_categories(&binding.ty, &category_promotions);
+            validate_user_type(&ty).map_err(|err| err.with_line(binding.line))?;
+            let name = neutral_decl_helper_name(&binding.name, &ty)
+                .unwrap_or_else(|| binding.name.clone());
+            env.insert_value(name, ty)
                 .map_err(|err| err.with_line(binding.line))?;
         }
 
-        for category_type in &program.category_types {
+        for category_type in &category_types {
             validate_category_type_decl(category_type, &env)
                 .map_err(|err| err.with_line(category_type.line))?;
         }
 
         for binding in &program.bindings {
-            env.insert_value(binding.name.clone(), binding.ty.clone())
+            let ty = normalize_type_categories(&binding.ty, &category_promotions);
+            env.insert_value(binding.name.clone(), ty)
                 .map_err(|err| err.with_line(binding.line))?;
         }
 
@@ -82,13 +114,14 @@ impl TypedProgram {
                             if let Ok((input, output, expr)) =
                                 infer_lifted_value_function(&binding.expr, &env)
                             {
-                                env.insert_func(
-                                    binding.name.clone(),
-                                    Type::func(input.clone(), output.clone()),
-                                )
-                                .map_err(|err| err.with_line(binding.line))?;
+                                let ty = Type::func(input.clone(), output.clone());
+                                let name = operator_decl_helper_name(&binding.name, &ty)
+                                    .map_err(|err| err.with_line(binding.line))?
+                                    .unwrap_or_else(|| binding.name.clone());
+                                env.insert_func(name.clone(), ty)
+                                    .map_err(|err| err.with_line(binding.line))?;
                                 typed_funcs.push(TypedFunc {
-                                    name: binding.name.clone(),
+                                    name,
                                     input,
                                     output,
                                     body: TypedFuncBody::Expr(expr),
@@ -101,13 +134,14 @@ impl TypedProgram {
                             }
                             let func = infer_function_expr(&binding.expr, &env)
                                 .map_err(|_| value_err.with_line(binding.line))?;
-                            env.insert_func(
-                                binding.name.clone(),
-                                Type::func(func.input.clone(), func.output.clone()),
-                            )
-                            .map_err(|err| err.with_line(binding.line))?;
+                            let ty = Type::func(func.input.clone(), func.output.clone());
+                            let name = operator_decl_helper_name(&binding.name, &ty)
+                                .map_err(|err| err.with_line(binding.line))?
+                                .unwrap_or_else(|| binding.name.clone());
+                            env.insert_func(name.clone(), ty)
+                                .map_err(|err| err.with_line(binding.line))?;
                             typed_funcs.push(TypedFunc {
-                                name: binding.name.clone(),
+                                name,
                                 input: func.input.clone(),
                                 output: func.output.clone(),
                                 body: TypedFuncBody::Expr(apply_function_expr(
@@ -143,7 +177,10 @@ impl TypedProgram {
 
         for func in &program.funcs {
             let (input_ty, output_ty) = match &func.ty {
-                Type::Func(input, output) => ((**input).clone(), (**output).clone()),
+                Type::Func(input, output) => (
+                    normalize_type_categories(input, &category_promotions),
+                    normalize_type_categories(output, &category_promotions),
+                ),
                 other => {
                     return Err(Error::new(format!(
                         "function '{}' must have a function type, got {}",
@@ -273,8 +310,14 @@ impl TypedProgram {
                 ))
                 .with_line(func.line));
             }
+            let name = operator_decl_helper_name(
+                &func.name,
+                &Type::func(input_ty.clone(), output_ty.clone()),
+            )
+            .map_err(|err| err.with_line(func.line))?
+            .unwrap_or_else(|| func.name.clone());
             typed_funcs.push(TypedFunc {
-                name: func.name.clone(),
+                name,
                 input: input_ty,
                 output: output_ty,
                 body,
@@ -286,18 +329,17 @@ impl TypedProgram {
         }
 
         for binding in &program.value_bindings {
-            let expr = infer_value_expr_for_type(&binding.expr, &binding.ty, &env, None)
+            let ty = normalize_type_categories(&binding.ty, &category_promotions);
+            let expr = infer_value_expr_for_type(&binding.expr, &ty, &env, None)
                 .map_err(|err| err.with_line(binding.line))?;
-            ensure_type(
-                &expr.ty(),
-                &binding.ty,
-                &format!("binding '{}'", binding.name),
-            )
-            .map_err(|err| err.with_line(binding.line))?;
+            ensure_type(&expr.ty(), &ty, &format!("binding '{}'", binding.name))
+                .map_err(|err| err.with_line(binding.line))?;
+            let name = neutral_decl_helper_name(&binding.name, &ty)
+                .unwrap_or_else(|| binding.name.clone());
             env.update_array_len(&binding.name, expr.array_len());
             typed_value_bindings.push(TypedValueBinding {
-                name: binding.name.clone(),
-                ty: binding.ty.clone(),
+                name,
+                ty,
                 expr,
                 generated: binding.generated,
             });
@@ -339,9 +381,9 @@ impl TypedProgram {
         Ok(Self {
             ambient_dimension: program.ambient_dimension,
             gradient_epsilon: program.gradient_epsilon,
-            product_types: program.product_types.clone(),
-            category_types: program.category_types.clone(),
-            inputs: program.inputs.clone(),
+            product_types,
+            category_types,
+            inputs: typed_inputs,
             funcs: typed_funcs,
             value_bindings: typed_value_bindings,
             bindings: typed_bindings,
@@ -383,6 +425,7 @@ impl<'a> Env<'a> {
         derivative_epsilon: f64,
         _inputs: &[InputDecl],
         product_types: &[ProductTypeDecl],
+        category_types: &[CategoryTypeDecl],
     ) -> Self {
         let values = HashMap::new();
         let mut funcs: HashMap<String, Vec<FunctionInfo>> = HashMap::new();
@@ -442,7 +485,9 @@ impl<'a> Env<'a> {
             derivative_epsilon,
             product_types: product_types
                 .iter()
-                .map(|decl| (decl.name.clone(), decl.clone()))
+                .cloned()
+                .chain(category_types.iter().filter_map(category_type_product_decl))
+                .map(|decl| (decl.name.clone(), decl))
                 .collect(),
             values,
             funcs,
@@ -452,8 +497,13 @@ impl<'a> Env<'a> {
 
     /// Type-checks helper logic for insert_value.
     fn insert_value(&mut self, name: String, ty: Type) -> Result<(), Error> {
-        if self.values.contains_key(&name) || self.funcs.contains_key(&name) {
+        if self.funcs.contains_key(&name) {
             return Err(Error::new(format!("duplicate declaration for '{}'", name)));
+        }
+        if let Some(existing) = self.values.get(&name) {
+            if existing.ty != ty || !is_overloaded_value_name(&name) {
+                return Err(Error::new(format!("duplicate declaration for '{}'", name)));
+            }
         }
         let dimension = object_type_dimension(&ty);
         self.values.insert(
@@ -482,7 +532,7 @@ impl<'a> Env<'a> {
         raw_glsl_template: Option<RawGlslTemplateInfo>,
         lane_closure_template: Option<LaneClosureTemplateInfo>,
     ) -> Result<(), Error> {
-        if self.values.contains_key(&name) {
+        if self.values.contains_key(&name) && !is_overloaded_value_name(&name) {
             return Err(Error::new(format!("duplicate declaration for '{}'", name)));
         }
         let (domain, _) = function_domain_and_output(&ty)?;
@@ -516,6 +566,9 @@ impl<'a> Env<'a> {
 
     /// Type-checks helper logic for get.
     fn get(&self, name: &str) -> Option<&Type> {
+        if is_overloaded_value_name(name) {
+            return None;
+        }
         self.values.get(name).map(|info| &info.ty).or_else(|| {
             self.funcs
                 .get(name)
@@ -526,6 +579,20 @@ impl<'a> Env<'a> {
     /// Type-checks helper logic for get_value.
     fn get_value(&self, name: &str) -> Option<&ValueInfo> {
         self.values.get(name)
+    }
+
+    /// Checks whether an overloaded value slot has a candidate with the expected type.
+    fn value_has_type(&self, name: &str, expected: &Type) -> bool {
+        self.values
+            .get(name)
+            .is_some_and(|value| &value.ty == expected)
+    }
+
+    /// Checks whether an overloaded function slot has a candidate with the expected type.
+    fn func_has_type(&self, name: &str, expected: &Type) -> bool {
+        self.funcs
+            .get(name)
+            .is_some_and(|funcs| funcs.iter().any(|func| &func.ty == expected))
     }
 
     /// Type-checks helper logic for function_overloads.
@@ -563,6 +630,83 @@ impl<'a> Env<'a> {
     }
 }
 
+/// Builds the final category for promoted nominal types such as `Ab X = X`.
+fn category_type_promotions(
+    category_types: &[CategoryTypeDecl],
+) -> HashMap<String, AlgebraicCategory> {
+    category_types
+        .iter()
+        .filter(|decl| category_type_is_promotion(decl))
+        .map(|decl| (decl.name.clone(), decl.category))
+        .collect()
+}
+
+/// Rewrites earlier references to promoted custom types to the final category.
+fn normalize_type_categories(ty: &Type, promotions: &HashMap<String, AlgebraicCategory>) -> Type {
+    match ty {
+        Type::Custom { name, .. } => promotions
+            .get(name)
+            .map(|category| custom_type(name, *category))
+            .unwrap_or_else(|| ty.clone()),
+        Type::Product(types) => Type::Product(
+            types
+                .iter()
+                .map(|ty| normalize_type_categories(ty, promotions))
+                .collect(),
+        ),
+        Type::Func(input, output) => Type::func(
+            normalize_type_categories(input, promotions),
+            normalize_type_categories(output, promotions),
+        ),
+        Type::Power(base, dim) => Type::Power(
+            Box::new(normalize_type_categories(base, promotions)),
+            dim.clone(),
+        ),
+        Type::Array(element) => {
+            Type::Array(Box::new(normalize_type_categories(element, promotions)))
+        }
+        _ => ty.clone(),
+    }
+}
+
+/// Normalizes product component categories after all category promotions are known.
+fn normalize_product_type_decl(
+    decl: &ProductTypeDecl,
+    promotions: &HashMap<String, AlgebraicCategory>,
+) -> ProductTypeDecl {
+    let mut decl = decl.clone();
+    decl.components = decl
+        .components
+        .iter()
+        .map(|ty| normalize_type_categories(ty, promotions))
+        .collect();
+    decl
+}
+
+/// Normalizes category bases after all category promotions are known.
+fn normalize_category_type_decl(
+    decl: &CategoryTypeDecl,
+    promotions: &HashMap<String, AlgebraicCategory>,
+) -> CategoryTypeDecl {
+    let mut decl = decl.clone();
+    decl.base = normalize_type_categories(&decl.base, promotions);
+    decl
+}
+
+/// Exposes non-promotion category wrappers as one-field products for constructor
+/// calls and `.value` field access.
+fn category_type_product_decl(decl: &CategoryTypeDecl) -> Option<ProductTypeDecl> {
+    (!category_type_is_promotion(decl)).then(|| ProductTypeDecl {
+        name: decl.name.clone(),
+        category: decl.category,
+        components: vec![decl.base.clone()],
+        field_names: vec!["value".to_string()],
+        eager_ops: false,
+        provided: false,
+        line: decl.line,
+    })
+}
+
 /// Type-checks helper logic for validate_product_type_decl.
 fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
     if decl.category == AlgebraicCategory::DivRing {
@@ -591,7 +735,7 @@ fn validate_product_type_decl(decl: &ProductTypeDecl) -> Result<(), Error> {
     Ok(())
 }
 
-/// Validates required category declarations (`provided` operations, base type, and laws) before registration.
+/// Validates required category operations supplied by operator-reference declarations.
 fn validate_category_type_decl(decl: &CategoryTypeDecl, env: &Env<'_>) -> Result<(), Error> {
     validate_user_type(&decl.base)?;
     if !has_category(&decl.base, AlgebraicCategory::Set) {
@@ -601,103 +745,134 @@ fn validate_category_type_decl(decl: &CategoryTypeDecl, env: &Env<'_>) -> Result
             format_type(&decl.base)
         )));
     }
+    validate_inferred_category_type_decl(decl, env)
+}
+
+/// Validates category carrier declarations whose operations are supplied through
+/// operator-reference declarations such as `Hom(A × A, A) &+ = add`.
+fn validate_inferred_category_type_decl(
+    decl: &CategoryTypeDecl,
+    env: &Env<'_>,
+) -> Result<(), Error> {
+    let ty = category_type_decl_type(decl);
+    let ops = CategoryOps::new(env, &ty);
     match decl.category {
         AlgebraicCategory::Ab => {
-            let zero = require_category_op(&decl.ops.zero, &decl.name, "0")?;
-            let add = require_category_op(&decl.ops.add, &decl.name, "+")?;
-            let neg = require_category_op(&decl.ops.neg, &decl.name, "-")?;
-            ensure_value_name_type(
+            ops.require("zero", &decl.name)?;
+            ops.require("add", &decl.name)?;
+            ops.require("sub", &decl.name)?;
+        }
+        AlgebraicCategory::Mon => {
+            ops.require("one", &decl.name)?;
+            ops.require("mult", &decl.name)?;
+        }
+        AlgebraicCategory::Grp => {
+            ops.require("e", &decl.name)?;
+            ops.require("mult", &decl.name)?;
+            ops.require("inv", &decl.name)?;
+        }
+        AlgebraicCategory::Ring => {
+            validate_inferred_required_ops(decl, env, &ty, &["zero", "one", "add", "sub", "mult"])?;
+        }
+        AlgebraicCategory::RVect => {
+            validate_inferred_required_ops(decl, env, &ty, &["zero", "add", "sub", "scale"])?;
+        }
+        AlgebraicCategory::RAlg => {
+            validate_inferred_required_ops(
+                decl,
                 env,
-                zero,
-                &decl.base,
-                &format!("category type '{}'", decl.name),
-            )?;
-            ensure_func_name_type(
-                env,
-                add,
-                &Type::func(
-                    Type::Product(vec![decl.base.clone(), decl.base.clone()]),
-                    decl.base.clone(),
-                ),
-                &format!("category type '{}'", decl.name),
-            )?;
-            ensure_func_name_type(
-                env,
-                neg,
-                &Type::func(decl.base.clone(), decl.base.clone()),
-                &format!("category type '{}'", decl.name),
+                &ty,
+                &["zero", "one", "add", "sub", "mult", "scale"],
             )?;
         }
-        _ => {
+        AlgebraicCategory::DivRing | AlgebraicCategory::RDivAlg => {
             return Err(Error::new(format!(
                 "category type '{}' does not support category {} yet",
                 decl.name,
                 category_name(decl.category)
             )));
         }
+        AlgebraicCategory::Set => unreachable!(),
     }
     Ok(())
 }
 
-// Validates a category declaration defines a required operation before use.
-fn require_category_op<'a>(
-    op: &'a Option<String>,
-    type_name: &str,
-    key: &str,
-) -> Result<&'a str, Error> {
-    op.as_deref().ok_or_else(|| {
-        Error::new(format!(
-            "category type '{}' requires operation '{}'",
-            type_name, key
-        ))
-    })
-}
-
-/// Ensures a referenced value name exists in scope and matches the expected type.
-fn ensure_value_name_type(
+/// Validates a simple required-op list for inferred category declarations.
+fn validate_inferred_required_ops(
+    decl: &CategoryTypeDecl,
     env: &Env<'_>,
-    name: &str,
-    expected: &Type,
-    context: &str,
+    ty: &Type,
+    ops: &[&str],
 ) -> Result<(), Error> {
-    let Some(value) = env.values.get(name) else {
-        return Err(Error::new(format!(
-            "{} references unknown value '{}'",
-            context, name
-        )));
-    };
-    ensure_type(
-        &value.ty,
-        expected,
-        &format!("{} operation '{}'", context, name),
-    )
-}
-
-/// Ensures a referenced function name exists and has a compatible signature for the call site.
-fn ensure_func_name_type(
-    env: &Env<'_>,
-    name: &str,
-    expected: &Type,
-    context: &str,
-) -> Result<(), Error> {
-    let Some(funcs) = env.funcs.get(name) else {
-        return Err(Error::new(format!(
-            "{} references unknown function '{}'",
-            context, name
-        )));
-    };
-    if funcs
-        .iter()
-        .any(|func| types_compatible_for_expected(&func.ty, expected))
-    {
-        return Ok(());
+    let available = CategoryOps::new(env, ty);
+    for op in ops {
+        available.require(op, &decl.name)?;
     }
-    Err(Error::new(format!(
-        "{} operation '{}' expects {}",
-        context,
-        name,
-        format_type(expected)
-    )))
+    Ok(())
+}
+
+/// Tracks declared category operation slots for a type.
+struct CategoryOps {
+    zero: bool,
+    one: bool,
+    e: bool,
+    add: bool,
+    sub: bool,
+    mult: bool,
+    inv: bool,
+    div: bool,
+    scale: bool,
+}
+
+impl CategoryOps {
+    /// Builds operation availability from overloaded compiler-owned helper names.
+    fn new(env: &Env<'_>, ty: &Type) -> Self {
+        let binary = Type::func(Type::Product(vec![ty.clone(), ty.clone()]), ty.clone());
+        let unary = Type::func(ty.clone(), ty.clone());
+        Self {
+            zero: env.value_has_type(&format!("__zero_{}", ty.type_name()), ty),
+            one: env.value_has_type(&format!("__one_{}", ty.type_name()), ty),
+            e: env.value_has_type(&format!("__e_{}", ty.type_name()), ty),
+            add: env.func_has_type("__add", &binary),
+            sub: env.func_has_type("__sub", &binary),
+            mult: env.func_has_type("__mult", &binary),
+            inv: env.func_has_type("__inv", &unary),
+            div: env.func_has_type("__div", &binary),
+            scale: env.func_has_type(
+                "__scale",
+                &Type::func(Type::Product(vec![ty.clone(), Type::Float]), ty.clone()),
+            ),
+        }
+    }
+
+    /// Requires an operation slot to be directly available.
+    fn require(&self, op: &str, type_name: &str) -> Result<(), Error> {
+        let available = match op {
+            "zero" => self.zero,
+            "one" => self.one,
+            "e" => self.e,
+            "add" => self.add,
+            "sub" => self.sub,
+            "mult" => self.mult,
+            "inv" => self.inv,
+            "div" => self.div,
+            "scale" => self.scale,
+            _ => unreachable!(),
+        };
+        if available {
+            Ok(())
+        } else {
+            Err(Error::new(format!(
+                "category type '{}' requires operation '{}'",
+                type_name, op
+            )))
+        }
+    }
+}
+
+/// Checks whether a value name can be overloaded by result type.
+fn is_overloaded_value_name(name: &str) -> bool {
+    matches!(name, "__zero" | "__one" | "__e")
 }
 
 /// Type-checks helper logic for product_component_satisfies_category.
@@ -960,11 +1135,11 @@ fn infer_unary_type(op: UnaryOp, ty: &Type) -> Result<Type, Error> {
 }
 
 fn lift_param_name(lift_param: Option<&str>, name: &str) -> Result<String, Error> {
-    lift_param
-        .map(ToString::to_string)
-        .ok_or_else(|| {
-            Error::new(format!("function '{name}' needs an explicit call outside function bodies"))
-        })
+    lift_param.map(ToString::to_string).ok_or_else(|| {
+        Error::new(format!(
+            "function '{name}' needs an explicit call outside function bodies"
+        ))
+    })
 }
 
 /// Type-checks helper logic for infer_binary_type.

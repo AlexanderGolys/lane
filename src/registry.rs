@@ -937,7 +937,11 @@ impl Registry {
             .collect();
         value_func_names.sort_unstable();
         for name in value_func_names {
-            let Some(body) = self.value_funcs.get(name).and_then(|func| func.support_glsl) else {
+            let Some(body) = self
+                .value_funcs
+                .get(name)
+                .and_then(|func| func.support_glsl)
+            else {
                 debug_assert!(
                     false,
                     "preregistered_objects expected GLSL support for value function '{name}'"

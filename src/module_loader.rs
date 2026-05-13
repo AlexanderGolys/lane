@@ -807,7 +807,10 @@ fn add_private_module_rename(
     original: &str,
     module_key: &str,
 ) {
-    renames.insert(original.to_string(), private_module_name(module_key, original));
+    renames.insert(
+        original.to_string(),
+        private_module_name(module_key, original),
+    );
 }
 
 /// Reports a module import cycle if one is present.

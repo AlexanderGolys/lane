@@ -82,26 +82,13 @@ module.exports = grammar({
             field('name', $.identifier),
             '=',
             field('base', $._type),
-            $.category_op_list,
         )),
-
-        category_op_list: ($) => seq(
-            '{',
-            commaSep1($.category_op_binding),
-            '}',
-        ),
-
-        category_op_binding: ($) => seq(
-            field('operator', choice('0', '1', 'e', '+', '-', '*', 'inv', 'scale')),
-            ':',
-            field('name', $.identifier),
-        ),
 
 
         input_declaration: ($) => seq(
                 'provided',
                 field('type', $._type),
-                commaSep1(field('name', $.identifier)),
+                commaSep1(field('name', choice($.identifier, $.operator_reference, '0', '1', 'e'))),
             ),
 
         arrow_function_declaration: ($) =>  seq(
@@ -116,19 +103,24 @@ module.exports = grammar({
         binding_declaration: ($) => seq(
             optional(field('modifier', $.gen_modifier)),
             field('type', $._type),
-            field('name', $.identifier),
+            field('name', choice($.identifier, $.operator_reference, '0', '1', 'e')),
             '=',
             field('value', $._expression),
         ),
 
         inferred_binding_declaration: ($) => seq(
             optional(field('modifier', $.gen_modifier)),
-            field('name', $.identifier),
+            field('name', choice($.identifier, $.operator_reference)),
             '=',
             field('value', $._expression),
         ),
 
         gen_modifier: () => choice('construct', 'const'),
+
+        operator_reference: ($) => seq(
+            '&',
+            choice('+', '-', '*', '/', '~', seq('(', choice('+', '-', '*', '/', '~'), ')')),
+        ),
 
         _type: ($) => choice(
             $.product_type,
@@ -339,22 +331,7 @@ module.exports = grammar({
             ']',
         ),
 
-        // identifier: ($) => prec.right(PREC.unary, seq(
-        //     $._identifier_text,
-        //     repeat(choice($.name_template_slot, $._identifier_suffix_text)),
-        // )),
-
         identifier: () => /[A-Za-z_][A-Za-z0-9_]*(\{[A-Za-z0-9_]*\})*/,
-
-        // _identifier_suffix_text: () => token.immediate(/[A-Za-z_][A-Za-z0-9_]*/),
-
-        // name_template_slot: ($) => seq(
-        //     token.immediate('{'),
-        //     optional(field('name', $.template_slot_content)),
-        //     token.immediate('}'),
-        // ),
-
-        // template_slot_content: () => token.immediate(/[A-Za-z0-9_]+/),
 
         number: () => token(choice(
             /\d+(?:\.\d+)?[eE][+-]?\d+/,

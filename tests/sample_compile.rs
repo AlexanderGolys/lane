@@ -88,8 +88,8 @@ fn compiles_all_features_samples_to_glsl() {
     let glsl = compile_program(&source).unwrap();
 
     assert!(glsl.contains("struct G"));
-    assert!(glsl.contains("G inv_G(G value)"));
-    assert!(glsl.contains("G mult_G(G a, G b)"));
+    assert!(glsl.contains("G __inv(G value)"));
+    assert!(glsl.contains("G __mult(G a, G b)"));
     assert!(!glsl.contains("sdf_output"));
 
     let source_2d = fs::read_to_string("examples/all_features_2d.lane").unwrap();

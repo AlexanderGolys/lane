@@ -1399,10 +1399,10 @@ fn supports_monoid_pow_for_product_types() {
     let source = "Mon Pair = R x Z\nprovided Pair p\nconst Pair q = pow(3, p)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("Pair one_Pair = Pair(1.0, 1);"));
-    assert!(glsl.contains("Pair mult_Pair(Pair a, Pair b)"));
+    assert!(glsl.contains("Pair __one_Pair = Pair(1.0, 1);"));
+    assert!(glsl.contains("Pair __mult(Pair a, Pair b)"));
     assert!(glsl.contains("Pair pow_monoid_Pair(int exponent, Pair value)"));
-    assert!(glsl.contains("result = mult_Pair(result, factor);"));
+    assert!(glsl.contains("result = __mult(result, factor);"));
 }
 
 #[test]
@@ -1411,8 +1411,8 @@ fn supports_monoid_pow_for_provided_category_types() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("G pow_monoid_G(int exponent, G value)"));
-    assert!(glsl.contains("G result = e_G;"));
-    assert!(glsl.contains("result = mult_G(result, factor);"));
+    assert!(glsl.contains("G result = __e_G;"));
+    assert!(glsl.contains("result = __mult(result, factor);"));
     assert!(glsl.contains("float radius = measure(pow_monoid_G(4, g));"));
 }
 
@@ -1486,7 +1486,7 @@ fn supports_provided_group_category_types() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_output(vec3 p) {"));
-    assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
+    assert!(glsl.contains("float radius = measure(__mult(a, b));"));
 }
 
 #[test]
@@ -1494,7 +1494,7 @@ fn supports_unary_inverse_for_group_category_types() {
     let source = "provided Grp G\nprovided G a\nprovided Hom(G, R) measure\nR radius = measure(~a)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float radius = measure(inv_G(a));"));
+    assert!(glsl.contains("float radius = measure(__inv(a));"));
 }
 
 #[test]
@@ -1502,7 +1502,7 @@ fn supports_multiple_provided_category_types_on_one_line() {
     let source = "provided Grp G, K\nprovided G a\nprovided K b\nprovided Hom(G, R) measure_g\nprovided Hom(K, R) measure_k\nR radius = measure_g(a * a) + measure_k(b * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float radius = (measure_g(mult_G(a, a)) + measure_k(mult_K(b, b)));"));
+    assert!(glsl.contains("float radius = (measure_g(__mult(a, a)) + measure_k(__mult(b, b)));"));
 }
 
 #[test]
@@ -1512,39 +1512,58 @@ fn supports_product_group_types_with_named_fields() {
 
     assert!(glsl.contains("struct G {\n    Isom3 m;\n    Isom2 n;\n};"));
     assert!(glsl.contains(
-        "G mult_G(G a, G b) {\n    return G(mult_Isom3(a.m, b.m), mult_Isom2(a.n, b.n));\n}"
+        "G __mult(G a, G b) {\n    return G(mult_Isom3(a.m, b.m), mult_Isom2(a.n, b.n));\n}"
     ));
-    assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
+    assert!(glsl.contains("float radius = measure(__mult(a, b));"));
 }
 
 #[test]
 fn constructs_abelian_category_type_from_set_operations() {
-    let source = "provided Set X\nprovided X zeroX\nprovided End(X) negX\nprovided Hom(X x X, X) addX\nAb A = X {0: zeroX, -: negX, +: addX}\nprovided A a\nprovided A b\nprovided Hom(A, R) measure\nA sum = a + b\nA delta = a - b\nA empty = 0\nR radius = measure(sum + delta + empty)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided Set X\nprovided X zeroX\nprovided End(X) negX\nprovided Hom(X x X, X) addX\nAb A = X\nA 0 = A(zeroX)\nHom(A x A, A) &+ = (left, right) |-> A(addX(left.value, right.value))\nHom(A x A, A) &- = (left, right) |-> A(addX(left.value, negX(right.value)))\nprovided A a\nprovided A b\nprovided Hom(A, R) measure\nA sum = a + b\nA delta = a - b\nA empty = 0\nR radius = measure(sum + delta + empty)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct A {\n    X value;\n};"));
-    assert!(glsl.contains("A zero_A = A(zeroX);"));
-    assert!(glsl.contains("A add_A(A a, A b) {\n    return A(addX(a.value, b.value));\n}"));
-    assert!(glsl.contains("A sub_A(A a, A b) {\n    return A(addX(a.value, negX(b.value)));\n}"));
+    assert!(glsl.contains("A __zero_A = A(zeroX);"));
+    assert!(glsl.contains("A __add(A _t0, A _t1)"));
+    assert!(glsl.contains("return A(addX((_left).value, (_right).value));"));
+    assert!(glsl.contains("A __sub(A _t0, A _t1)"));
+    assert!(glsl.contains("return A(addX((_left).value, negX((_right).value)));"));
 }
 
 #[test]
 fn category_type_constructor_can_promote_existing_set_name() {
-    let source = "provided Set X\nprovided X zeroX\nprovided End(X) negX\nprovided Hom(X x X, X) addX\nAb X = X {0: zeroX, -: negX, +: addX}\nprovided X a\nprovided X b\nX sum = a + b\nX delta = a - b\nX empty = 0\nprovided Hom(X, R) measure\nR radius = measure(sum + delta + empty)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "provided Set X\nprovided X zeroX\nprovided End(X) negX\nprovided Hom(X x X, X) addX\nAb X = X\nX 0 = zeroX\nHom(X x X, X) &+ = (left, right) |-> addX(left, right)\nHom(X x X, X) &- = (left, right) |-> addX(left, negX(right))\nprovided X a\nprovided X b\nX sum = a + b\nX delta = a - b\nX empty = 0\nprovided Hom(X, R) measure\nR radius = measure(sum + delta + empty)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(!glsl.contains("struct X"));
-    assert!(glsl.contains("X zero_X = zeroX;"));
-    assert!(glsl.contains("X add_X(X a, X b) {\n    return addX(a, b);\n}"));
-    assert!(glsl.contains("X sub_X(X a, X b) {\n    return addX(a, negX(b));\n}"));
+    assert!(glsl.contains("X __zero_X = zeroX;"));
+    assert!(glsl.contains("X __add(X _t0, X _t1)"));
+    assert!(glsl.contains("return addX(_left, _right);"));
+    assert!(glsl.contains("X __sub(X _t0, X _t1)"));
+    assert!(glsl.contains("return addX(_left, negX(_right));"));
+}
+
+#[test]
+fn infers_category_type_ops_from_operator_overload_declarations() {
+    let source = "provided Set X\nprovided X zeroX\nprovided X a\nprovided X b\nprovided Hom(X, R) measure\nprovided Hom(X x X, X) addX\nprovided End(X) negX\nAb X = X\nX 0 = zeroX\nHom(X x X, X) &+ = (left, right) |-> addX(left, right)\nHom(X x X, X) &- = (left, right) |-> addX(left, negX(right))\nX sum = a + b\nX delta = a - b\nX empty = 0\nR radius = measure(sum + delta + empty)\nconst Object output = Ball3D(r=radius)\n";
+    let glsl = compile_program(source).unwrap();
+
+    assert!(glsl.contains("X __zero_X = zeroX;"));
+    assert!(glsl.contains("X __add(X _t0, X _t1)"));
+    assert!(glsl.contains("return addX(_left, _right);"));
+    assert!(glsl.contains("X __sub(X _t0, X _t1)"));
+    assert!(glsl.contains("return addX(_left, negX(_right));"));
+    assert!(glsl.contains("X sum = __add(a, b);"));
+    assert!(glsl.contains("X delta = __sub(a, b);"));
+    assert!(glsl.contains("X empty = __zero_X;"));
 }
 
 #[test]
 fn rejects_category_type_constructor_missing_required_ops() {
-    let source = "provided Set X\nprovided X zeroX\nAb A = X {0: zeroX}\nconst Object output = Ball3D(r=1)\n";
+    let source = "provided Set X\nprovided X zeroX\nAb A = X\nA 0 = A(zeroX)\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
-    assert!(err.contains("category type 'A' requires operation '+'"));
+    assert!(err.contains("category type 'A' requires operation 'add'"));
 }
 
 #[test]
@@ -1555,7 +1574,7 @@ fn supports_product_value_constructors_with_default_fields() {
     assert!(glsl.contains("struct Pair {\n    vec2 x0;\n    vec3 x1;\n};"));
     assert!(glsl.contains("Pair p = Pair(vec2(1.0, 2.0), vec3(0.0));"));
     assert!(glsl.contains(
-        "Pair add_Pair(Pair a, Pair b) {\n    return Pair((a.x0 + b.x0), (a.x1 + b.x1));\n}"
+        "Pair __add(Pair a, Pair b) {\n    return Pair((a.x0 + b.x0), (a.x1 + b.x1));\n}"
     ));
 }
 
@@ -1601,9 +1620,9 @@ fn emits_all_product_ops_for_const_product_types() {
     let source = "const Grp G = Isom3 x Isom2\nprovided G a\nprovided Hom(G, R) measure\nR radius = measure(a)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("G e_G = G(Isom3(mat3(1.0), vec3(0.0)), Isom2(mat2(1.0), vec2(0.0)));"));
-    assert!(glsl.contains("G mult_G(G a, G b)"));
-    assert!(glsl.contains("G inv_G(G value)"));
+    assert!(glsl.contains("G __e_G = G(Isom3(mat3(1.0), vec3(0.0)), Isom2(mat2(1.0), vec2(0.0)));"));
+    assert!(glsl.contains("G __mult(G a, G b)"));
+    assert!(glsl.contains("G __inv(G value)"));
 }
 
 #[test]
@@ -1652,16 +1671,16 @@ fn supports_abelian_components_in_group_product_types() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct G {\n    Isom3 x0;\n    vec3 x1;\n};"));
-    assert!(glsl.contains("G e_G = G(Isom3(mat3(1.0), vec3(0.0)), vec3(0.0));"));
+    assert!(glsl.contains("G __e_G = G(Isom3(mat3(1.0), vec3(0.0)), vec3(0.0));"));
     assert!(glsl
-        .contains("G mult_G(G a, G b) {\n    return G(mult_Isom3(a.x0, b.x0), (a.x1 + b.x1));\n}"));
+        .contains("G __mult(G a, G b) {\n    return G(mult_Isom3(a.x0, b.x0), (a.x1 + b.x1));\n}"));
     assert!(glsl.contains(
-        "Motion inv_Motion(Motion value) {\n    return Motion(inv_Isom3(value.motion), (vec3(0.0) - value.shift));\n}"
+        "Motion __inv(Motion value) {\n    return Motion(inv_Isom3(value.motion), (vec3(0.0) - value.shift));\n}"
     ));
-    assert!(glsl.contains("G identity = e_G;"));
-    assert!(glsl.contains("G inverse_identity = inv_G(e_G);"));
-    assert!(glsl.contains("G inverse_a = inv_G(a);"));
-    assert!(glsl.contains("G product = mult_G(a, b);"));
+    assert!(glsl.contains("G identity = __e_G;"));
+    assert!(glsl.contains("G inverse_identity = __inv(__e_G);"));
+    assert!(glsl.contains("G inverse_a = __inv(a);"));
+    assert!(glsl.contains("G product = __mult(a, b);"));
 }
 
 #[test]
@@ -1686,7 +1705,7 @@ fn supports_provided_vector_space_category_types() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_output(vec3 p) {"));
-    assert!(glsl.contains("float radius = norm(scale_V(scale_V(v, (1.0 / 3.0)), 2.0));"));
+    assert!(glsl.contains("float radius = norm(__scale(__scale(v, (1.0 / 3.0)), 2.0));"));
 }
 
 #[test]
@@ -1694,7 +1713,7 @@ fn supports_provided_real_division_algebra_category_types() {
     let source = "provided RDivAlg A\nprovided A a\nprovided A b\nprovided Hom(A, R) measure\nR radius = measure(2 * (a / b))\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float radius = measure(scale_A(mult_A(a, inv_A(b)), 2.0));"));
+    assert!(glsl.contains("float radius = measure(__scale(__div(a, b), 2.0));"));
 }
 
 #[test]
@@ -1815,7 +1834,7 @@ fn casts_neutral_literals_to_provided_category_constants() {
     let source = "provided Grp G\nprovided Hom(G, R) measure\nG g = e\nR radius = measure(g)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("G g = e_G;"));
+    assert!(glsl.contains("G g = __e_G;"));
 }
 
 #[test]

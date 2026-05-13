@@ -21,11 +21,14 @@ The current declaration forms are:
 - `provided TYPE name`: declares an external value or function.
 - `provided name: A -> B`: declares an external function.
 - `provided CATEGORY TypeName`: declares an external nominal type.
-- `CATEGORY TypeName = BaseType {op: name, ...}`: promotes a type into a
-  category using provided operations.
+- `CATEGORY TypeName = BaseType`: promotes or wraps a carrier type into a
+  category; required operations are supplied by typed `&+`, `&*`, `&~`, and
+  neutral overload declarations.
 - `[const] CATEGORY TypeName<field, ...> = TYPE x TYPE`: declares a product
   type with optional field names.
 - `TYPE name = expression`: declares a typed value, function, or SDF object.
+- `Hom(A x A, A) &+ = expression`: declares an operator overload for `A`;
+  similarly use `&*`, `&~`, and typed neutral declarations such as `A 0 = z`.
 - `name = expression`: declares an inferred binding.
 - `const name = expression`: marks a binding as generated/emitted.
 - `construct Object name = expression`: currently exports an SDF helper for an

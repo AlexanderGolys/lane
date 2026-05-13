@@ -78,6 +78,20 @@ After changing grammar, parser, or query files in a running Neovim session, run:
 :LaneTSReload
 ```
 
+If you changed `grammar.js`, run this one command from `tree-sitter-lane`:
+
+```sh
+npm run rebuild
+```
+
+Then reinstall in Neovim if needed:
+
+```vim
+:TSUninstall lane
+:TSInstall lane
+:LaneTSReload
+```
+
 If `parser.so` is older than `src/parser.c`, rebuild it first:
 
 ```sh

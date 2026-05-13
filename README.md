@@ -336,14 +336,17 @@ R radius = measure(a * b)
 const Object output = Ball3D(r=radius)
 ```
 
-This emits calls such as `mult_G(a, b)`. For neutral literals, Lane expects
-globals such as `zero_G`, `one_G`, and `e_G` when those operations are needed.
+This emits calls through the compiler-owned operator overload names such as
+`__mult(a, b)`. For neutral literals, Lane expects globals such as
+`__zero_G`, `__one_G`, and `__e_G` when those operations are needed.
 
-### `CATEGORY TypeName = BaseType {op: name, ...}`
+### `CATEGORY TypeName = BaseType`
 
-Constructs a nominal category type from an existing set-like type and explicit
-operation names. The initial supported constructor is `Ab`, which requires
-`0`, unary `-`, and binary `+` operations over the base type.
+Constructs or promotes a nominal category type from an existing set-like type.
+The category prefix is a promise that the required operations are defined for
+the new type. Define those operations by overloading operator references such
+as `&+`, `&*`, and `&~`, and define neutral slots with typed `0`, `1`, or `e`
+bindings.
 
 ```lane
 provided Set X
@@ -351,13 +354,17 @@ provided X zeroX
 provided End(X) negX
 provided Hom(X x X, X) addX
 
-Ab A = X {0: zeroX, -: negX, +: addX}
+Ab X = X
+X 0 = zeroX
+Hom(X x X, X) &+ = (left, right) |-> addX(left, right)
+Hom(X x X, X) &- = (left, right) |-> addX(left, negX(right))
 ```
 
-When `TypeName` differs from `BaseType`, Lane emits a one-field wrapper and
-forwards generated category operations through the provided base operations. If
-the names are the same, as in `Ab X = X {...}`, Lane treats the declaration as
-a promotion and keeps the host representation unchanged.
+After these declarations, normal expressions such as `a + b`, `a - b`, and
+`0` in an expected `X` context use `__add`, `__sub`, and `__zero_X` internally.
+When `TypeName` differs from `BaseType`, Lane emits a one-field wrapper. If the
+names are the same, as in `Ab X = X`, Lane treats the declaration as a
+promotion and keeps the host representation unchanged.
 
 ### `[const] CATEGORY TypeName<field, field> = TYPE x TYPE`
 
@@ -384,7 +391,7 @@ struct G {
     Isom2 n;
 };
 
-G mult_G(G a, G b) {
+G __mult(G a, G b) {
     return G(mult_Isom3(a.m, b.m), mult_Isom2(a.n, b.n));
 }
 ```

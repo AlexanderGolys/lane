@@ -129,7 +129,6 @@ const Object output = smoothUnion(.5)(v, e)
   (binding_declaration
     (gen_modifier)
     (type_identifier)
-    (identifier)
     (call_expression
       (identifier)
       (argument_list

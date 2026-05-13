@@ -722,6 +722,16 @@ fn product_type_decl_type(decl: &ProductTypeDecl) -> Type {
     custom_type(&decl.name, decl.category)
 }
 
+/// Performs `category_type_decl_type` behavior.
+fn category_type_decl_type(decl: &CategoryTypeDecl) -> Type {
+    custom_type(&decl.name, decl.category)
+}
+
+/// Checks whether a category declaration promotes an existing carrier name.
+fn category_type_is_promotion(decl: &CategoryTypeDecl) -> bool {
+    decl.name == decl.base.type_name()
+}
+
 /// Performs `parse_matrix_type_name` behavior.
 fn parse_matrix_type_name(name: &str) -> Option<Type> {
     let suffix = name.strip_prefix("Mat")?;
@@ -969,20 +979,54 @@ struct CategoryTypeDecl {
     name: String,
     category: AlgebraicCategory,
     base: Type,
-    ops: CategoryTypeOps,
     line: usize,
 }
 
-#[derive(Clone, Debug, Default)]
-struct CategoryTypeOps {
-    zero: Option<String>,
-    one: Option<String>,
-    identity: Option<String>,
-    add: Option<String>,
-    neg: Option<String>,
-    mult: Option<String>,
-    inv: Option<String>,
-    scale: Option<String>,
+/// Returns the internal helper name for a neutral-slot declaration such as `A 0 = z`.
+fn neutral_decl_helper_name(name: &str, ty: &Type) -> Option<String> {
+    let type_name = ty.type_name();
+    match name {
+        "0" => Some(format!("__zero_{type_name}")),
+        "1" => Some(format!("__one_{type_name}")),
+        "e" if matches!(ty, Type::Custom { .. } | Type::Isom2 | Type::Isom3) => {
+            Some(format!("__e_{type_name}"))
+        }
+        _ => None,
+    }
+}
+
+/// Returns the internal helper name for an operator-reference declaration such as
+/// `Hom(A × A, A) &+ = add`.
+fn operator_decl_helper_name(name: &str, ty: &Type) -> Result<Option<String>, Error> {
+    let Some(op_name) = normalized_operator_decl_name(name) else {
+        return Ok(None);
+    };
+    let Type::Func(_input, _output) = ty else {
+        return Err(Error::new(format!(
+            "operator declaration '{name}' must have a function type"
+        )));
+    };
+    let helper = match op_name {
+        "+" => Some("__add".to_string()),
+        "*" => Some("__mult".to_string()),
+        "/" => Some("__div".to_string()),
+        "~" => Some("__inv".to_string()),
+        "-" => Some("__sub".to_string()),
+        _ => {
+            return Err(Error::new(format!(
+                "unsupported operator declaration '&{op_name}'"
+            )))
+        }
+    };
+    Ok(helper)
+}
+
+/// Normalizes operator-reference declaration names, accepting both `&+` and `&(+)`.
+fn normalized_operator_decl_name(name: &str) -> Option<&str> {
+    let rest = name.strip_prefix('&')?;
+    rest.strip_prefix('(')
+        .and_then(|inner| inner.strip_suffix(')'))
+        .or(Some(rest))
 }
 
 #[derive(Clone, Debug)]

@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum EmitItem {
-    Func(String),
+    Func(usize),
     Object(String),
 }
 
@@ -54,12 +54,10 @@ impl TypedProgram {
         }
         for item in self.ordered_emitted_items(&emitted_func_names, &object_getter_bindings) {
             match item {
-                EmitItem::Func(name) => {
-                    let func = self
-                        .funcs
-                        .iter()
-                        .find(|func| func.name == name)
-                        .unwrap_or_else(|| panic!("ordered emitted function '{name}' was not collected"));
+                EmitItem::Func(index) => {
+                    let func = self.funcs.get(index).unwrap_or_else(|| {
+                        panic!("ordered emitted function index '{index}' was not collected")
+                    });
                     lines.extend(self.emit_func(func, &helper_names, &locals));
                 }
                 EmitItem::Object(name) => {
@@ -316,8 +314,9 @@ impl TypedProgram {
         let mut items = self
             .funcs
             .iter()
-            .filter(|func| emitted_func_names.contains(&func.name))
-            .map(|func| (func.line, EmitItem::Func(func.name.clone())))
+            .enumerate()
+            .filter(|(_, func)| emitted_func_names.contains(&func.name))
+            .map(|(index, func)| (func.line, EmitItem::Func(index)))
             .chain(self.bindings.iter().filter_map(|binding| {
                 (binding.generated || object_getter_bindings.contains(&binding.name))
                     .then_some((binding.line, EmitItem::Object(binding.name.clone())))
@@ -485,7 +484,6 @@ impl TypedProgram {
         let mut emitted_product_types = BTreeSet::new();
         let mut emitted_product_ops = BTreeSet::new();
         let mut emitted_category_types = BTreeSet::new();
-        let mut emitted_category_ops = BTreeSet::new();
         for name in names {
             if let Some((product_name, support)) = parse_product_support_name(&name) {
                 if let Some(category_type) = category_types.get(product_name) {
@@ -493,7 +491,6 @@ impl TypedProgram {
                         category_type,
                         support,
                         &mut emitted_category_types,
-                        &mut emitted_category_ops,
                         &mut blocks,
                     );
                     continue;
@@ -1206,21 +1203,11 @@ fn emit_category_type_support(
     decl: &CategoryTypeDecl,
     support: ProductSupport,
     emitted_category_types: &mut BTreeSet<String>,
-    emitted_category_ops: &mut BTreeSet<String>,
     blocks: &mut Vec<String>,
 ) {
     match support {
         ProductSupport::Type => emit_category_type_decl(decl, emitted_category_types, blocks),
-        ProductSupport::Op(op) => {
-            let op_key = format!("{}:{}", decl.name, op.as_str());
-            if !emitted_category_ops.insert(op_key) {
-                return;
-            }
-            emit_category_type_decl(decl, emitted_category_types, blocks);
-            if let Some(block) = emit_category_type_op(decl, op) {
-                blocks.push(block);
-            }
-        }
+        ProductSupport::Op(_) => emit_category_type_decl(decl, emitted_category_types, blocks),
     }
 }
 
@@ -1238,82 +1225,6 @@ fn emit_category_type_decl(
         decl.name,
         decl.base.glsl_name()
     ));
-}
-
-/// Performs `category_type_is_promotion` behavior.
-fn category_type_is_promotion(decl: &CategoryTypeDecl) -> bool {
-    decl.name == decl.base.type_name()
-}
-
-/// Performs `emit_category_type_op` behavior.
-fn emit_category_type_op(decl: &CategoryTypeDecl, op: ProductOp) -> Option<String> {
-    match op {
-        ProductOp::Zero => decl.ops.zero.as_deref().map(|name| {
-            format!(
-                "{} zero_{} = {};",
-                decl.name,
-                decl.name,
-                wrap_category_value(decl, name)
-            )
-        }),
-        ProductOp::Add => decl.ops.add.as_deref().map(|name| {
-            format!(
-                "{} add_{}({} a, {} b) {{\n    return {};\n}}",
-                decl.name,
-                decl.name,
-                decl.name,
-                decl.name,
-                wrap_category_value(
-                    decl,
-                    &format!(
-                        "{}({}, {})",
-                        name,
-                        unwrap_category_value(decl, "a"),
-                        unwrap_category_value(decl, "b")
-                    )
-                )
-            )
-        }),
-        ProductOp::Sub => match (decl.ops.add.as_deref(), decl.ops.neg.as_deref()) {
-            (Some(add), Some(neg)) => Some(format!(
-                "{} sub_{}({} a, {} b) {{\n    return {};\n}}",
-                decl.name,
-                decl.name,
-                decl.name,
-                decl.name,
-                wrap_category_value(
-                    decl,
-                    &format!(
-                        "{}({}, {}({}))",
-                        add,
-                        unwrap_category_value(decl, "a"),
-                        neg,
-                        unwrap_category_value(decl, "b")
-                    )
-                )
-            )),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Performs `wrap_category_value` behavior.
-fn wrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
-    if category_type_is_promotion(decl) {
-        value.to_string()
-    } else {
-        format!("{}({})", decl.name, value)
-    }
-}
-
-/// Performs `unwrap_category_value` behavior.
-fn unwrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
-    if category_type_is_promotion(decl) {
-        value.to_string()
-    } else {
-        format!("{value}.value")
-    }
 }
 
 /// Performs `emit_product_type_support` behavior.
@@ -1487,10 +1398,9 @@ fn emit_product_neutral(decl: &ProductTypeDecl, op: ProductOp) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{} {}_{} = {}({});",
+        "{} {} = {}({});",
         decl.name,
-        op.as_str(),
-        decl.name,
+        product_neutral_name(op, &decl.name),
         decl.name,
         fields
     )
@@ -1513,10 +1423,9 @@ fn emit_product_binary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{} {}_{}({} a, {} b) {{\n    return {}({});\n}}",
+        "{} {}({} a, {} b) {{\n    return {}({});\n}}",
         decl.name,
-        op.as_str(),
-        decl.name,
+        product_binary_function_name(op),
         decl.name,
         decl.name,
         decl.name,
@@ -1536,10 +1445,9 @@ fn emit_product_unary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{} {}_{}({} value) {{\n    return {}({});\n}}",
+        "{} {}({} value) {{\n    return {}({});\n}}",
         decl.name,
-        op.as_str(),
-        decl.name,
+        product_unary_function_name(op),
         decl.name,
         decl.name,
         fields
@@ -1570,8 +1478,8 @@ fn emit_product_scale_op(decl: &ProductTypeDecl) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{} scale_{}({} value, float scalar) {{\n    return {}({});\n}}",
-        decl.name, decl.name, decl.name, decl.name, fields
+        "{} __scale({} value, float scalar) {{\n    return {}({});\n}}",
+        decl.name, decl.name, decl.name, fields
     )
 }
 
@@ -1599,7 +1507,7 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
             Type::Quat => "vec4(1.0, 0.0, 0.0, 0.0)".to_string(),
             Type::Isom2 => "Isom2(mat2(1.0), vec2(0.0))".to_string(),
             Type::Isom3 => "Isom3(mat3(1.0), vec3(0.0))".to_string(),
-            Type::Custom { name, .. } => format!("e_{name}"),
+            Type::Custom { name, .. } => format!("__e_{name}"),
             _ => emit_neutral_value(NeutralKind::Identity, ty),
         },
         ProductOp::Add | ProductOp::Sub | ProductOp::Mult | ProductOp::Inv | ProductOp::Scale => {
@@ -1613,14 +1521,14 @@ fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> S
     match (op, ty) {
         (ProductOp::Add | ProductOp::Sub, Type::Bool) => format!("({} != {})", left, right),
         (ProductOp::Mult, Type::Bool) => format!("({} && {})", left, right),
-        (ProductOp::Add, Type::Custom { name, .. }) => format!("add_{}({}, {})", name, left, right),
-        (ProductOp::Sub, Type::Custom { name, .. }) => format!("sub_{}({}, {})", name, left, right),
+        (ProductOp::Add, Type::Custom { .. }) => format!("__add({}, {})", left, right),
+        (ProductOp::Sub, Type::Custom { .. }) => format!("__sub({}, {})", left, right),
         (ProductOp::Mult, Type::Complex) => format!("mult_C({}, {})", left, right),
         (ProductOp::Mult, Type::Quat) => format!("mult_H({}, {})", left, right),
         (ProductOp::Mult, Type::Isom2) => format!("mult_Isom2({}, {})", left, right),
         (ProductOp::Mult, Type::Isom3) => format!("mult_Isom3({}, {})", left, right),
-        (ProductOp::Mult, Type::Custom { name, .. }) => {
-            format!("mult_{}({}, {})", name, left, right)
+        (ProductOp::Mult, Type::Custom { .. }) => {
+            format!("__mult({}, {})", left, right)
         }
         (ProductOp::Add | ProductOp::Sub | ProductOp::Mult, _) => {
             format!("({} {} {})", left, product_binary_symbol(op), right)
@@ -1645,7 +1553,7 @@ fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
         (ProductOp::Inv, Type::Quat) => format!("inv_H({value})"),
         (ProductOp::Inv, Type::Isom2) => format!("inv_Isom2({value})"),
         (ProductOp::Inv, Type::Isom3) => format!("inv_Isom3({value})"),
-        (ProductOp::Inv, Type::Custom { name, .. }) => format!("inv_{name}({value})"),
+        (ProductOp::Inv, Type::Custom { .. }) => format!("__inv({value})"),
         _ => panic!("unsupported component-unary operation {op:?} for type {ty:?}"),
     }
 }
@@ -1653,7 +1561,7 @@ fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
 /// Performs `emit_component_scale` behavior.
 fn emit_component_scale(ty: &Type, value: &str, scalar: &str) -> String {
     match ty {
-        Type::Custom { name, .. } => format!("scale_{name}({value}, {scalar})"),
+        Type::Custom { .. } => format!("__scale({value}, {scalar})"),
         _ => format!("({value} * {scalar})"),
     }
 }
@@ -1665,6 +1573,34 @@ fn product_binary_symbol(op: ProductOp) -> &'static str {
         ProductOp::Sub => "-",
         ProductOp::Mult => "*",
         _ => panic!("unsupported product operator {op:?}"),
+    }
+}
+
+/// Returns the generated neutral value name for a product/category operation.
+fn product_neutral_name(op: ProductOp, name: &str) -> String {
+    match op {
+        ProductOp::Zero => format!("__zero_{name}"),
+        ProductOp::One => format!("__one_{name}"),
+        ProductOp::Identity => format!("__e_{name}"),
+        _ => panic!("unsupported product neutral {op:?}"),
+    }
+}
+
+/// Returns the generated overloaded function name for binary product/category operations.
+fn product_binary_function_name(op: ProductOp) -> &'static str {
+    match op {
+        ProductOp::Add => "__add",
+        ProductOp::Sub => "__sub",
+        ProductOp::Mult => "__mult",
+        _ => panic!("unsupported product binary operation {op:?}"),
+    }
+}
+
+/// Returns the generated overloaded function name for unary product/category operations.
+fn product_unary_function_name(op: ProductOp) -> &'static str {
+    match op {
+        ProductOp::Inv => "__inv",
+        _ => panic!("unsupported product unary operation {op:?}"),
     }
 }
 
@@ -2135,10 +2071,8 @@ fn collect_conditional_helpers(
 /// Performs `is_global_const_value_expr` behavior.
 fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> bool {
     match expr {
-        ValueExpr::Bool(_)
-        | ValueExpr::Float(_)
-        | ValueExpr::Int(_)
-        | ValueExpr::Neutral { .. } => true,
+        ValueExpr::Bool(_) | ValueExpr::Float(_) | ValueExpr::Int(_) => true,
+        ValueExpr::Neutral { ty, .. } => !matches!(ty, Type::Custom { .. }),
         ValueExpr::Var { name, .. } => {
             names.contains(name)
                 || product_projection_source_name(name)
@@ -2258,10 +2192,15 @@ fn collect_object_value_refs(
 /// Performs `collect_value_refs` behavior.
 fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
-        ValueExpr::Bool(_)
-        | ValueExpr::Float(_)
-        | ValueExpr::Int(_)
-        | ValueExpr::Neutral { .. } => {}
+        ValueExpr::Bool(_) | ValueExpr::Float(_) | ValueExpr::Int(_) => {}
+        ValueExpr::Neutral { kind, ty } => {
+            if let Type::Custom { name, .. } = ty {
+                names.insert(product_neutral_name(
+                    product_op_for_neutral(*kind).unwrap(),
+                    name,
+                ));
+            }
+        }
         ValueExpr::Var { name, .. } => {
             names.insert(name.clone());
             if let Some(source) = product_projection_source_name(name) {
@@ -2407,10 +2346,23 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
             collect_value_function_refs(array, names);
             collect_value_function_refs(index, names);
         }
-        ValueExpr::Unary { expr, .. } => {
+        ValueExpr::Unary { op, expr, ty } => {
+            if let Some(name) = operator_function_ref_name_for_unary(*op, ty) {
+                names.insert(name);
+            }
             collect_value_function_refs(expr, names);
         }
-        ValueExpr::Concat { left, right, .. } | ValueExpr::Binary { left, right, .. } => {
+        ValueExpr::Concat { left, right, .. } => {
+            collect_value_function_refs(left, names);
+            collect_value_function_refs(right, names);
+        }
+        ValueExpr::Binary {
+            op, left, right, ..
+        } => {
+            if let Some(name) = operator_function_ref_name_for_binary(*op, &left.ty(), &right.ty())
+            {
+                names.insert(name);
+            }
             collect_value_function_refs(left, names);
             collect_value_function_refs(right, names);
         }
@@ -2922,7 +2874,9 @@ fn emit_value_expr(
             emit_value_expr(z, helper_names, value_names),
             emit_value_expr(w, helper_names, value_names)
         ),
-        ValueExpr::Product(_) => panic!("structural product values are emitted via product decomposition"),
+        ValueExpr::Product(_) => {
+            panic!("structural product values are emitted via product decomposition")
+        }
         ValueExpr::Matrix { columns, rows } => {
             emit_matrix(rows, *columns, helper_names, value_names)
         }
@@ -3171,14 +3125,14 @@ fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
 
 /// Performs `emit_custom_binary_expr` behavior.
 fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> String {
-    let Type::Custom { name, .. } = ty else {
+    let Type::Custom { .. } = ty else {
         panic!("custom binary expression requires custom type, got {ty:?}")
     };
     match op {
-        BinOp::Add => format!("add_{}({}, {})", name, left, right),
-        BinOp::Sub => format!("sub_{}({}, {})", name, left, right),
-        BinOp::Mul => format!("mult_{}({}, {})", name, left, right),
-        BinOp::Div => format!("mult_{}({}, inv_{}({}))", name, left, name, right),
+        BinOp::Add => format!("__add({}, {})", left, right),
+        BinOp::Sub => format!("__sub({}, {})", left, right),
+        BinOp::Mul => format!("__mult({}, {})", left, right),
+        BinOp::Div => format!("__div({}, {})", left, right),
         BinOp::Eq
         | BinOp::Ne
         | BinOp::Lt
@@ -3192,12 +3146,12 @@ fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> Str
 
 /// Performs `emit_custom_scale_expr` behavior.
 fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> String {
-    let Type::Custom { name, .. } = ty else {
+    let Type::Custom { .. } = ty else {
         panic!("custom scale expression requires custom type, got {ty:?}")
     };
     match op {
-        BinOp::Mul => format!("scale_{}({}, {})", name, value, scalar),
-        BinOp::Div => format!("scale_{}({}, (1.0 / {}))", name, value, scalar),
+        BinOp::Mul => format!("__scale({}, {})", value, scalar),
+        BinOp::Div => format!("__scale({}, (1.0 / {}))", value, scalar),
         BinOp::Add
         | BinOp::Sub
         | BinOp::Eq
@@ -3243,9 +3197,9 @@ fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
         (NeutralKind::Identity, Type::Isom2) => "Isom2(mat2(1.0), vec2(0.0))".to_string(),
         (NeutralKind::Identity, Type::Isom3) => "Isom3(mat3(1.0), vec3(0.0))".to_string(),
         (_, Type::Custom { name, .. }) => match kind {
-            NeutralKind::Zero => format!("zero_{name}"),
-            NeutralKind::One => format!("one_{name}"),
-            NeutralKind::Identity => format!("e_{name}"),
+            NeutralKind::Zero => format!("__zero_{name}"),
+            NeutralKind::One => format!("__one_{name}"),
+            NeutralKind::Identity => format!("__e_{name}"),
         },
         _ => panic!("unsupported neutral literal {kind:?} for type {ty:?}"),
     }
@@ -3286,6 +3240,33 @@ fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
             Some(product_type_op_support_name(name, ProductOp::Scale))
         }
         _ => None,
+    }
+}
+
+/// Returns the generated function name referenced by a custom binary operator.
+fn operator_function_ref_name_for_binary(op: BinOp, left: &Type, right: &Type) -> Option<String> {
+    let Type::Custom { .. } = left else {
+        return None;
+    };
+    if left != right {
+        return None;
+    }
+    match op {
+        BinOp::Add => Some("__add".to_string()),
+        BinOp::Sub => Some("__sub".to_string()),
+        BinOp::Mul => Some("__mult".to_string()),
+        BinOp::Div => Some("__div".to_string()),
+        _ => None,
+    }
+}
+
+/// Returns the generated function name referenced by a custom unary operator.
+fn operator_function_ref_name_for_unary(op: UnaryOp, ty: &Type) -> Option<String> {
+    let Type::Custom { .. } = ty else {
+        return None;
+    };
+    match op {
+        UnaryOp::Inv => Some("__inv".to_string()),
     }
 }
 
@@ -3917,9 +3898,7 @@ fn primitive_value_field<'a>(
                 .map(|(field_name, _)| field_name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            panic!(
-                "primitive field '{name}' not found; available fields: [{available_fields}]"
-            )
+            panic!("primitive field '{name}' not found; available fields: [{available_fields}]")
         })
 }
 

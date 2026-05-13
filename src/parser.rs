@@ -443,10 +443,7 @@ fn ensure_public_decl_name(name: &str, kind: &str, line: usize) -> Result<(), Er
 /// Rejects declaration names that would collide with built-in names.
 fn ensure_user_decl_name(name: &str, kind: &str, line: usize) -> Result<(), Error> {
     if is_known_type_name(name) || is_known_category_name(name) {
-        Err(Error::new(format!(
-            "'{name}' cannot be used as a {kind} name",
-        ))
-        .with_line(line))
+        Err(Error::new(format!("'{name}' cannot be used as a {kind} name",)).with_line(line))
     } else {
         Ok(())
     }
@@ -645,85 +642,39 @@ fn parse_category_type_decl(
     let Ok((category_source, name)) = split_type_name(left.trim()) else {
         return Ok(None);
     };
+    if name.contains('<') {
+        return Ok(None);
+    }
     let Some(category) = category_by_name(category_source.trim()) else {
         return Ok(None);
     };
-    let Some((base_source, ops_source)) = split_category_type_ops(right.trim()) else {
+    if name
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_lowercase())
+    {
         return Ok(None);
-    };
-    if category == AlgebraicCategory::Set {
-        return Err(Error::new(
-            "category type constructors must target a non-Set category",
-        ));
     }
+    if category == AlgebraicCategory::Set {
+        return Ok(None);
+    }
+    if right.trim().contains('{') || right.trim().contains('}') {
+        return Ok(None);
+    }
+    if split_top_level_product(right.trim()).is_some()
+        || split_top_level_power(right.trim()).is_some()
+    {
+        return Ok(None);
+    }
+    let base_source = right.trim();
     let base =
         parse_type_with_custom_types_for_ambient(base_source, custom_types, ambient_dimension)?;
-    let ops = parse_category_type_ops(name, ops_source)?;
     Ok(Some(CategoryTypeDecl {
         name: name.to_string(),
         category,
         base,
-        ops,
         line: line_number,
     }))
-}
-
-/// Performs `split_category_type_ops` behavior.
-fn split_category_type_ops(source: &str) -> Option<(&str, &str)> {
-    let source = source.strip_suffix('}')?;
-    let (base, ops) = source.rsplit_once('{')?;
-    if !ops.contains(':') {
-        return None;
-    }
-    Some((base.trim(), ops.trim()))
-}
-
-/// Performs `parse_category_type_ops` behavior.
-fn parse_category_type_ops(type_name: &str, source: &str) -> Result<CategoryTypeOps, Error> {
-    let mut ops = CategoryTypeOps::default();
-    for item in source.split(',') {
-        let item = item.trim();
-        if item.is_empty() {
-            continue;
-        }
-        let Some((key, value)) = item.split_once(':') else {
-            return Err(Error::new(format!(
-                "category type '{}' operation '{}' is missing ':'",
-                type_name, item
-            )));
-        };
-        let key = key.trim();
-        let value = value.trim();
-        if !is_identifier(value) {
-            return Err(Error::new(format!(
-                "category type '{}' operation '{}' has invalid name '{}'",
-                type_name, key, value
-            )));
-        }
-        let slot = match key {
-            "0" => &mut ops.zero,
-            "1" => &mut ops.one,
-            "e" => &mut ops.identity,
-            "+" => &mut ops.add,
-            "-" => &mut ops.neg,
-            "*" => &mut ops.mult,
-            "inv" => &mut ops.inv,
-            "scale" => &mut ops.scale,
-            _ => {
-                return Err(Error::new(format!(
-                    "category type '{}' has unsupported operation key '{}'",
-                    type_name, key
-                )));
-            }
-        };
-        if slot.replace(value.to_string()).is_some() {
-            return Err(Error::new(format!(
-                "category type '{}' has duplicate operation key '{}'",
-                type_name, key
-            )));
-        }
-    }
-    Ok(ops)
 }
 
 /// Performs `parse_multi_input_decls` behavior.
@@ -1215,7 +1166,11 @@ impl ExprParser {
 
     /// Performs `parse_operator_ref` behavior.
     fn parse_operator_ref(&mut self) -> Result<BinOp, Error> {
-        match self.next() {
+        let parenthesized = matches!(self.peek(), Some(Token::LParen));
+        if parenthesized {
+            self.index += 1;
+        }
+        let op = match self.next() {
             Some(Token::Plus) => Ok(BinOp::Add),
             Some(Token::Minus) => Ok(BinOp::Sub),
             Some(Token::Star) => Ok(BinOp::Mul),
@@ -1227,7 +1182,11 @@ impl ExprParser {
             Some(Token::Greater) => Ok(BinOp::Gt),
             Some(Token::GreaterEqual) => Ok(BinOp::Ge),
             _ => Err(Error::new("expected operator after '&'")),
+        }?;
+        if parenthesized {
+            self.expect(Token::RParen)?;
         }
+        Ok(op)
     }
 
     /// Performs `parse_paren_or_tuple` behavior.
@@ -1541,25 +1500,13 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
     Ok(tokens)
 }
 
-/// Performs `parse_type_with_custom_types` behavior.
-fn parse_type_with_custom_types(
-    source: &str,
-    custom_types: &HashMap<String, AlgebraicCategory>,
-) -> Result<Type, Error> {
-    parse_type_with_custom_types_base(source, custom_types, None)
-}
-
 /// Performs `parse_type_with_custom_types_for_ambient` behavior.
 fn parse_type_with_custom_types_for_ambient(
     source: &str,
     custom_types: &HashMap<String, AlgebraicCategory>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Type, Error> {
-    parse_type_with_custom_types_base(
-        source,
-        custom_types,
-        Some(ambient_dimension),
-    )
+    parse_type_with_custom_types_base(source, custom_types, Some(ambient_dimension))
 }
 
 fn parse_type_with_custom_types_base(
@@ -1656,19 +1603,13 @@ fn parse_function_like_type(source: &str) -> Result<Option<(&str, &str)>, Error>
 }
 
 fn parse_provided_multi_names(line: &str) -> Option<(&str, &str)> {
-    let Some(rest) = line.strip_prefix("provided ") else {
-        return None;
-    };
+    let rest = line.strip_prefix("provided ")?;
     if rest.contains('=') {
         return None;
     }
     let rest = rest.trim();
-    let Some(first_comma) = find_top_level_comma(rest) else {
-        return None;
-    };
-    let Some(split_index) = rest[..first_comma].rfind(' ') else {
-        return None;
-    };
+    let first_comma = find_top_level_comma(rest)?;
+    let split_index = rest[..first_comma].rfind(' ')?;
     Some((rest[..split_index].trim(), rest[split_index + 1..].trim()))
 }
 

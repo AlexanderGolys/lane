@@ -28,7 +28,10 @@ fn current_directory() -> PathBuf {
 
 fn load_source_file(path: &Path) -> Result<(String, PathBuf), Error> {
     let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
+    let base_dir = path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
     Ok((source, base_dir))
 }
 

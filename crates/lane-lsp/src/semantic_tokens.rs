@@ -211,9 +211,8 @@ fn is_default_library(token_type: u32, text: &str) -> bool {
 
 fn is_default_library_function(name: &str) -> bool {
     lane::known_primitive(name).is_some()
-        || lane::known_builtin_object(name).is_some_and(|detail| {
-            matches!(detail.kind, lane::KnownBuiltinObjectKind::Function)
-        })
+        || lane::known_builtin_object(name)
+            .is_some_and(|detail| matches!(detail.kind, lane::KnownBuiltinObjectKind::Function))
 }
 
 /// Checks if `name` belongs to the built-in category surface.

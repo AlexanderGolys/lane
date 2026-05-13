@@ -11,6 +11,8 @@
   "license": "MIT",
   "scripts": {
     "generate": "tree-sitter generate",
+    "build": "cc -fPIC -shared -I src src/parser.c -o parser.so",
+    "rebuild": "npm run generate && npm run build",
     "test": "tree-sitter test"
   },
   "tree-sitter": [

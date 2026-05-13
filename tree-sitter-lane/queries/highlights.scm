@@ -1,11 +1,13 @@
 ["provided" "construct" "const"] @keyword
 
-["Func" "Hom" "End" "Array" "->"] @variable.builtin
+["Func" "Hom" "End" "Array" "->"] @operator
 
 ["if" "else"] @keyword.conditional
 
 ["+" "-" "*" "/" "@" "^" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "|->"
- "and" "or" "not"] @operator
+ "and" "or" "not" "&" "~"] @operator
+
+(operator_reference) @operator
 
 ["(" ")" "[" "]" "{" "}" "<" ">"] @punctuation.bracket
 

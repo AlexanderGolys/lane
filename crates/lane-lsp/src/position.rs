@@ -39,18 +39,17 @@ fn byte_offset_for_character(line: &str, character: usize) -> usize {
 }
 
 /// Converts a byte offset to an LSP position using precomputed line starts.
-pub(crate) fn byte_to_position(
-    source: &str,
-    line_start_bytes: &[usize],
-    byte: usize,
-) -> Position {
+pub(crate) fn byte_to_position(source: &str, line_start_bytes: &[usize], byte: usize) -> Position {
     let line = match line_start_bytes.binary_search(&byte) {
         Ok(line) => line,
         Err(next_line) => next_line.saturating_sub(1),
     };
     let line_start = line_start_bytes.get(line).copied().unwrap_or(0);
     let byte = byte.min(source.len());
-    let character = source[line_start..byte].chars().map(char::len_utf16).sum::<usize>();
+    let character = source[line_start..byte]
+        .chars()
+        .map(char::len_utf16)
+        .sum::<usize>();
     Position::new(line as u32, character as u32)
 }
 

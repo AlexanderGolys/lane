@@ -184,7 +184,7 @@ impl App {
     fn new_with_history_file(history_file: Option<PathBuf>) -> Self {
         let input_history = history_file
             .as_ref()
-            .map(|path| load_repl_history(path))
+            .map(load_repl_history)
             .unwrap_or_default();
         Self {
             session: ReplSession::default(),

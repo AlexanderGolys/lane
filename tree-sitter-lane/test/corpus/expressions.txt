@@ -189,11 +189,7 @@ const Object output = values[size(a) - 1]
     (type_identifier)
     (identifier)
     (field_access_expression
-      (identifier
-        (name_template_slot
-          (template_slot_content))
-        (name_template_slot
-          (template_slot_content)))
+      (identifier)
       (identifier)))
   (binding_declaration
     (gen_modifier)
@@ -230,16 +226,16 @@ const Hom(Object, Hom(Ray, Hit)) raytrace = obj |-> "Hit raytrace(Ray ray) { flo
     (identifier)
     (closure_expression
       (identifier)
-      (string
-        (string_content)
+      (raw_code
+        (string)
         (placeholder
           (identifier)
           (identifier))
-        (string_content)
+        (string)
         (placeholder
           (identifier)
           (identifier))
-        (string_content)))))
+        (string)))))
 
 ==================
 Function Product Expression
@@ -281,9 +277,8 @@ const Hom(R x R, R) g = (x, y) |-> sin(x + y)
       (type_identifier))
     (identifier)
     (closure_expression
-      (closure_parameter_list
-        (identifier)
-        (identifier))
+      (identifier)
+      (identifier)
       (call_expression
         (identifier)
         (argument_list

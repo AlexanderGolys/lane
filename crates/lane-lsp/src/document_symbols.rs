@@ -1,6 +1,6 @@
+use crate::position;
 use tower_lsp::lsp_types::{DocumentSymbol, Range, SymbolKind};
 use tree_sitter::Node;
-use crate::position;
 
 /// Returns top-level document symbols discovered from a Lane source buffer.
 pub fn symbols(source: &str) -> Vec<DocumentSymbol> {
@@ -23,28 +23,27 @@ fn symbols_for_declaration(
     node: Node<'_>,
 ) -> Vec<DocumentSymbol> {
     match node.kind() {
-        "directive" => directive_symbol(source, line_start_bytes, node).into_iter().collect(),
+        "directive" => directive_symbol(source, line_start_bytes, node)
+            .into_iter()
+            .collect(),
         "provided_category_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::INTERFACE)
         }
         "category_type_declaration" | "product_type_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::STRUCT)
         }
-        "input_declaration" => named_field_symbols(
-            source,
-            line_start_bytes,
-            node,
-            SymbolKind::VARIABLE,
-        ),
-        "arrow_function_declaration" => named_field_symbols(
-            source,
-            line_start_bytes,
-            node,
-            SymbolKind::FUNCTION,
-        ),
-        "binding_declaration" | "inferred_binding_declaration" => {
-            named_field_symbols(source, line_start_bytes, node, binding_symbol_kind(source, node))
+        "input_declaration" => {
+            named_field_symbols(source, line_start_bytes, node, SymbolKind::VARIABLE)
         }
+        "arrow_function_declaration" => {
+            named_field_symbols(source, line_start_bytes, node, SymbolKind::FUNCTION)
+        }
+        "binding_declaration" | "inferred_binding_declaration" => named_field_symbols(
+            source,
+            line_start_bytes,
+            node,
+            binding_symbol_kind(source, node),
+        ),
         _ => Vec::new(),
     }
 }

@@ -14,7 +14,9 @@
 
 (gen_modifier) @keyword
 
-["+" "-" "*" "/" "@" "^" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "|->" "and" "or" "not"] @operator
+["+" "-" "*" "/" "@" "^" "=" "==" "!=" "<" "<=" ">" ">=" "×" "x" "|->" "and" "or" "not" "&" "~"] @operator
+
+(operator_reference) @operator
 
 (generic_type
   name: (identifier) @typeParameter)
