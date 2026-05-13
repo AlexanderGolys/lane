@@ -70,12 +70,16 @@ const HIGHLIGHT_NAMES: &[&str] = &[
     "variable.parameter",
 ];
 
+// FFI hook exported by tree-sitter for Lane syntax highlighting.
 unsafe extern "C" {
+    /// Performs `tree_sitter_lane` behavior.
     fn tree_sitter_lane() -> *const ();
 }
 
 const LANGUAGE_LANE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_lane) };
 
+/// Run the REPL event loop and keep creating terminal sessions until the user
+/// chooses to exit.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
     loop {
@@ -103,6 +107,8 @@ struct ReplTerminal {
 }
 
 impl ReplTerminal {
+    /// Enter raw terminal mode and allocate an alternate-screen crossterm
+    /// context for REPL rendering.
     fn enter() -> io::Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -115,6 +121,7 @@ impl ReplTerminal {
         })
     }
 
+    /// Restore the terminal to its normal mode and leave the alternate screen.
     fn leave(&mut self) -> io::Result<()> {
         if !self.active {
             return Ok(());
@@ -132,6 +139,7 @@ impl ReplTerminal {
 }
 
 impl Drop for ReplTerminal {
+    /// Ensure terminal mode is reset if the run loop panics or exits early.
     fn drop(&mut self) {
         if self.active {
             let _ = disable_raw_mode();
@@ -167,10 +175,12 @@ struct App {
 }
 
 impl App {
+    /// Create a new REPL app using the default history location.
     fn new() -> Self {
         Self::new_with_history_file(default_history_file())
     }
 
+    /// Build an app instance and optionally preload input history from disk.
     fn new_with_history_file(history_file: Option<PathBuf>) -> Self {
         let input_history = history_file
             .as_ref()
@@ -201,6 +211,8 @@ impl App {
         }
     }
 
+    /// Render, read one crossterm event, and route it to key/mouse handlers.
+    /// Return the resulting action only when a key interaction requests it.
     fn run(
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -222,6 +234,7 @@ impl App {
         }
     }
 
+    /// Handle one key event and return a REPL action when the key triggers it.
     fn handle_key(&mut self, key: KeyEvent) -> Option<ReplAction> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Some(ReplAction::Exit),
@@ -257,6 +270,7 @@ impl App {
         None
     }
 
+    /// Dispatch mouse events for entry selection, copy, and pane scrolling.
     fn handle_mouse(&mut self, mouse: MouseEvent) {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
@@ -277,6 +291,8 @@ impl App {
         }
     }
 
+    /// Map a mouse hit in the transcript region to the corresponding entry and
+    /// mark it as the currently selected group.
     fn select_entry_at(&mut self, x: u16, y: u16) {
         self.selected_group = self
             .layout
@@ -285,17 +301,20 @@ impl App {
             .and_then(|entry| entry.group);
     }
 
+    /// Return copyable text for a transcript entry at a screen position.
     fn copyable_text_at(&self, x: u16, y: u16) -> Option<String> {
         let index = self.layout.entry_at(x, y)?;
         let entry = self.transcript.get(index)?;
         entry.copyable_text()
     }
 
+    /// Insert a new character at the current input cursor position.
     fn insert_input_char(&mut self, ch: char) {
         self.input.insert(self.input_cursor, ch);
         self.input_cursor += ch.len_utf8();
     }
 
+    /// Remove the codepoint immediately before the input cursor, if present.
     fn backspace_input_char(&mut self) {
         let Some((previous, _)) = self.input[..self.input_cursor].char_indices().next_back() else {
             return;
@@ -304,12 +323,14 @@ impl App {
         self.input_cursor = previous;
     }
 
+    /// Move the cursor left by one UTF-8 scalar value.
     fn move_input_cursor_left(&mut self) {
         if let Some((previous, _)) = self.input[..self.input_cursor].char_indices().next_back() {
             self.input_cursor = previous;
         }
     }
 
+    /// Move the cursor right by one UTF-8 scalar value.
     fn move_input_cursor_right(&mut self) {
         if self.input_cursor >= self.input.len() {
             return;
@@ -322,6 +343,7 @@ impl App {
         self.input_cursor = next;
     }
 
+    /// Scroll backwards in transcript history (or user pane when split mode is on).
     fn scroll_transcript_up(&mut self) {
         if self.split_mode {
             self.scroll_split_pane_up(SplitPane::User);
@@ -336,6 +358,7 @@ impl App {
         }
     }
 
+    /// Scroll forward in transcript history (or user pane when split mode is on).
     fn scroll_transcript_down(&mut self) {
         if self.split_mode {
             self.scroll_split_pane_down(SplitPane::User);
@@ -344,6 +367,7 @@ impl App {
         }
     }
 
+    /// Scroll the active mouse-targeted pane up/down.
     fn scroll_at(&mut self, x: u16, y: u16, direction: ScrollDirection) {
         if !self.split_mode {
             match direction {
@@ -360,6 +384,7 @@ impl App {
         }
     }
 
+    /// Scroll one split pane upward up to its available max row count.
     fn scroll_split_pane_up(&mut self, pane: SplitPane) {
         let max_scroll = transcript_row_count(&self.split_pane_entries(pane), &self.transcript)
             .saturating_sub(1);
@@ -373,6 +398,7 @@ impl App {
         }
     }
 
+    /// Scroll one split pane downward.
     fn scroll_split_pane_down(&mut self, pane: SplitPane) {
         match pane {
             SplitPane::User => self.split_user_scroll = self.split_user_scroll.saturating_sub(1),
@@ -380,6 +406,7 @@ impl App {
         }
     }
 
+    /// Select transcript entry indices that belong to a split pane.
     fn split_pane_entries(&self, pane: SplitPane) -> Vec<usize> {
         self.transcript
             .iter()
@@ -393,6 +420,13 @@ impl App {
             .collect()
     }
 
+    /// Add a plain command row to transcript output.
+    fn push_command_entry(&mut self, input: &str) {
+        self.transcript
+            .push(TranscriptEntry::command(input.to_string(), None));
+    }
+
+    /// Handle a full input submission and append resulting transcript entries.
     fn submit_input(&mut self) -> Option<ReplAction> {
         self.clear_history_navigation();
         self.clear_completion();
@@ -401,76 +435,81 @@ impl App {
         if input.trim().is_empty() {
             return None;
         }
-        self.transcript_scroll = 0;
-        self.split_user_scroll = 0;
-        self.split_glsl_scroll = 0;
+
+        self.reset_submit_scroll_offsets();
 
         self.record_input_history(&input);
         let is_command = input.starts_with('/');
         let line_start = (!is_command).then(|| self.session.next_line_number());
+        self.resolve_submit_outcome(input, is_command, line_start)
+    }
+
+    /// Reset all transcript scroll offsets after a new submission is accepted.
+    fn reset_submit_scroll_offsets(&mut self) {
+        self.transcript_scroll = 0;
+        self.split_user_scroll = 0;
+        self.split_glsl_scroll = 0;
+    }
+
+    /// Handle session outcome for one submitted block and emit transcript rows.
+    fn resolve_submit_outcome(
+        &mut self,
+        input: String,
+        is_command: bool,
+        line_start: Option<usize>,
+    ) -> Option<ReplAction> {
         match self.session.submit(&input) {
             SubmitOutcome::Accepted => {
                 if !is_command {
-                    self.push_submitted_input(input.clone(), line_start, true);
+                    self.push_submitted_input(input, line_start, true);
                 }
             }
             SubmitOutcome::Emitted(glsl) => {
-                let group = self.push_submitted_input(input.clone(), line_start, true);
+                let group = self.push_submitted_input(input, line_start, true);
                 if glsl.is_empty() {
                     return None;
                 }
                 self.push_glsl_output(glsl, group);
             }
             SubmitOutcome::Cleared => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
-                self.transcript.clear();
-                self.selected_group = None;
+                self.with_command_input(&input, |app| app.clear_transcript());
             }
             SubmitOutcome::Restarted => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
-                self.transcript.clear();
-                self.selected_group = None;
-                self.next_group = 0;
-                self.transcript
-                    .push(TranscriptEntry::system("Session restarted."));
+                self.with_command_input(&input, |app| {
+                    app.clear_transcript();
+                    app.next_group = 0;
+                    app.transcript
+                        .push(TranscriptEntry::system("Session restarted."));
+                });
             }
             SubmitOutcome::Help => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
-                self.transcript.push(TranscriptEntry::help(help_text()));
+                self.push_command_with_entry(&input, TranscriptEntry::help(help_text()));
             }
             SubmitOutcome::Info(info) => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
-                self.transcript.push(TranscriptEntry::system(info));
+                self.push_command_with_entry(&input, TranscriptEntry::system(info));
             }
             SubmitOutcome::Code(source) => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
-                self.transcript
-                    .push(TranscriptEntry::submitted(source, None, Some(1)));
+                self.push_command_with_entry(
+                    &input,
+                    TranscriptEntry::submitted(source, None, Some(1)),
+                );
             }
             SubmitOutcome::Saved(message) | SubmitOutcome::Exported(message) => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
-                self.transcript.push(TranscriptEntry::system(message));
+                self.push_command_with_entry(&input, TranscriptEntry::system(message));
             }
             SubmitOutcome::Show(source) => return Some(ReplAction::Show(source)),
             SubmitOutcome::ToggleSplit => {
                 self.toggle_split();
             }
             SubmitOutcome::Exit => {
-                self.transcript
-                    .push(TranscriptEntry::command(input.clone(), None));
+                self.push_command_entry(&input);
                 return Some(ReplAction::Exit);
             }
             SubmitOutcome::Error(error) => {
                 if is_command {
                     self.transcript.push(TranscriptEntry::error(error, None));
                 } else {
-                    let group = self.push_submitted_input(input.clone(), line_start, false);
+                    let group = self.push_submitted_input(input, line_start, false);
                     if let Some(group) = group {
                         self.attach_group_error(group, error);
                     } else {
@@ -482,6 +521,28 @@ impl App {
         None
     }
 
+    /// Clear transcript content and reset click selection.
+    fn clear_transcript(&mut self) {
+        self.transcript.clear();
+        self.selected_group = None;
+    }
+
+    /// Record a command row and pass `self` to a follow-up mutator.
+    fn with_command_input<F>(&mut self, input: &str, update: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        self.push_command_entry(input);
+        update(self);
+    }
+
+    /// Record a command row and its immediate response entry.
+    fn push_command_with_entry(&mut self, input: &str, response: TranscriptEntry) {
+        self.push_command_entry(input);
+        self.transcript.push(response);
+    }
+
+    /// Format the current input using the lane formatter.
     fn format_current_input(&mut self) {
         if self.input.is_empty() {
             return;
@@ -493,6 +554,7 @@ impl App {
         self.input_cursor = self.input.len();
     }
 
+    /// Expand completion at cursor with matching entries, if available.
     fn apply_completion(&mut self) {
         let Some((start, prefix)) = completion_token(&self.input[..self.input_cursor]) else {
             self.clear_completion();
@@ -516,11 +578,13 @@ impl App {
         self.input_cursor = start + completed.len();
     }
 
+    /// Clear completion cache, selected index, and hints.
     fn clear_completion(&mut self) {
         self.completion_matches.clear();
         self.completion_index = 0;
     }
 
+    /// Add a non-empty input line to in-memory history and persist it.
     fn record_input_history(&mut self, input: &str) {
         if self.input_history.last().is_some_and(|last| last == input) {
             return;
@@ -529,6 +593,7 @@ impl App {
         self.persist_input_history();
     }
 
+    /// Persist history entries to disk if a history path is configured.
     fn persist_input_history(&self) {
         let Some(path) = self.history_file.as_ref() else {
             return;
@@ -545,6 +610,7 @@ impl App {
         let _ = fs::write(path, serialized);
     }
 
+    /// Restore the previous entered line from history for up-arrow navigation.
     fn recall_older_input(&mut self) {
         if self.input_history.is_empty() {
             return;
@@ -563,6 +629,7 @@ impl App {
         self.clear_completion();
     }
 
+    /// Restore the next line from history, or the draft when no more entries.
     fn recall_newer_input(&mut self) {
         let Some(position) = self.history_position else {
             return;
@@ -579,17 +646,21 @@ impl App {
         self.clear_completion();
     }
 
+    /// Exit history browsing mode and drop draft buffer.
     fn clear_history_navigation(&mut self) {
         self.history_position = None;
         self.history_draft.clear();
     }
 
+    /// Allocate a new transcript group identifier.
     fn allocate_group(&mut self) -> usize {
         let group = self.next_group;
         self.next_group += 1;
         group
     }
 
+    /// Insert submitted lane text as a transcript entry; merge with previous lane
+    /// entry when allowed.
     fn push_submitted_input(
         &mut self,
         input: String,
@@ -615,6 +686,7 @@ impl App {
         Some(group)
     }
 
+    /// Add a generated GLSL block and merge with prior block in same group.
     fn push_glsl_output(&mut self, glsl: GlslOutput, group: Option<usize>) {
         if let Some(entry) = self.transcript.last_mut() {
             if matches!(entry.kind, TranscriptKind::Glsl) && entry.group == group {
@@ -632,6 +704,7 @@ impl App {
         ));
     }
 
+    /// Return the latest non-errored lane entry for appending a merged line.
     fn latest_mergeable_lane_entry(&self) -> Option<usize> {
         let index = self.transcript.len().checked_sub(1)?;
         let entry = self.transcript.get(index)?;
@@ -642,6 +715,7 @@ impl App {
         }
     }
 
+    /// Attach an error marker to the most recent lane entry in `group`.
     fn attach_group_error(&mut self, group: usize, error: String) {
         for entry in self.transcript.iter_mut().rev() {
             if entry.group == Some(group) && matches!(entry.kind, TranscriptKind::Lane) {
@@ -652,10 +726,12 @@ impl App {
         }
     }
 
+    /// Switch between split and single-pane transcript rendering.
     fn toggle_split(&mut self) {
         self.split_mode = !self.split_mode;
     }
 
+    /// Draw transcript and command input for the active frame.
     fn draw(&mut self, frame: &mut ratatui::Frame) {
         self.layout = TranscriptLayout::default();
         if self.split_mode {
@@ -695,6 +771,7 @@ impl App {
         }
     }
 
+    /// Render transcript entries into a region using layout records.
     fn render_transcript_entries(
         &mut self,
         frame: &mut ratatui::Frame,
@@ -716,6 +793,7 @@ impl App {
         }
     }
 
+    /// Draw the current input block and cursor with visible placeholder offsets.
     fn render_input(&mut self, frame: &mut ratatui::Frame, area: Rect) {
         if area.height == 0 || area.width == 0 {
             return;
@@ -743,6 +821,7 @@ impl App {
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
     }
 
+    /// Build styled input text with optional syntax highlighting and hints.
     fn input_text(&mut self) -> Text<'static> {
         if self.input.is_empty() {
             return placeholder_input_text(self.current_input_gutter_width());
@@ -798,10 +877,12 @@ impl App {
         current_input_text(text, self.current_input_gutter_width())
     }
 
+    /// Compute gutter width from the next source line number.
     fn current_input_gutter_width(&self) -> u16 {
         line_number_gutter_width(self.session.next_line_number())
     }
 
+    /// Compose a short help label describing available completions.
     fn input_status_line(&self) -> Line<'static> {
         if self.completion_matches.len() > 1 {
             let labels = self
@@ -819,6 +900,7 @@ impl App {
         Line::raw("")
     }
 
+    /// Resolve the current completion suffix from selected or first matching item.
     fn completion_hint_suffix(&self) -> Option<String> {
         let (_, prefix) = completion_token(&self.input)?;
         if prefix.is_empty() {
@@ -829,6 +911,7 @@ impl App {
             .filter(|suffix| !suffix.is_empty())
     }
 
+    /// Return the currently-selected completion label when it matches the prefix.
     fn selected_completion_label(&self, prefix: &str) -> Option<String> {
         if let Some(item) = self.completion_matches.get(self.completion_index) {
             if item.label.starts_with(prefix) {
@@ -841,6 +924,7 @@ impl App {
             .map(|item| item.label)
     }
 
+    /// Return completion candidates for current context.
     fn active_completion_items(&self) -> Vec<lane::LaneCompletionItem> {
         if self.input.starts_with('/') {
             return repl_command_completion_items();
@@ -849,10 +933,12 @@ impl App {
     }
 
     #[cfg(test)]
+    /// Render a single transcript entry for tests.
     fn render_entry(&mut self, entry: &TranscriptEntry) -> ListItem<'static> {
         ListItem::new(self.render_entry_text(entry)).style(entry.style(self.selected_group))
     }
 
+    /// Render an entry using source-highlighting and optional error annotations.
     fn render_entry_text(&mut self, entry: &TranscriptEntry) -> Text<'static> {
         let text = match entry.kind {
             TranscriptKind::Lane => {
@@ -896,6 +982,7 @@ impl App {
     }
 }
 
+/// Choose a history file path for this session, with tests explicitly disabled.
 fn default_history_file() -> Option<PathBuf> {
     if cfg!(test) {
         return None;
@@ -913,6 +1000,7 @@ fn default_history_file() -> Option<PathBuf> {
     Some(state_base.join("lane/repl_history"))
 }
 
+/// Read non-empty history lines from disk.
 fn load_repl_history(path: &PathBuf) -> Vec<String> {
     let Ok(contents) = fs::read_to_string(path) else {
         return Vec::new();
@@ -930,6 +1018,7 @@ enum ReplAction {
     Show(String),
 }
 
+/// Calculate transcript area after reserving space for the input box.
 fn transcript_area(area: Rect) -> Rect {
     transcript_feed_area(Rect {
         height: area.height.saturating_sub(input_reserved_height(area)),
@@ -937,6 +1026,7 @@ fn transcript_area(area: Rect) -> Rect {
     })
 }
 
+/// Shift area right to account for feed gutter and remove gutter width from entries.
 fn transcript_feed_area(area: Rect) -> Rect {
     let x_offset = FEED_X_OFFSET.min(area.width);
     Rect {
@@ -946,6 +1036,7 @@ fn transcript_feed_area(area: Rect) -> Rect {
     }
 }
 
+/// Compute the active input area pinned at the bottom of the terminal.
 fn input_area(area: Rect) -> Rect {
     let x_offset = FEED_X_OFFSET.min(area.width);
     let height = input_height(area);
@@ -961,22 +1052,26 @@ fn input_area(area: Rect) -> Rect {
     }
 }
 
+/// Compute input+gaps height that must be reserved from transcript layout.
 fn input_reserved_height(area: Rect) -> u16 {
     input_height(area)
         .saturating_add(input_top_gap(area))
         .saturating_add(input_bottom_gap(area))
 }
 
+/// Return the visible input box height, capped to at least one row.
 fn input_height(area: Rect) -> u16 {
     area.height
         .saturating_sub(input_bottom_gap(area))
         .min(FEED_ENTRY_MIN_HEIGHT)
 }
 
+/// Keep a safe bottom gap even on short terminals.
 fn input_bottom_gap(area: Rect) -> u16 {
     INPUT_BOTTOM_GAP.min(area.height.saturating_sub(FEED_ENTRY_MIN_HEIGHT))
 }
 
+/// Keep top gap so input sits above transcript on constrained heights.
 fn input_top_gap(area: Rect) -> u16 {
     INPUT_TOP_GAP.min(
         area.height
@@ -986,6 +1081,7 @@ fn input_top_gap(area: Rect) -> u16 {
 }
 
 #[cfg(test)]
+/// Add blank separator lines between some transcript kinds in tests.
 fn spaced_transcript_items(
     items: Vec<(ListItem<'static>, TranscriptKind)>,
 ) -> Vec<ListItem<'static>> {
@@ -1001,6 +1097,7 @@ fn spaced_transcript_items(
     spaced
 }
 
+/// Decide when two neighboring transcript kinds can be displayed with no gap.
 fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) -> bool {
     if matches!(previous, TranscriptKind::Command) {
         return matches!(
@@ -1017,6 +1114,7 @@ fn adjacent_without_feed_gap(previous: TranscriptKind, current: TranscriptKind) 
     )
 }
 
+/// Return transcript indices newest-first for linear mode rendering.
 fn linear_transcript_entries(transcript: &[TranscriptEntry]) -> Vec<usize> {
     transcript
         .iter()
@@ -1026,6 +1124,7 @@ fn linear_transcript_entries(transcript: &[TranscriptEntry]) -> Vec<usize> {
         .collect()
 }
 
+/// Compute rendered row count for entries, including optional spacing rows.
 fn transcript_row_count(entries: &[usize], transcript: &[TranscriptEntry]) -> usize {
     let mut rows = 0usize;
     for (position, index) in entries.iter().enumerate() {
@@ -1051,6 +1150,7 @@ fn transcript_row_count(entries: &[usize], transcript: &[TranscriptEntry]) -> us
     rows
 }
 
+/// Add the blank top and bottom rows used by normal feed-like boxes.
 fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
     if text.lines.is_empty() {
         text.lines.push(Line::raw(""));
@@ -1060,6 +1160,7 @@ fn padded_feed_text(mut text: Text<'static>) -> Text<'static> {
     text
 }
 
+/// Format an error block with top/bottom padding.
 fn error_box_text(source: &str) -> Text<'static> {
     let mut lines = Vec::new();
     lines.push(Line::raw(""));
@@ -1071,6 +1172,7 @@ fn error_box_text(source: &str) -> Text<'static> {
     Text::from(lines)
 }
 
+/// Add a left gutter pad to every rendered line.
 fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
     for line in &mut text.lines {
         line.spans.insert(0, Span::raw(" "));
@@ -1078,6 +1180,7 @@ fn left_padded_text(mut text: Text<'static>) -> Text<'static> {
     text
 }
 
+/// Append a completion suffix hint to the final line when present.
 fn append_completion_hint(text: &mut Text<'static>, hint: Option<String>) {
     let Some(hint) = hint else {
         return;
@@ -1088,6 +1191,7 @@ fn append_completion_hint(text: &mut Text<'static>, hint: Option<String>) {
     }
 }
 
+/// Insert left gutter spacing (blank + line-number width) in input lines.
 fn current_input_text(mut text: Text<'static>, gutter_width: u16) -> Text<'static> {
     let gutter = " ".repeat(gutter_width as usize);
     for line in &mut text.lines {
@@ -1097,10 +1201,12 @@ fn current_input_text(mut text: Text<'static>, gutter_width: u16) -> Text<'stati
     text
 }
 
+/// Count logical lines in an input source block.
 fn input_line_count(input: &str) -> usize {
     input.chars().filter(|ch| *ch == '\n').count() + 1
 }
 
+/// Compute 0-based line and 0-based UTF-8 column at cursor index.
 fn input_cursor_position(input: &str, cursor: usize) -> (usize, u16) {
     let before_cursor = &input[..cursor.min(input.len())];
     let line = before_cursor.chars().filter(|ch| *ch == '\n').count();
@@ -1112,6 +1218,7 @@ fn input_cursor_position(input: &str, cursor: usize) -> (usize, u16) {
     (line, column)
 }
 
+/// Find completion token start and prefix from current input line tail.
 fn completion_token(input: &str) -> Option<(usize, String)> {
     let line_start = input.rfind('\n').map_or(0, |index| index + 1);
     let mut start = input.len();
@@ -1124,6 +1231,7 @@ fn completion_token(input: &str) -> Option<(usize, String)> {
     Some((start, input[start..].to_string()))
 }
 
+/// Choose the string to insert when completing with current match set.
 fn completion_target(prefix: &str, matches: &[lane::LaneCompletionItem]) -> Option<String> {
     match matches {
         [] => None,
@@ -1140,6 +1248,7 @@ fn completion_target(prefix: &str, matches: &[lane::LaneCompletionItem]) -> Opti
     }
 }
 
+/// Compute the longest common UTF-8 prefix across labels.
 fn longest_common_prefix(labels: &[&str]) -> String {
     let Some(first) = labels.first().copied() else {
         return String::new();
@@ -1157,10 +1266,12 @@ fn longest_common_prefix(labels: &[&str]) -> String {
     out
 }
 
+/// Return true when a character may appear in a completion token.
 fn is_completion_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '#' || ch == '/'
 }
 
+/// Static command completion items for slash-command mode.
 fn repl_command_completion_items() -> Vec<lane::LaneCompletionItem> {
     [
         ("/help", "Show REPL command help"),
@@ -1187,6 +1298,7 @@ fn repl_command_completion_items() -> Vec<lane::LaneCompletionItem> {
     .collect()
 }
 
+/// Build the empty-input placeholder text block.
 fn placeholder_input_text(gutter_width: u16) -> Text<'static> {
     current_input_text(
         Text::from(vec![
@@ -1201,6 +1313,7 @@ fn placeholder_input_text(gutter_width: u16) -> Text<'static> {
     )
 }
 
+/// Prefix source text with fixed-width line numbers.
 fn numbered_source_text(mut text: Text<'static>, line_start: usize) -> Text<'static> {
     let line_count = text.lines.len().max(1);
     let line_end = line_start.saturating_add(line_count.saturating_sub(1));
@@ -1214,14 +1327,17 @@ fn numbered_source_text(mut text: Text<'static>, line_start: usize) -> Text<'sta
     text
 }
 
+/// Lane-numbered variant wrapper around generic numbered source text.
 fn numbered_lane_text(text: Text<'static>, line_start: usize) -> Text<'static> {
     numbered_source_text(text, line_start)
 }
 
+/// Width in characters reserved for line-number gutter.
 fn line_number_gutter_width(line_number: usize) -> u16 {
     line_number.to_string().len().saturating_add(3) as u16
 }
 
+/// Build lane text with error annotations and gutter markers.
 fn errored_lane_text(
     mut source_text: Text<'static>,
     line_start: usize,
@@ -1256,6 +1372,7 @@ fn errored_lane_text(
     Text::from(lines)
 }
 
+/// Build copyable text for errored lane entry including formatted error header.
 fn errored_lane_copy_text(source: &str, error: &str) -> String {
     let mut text = error
         .lines()
@@ -1269,6 +1386,7 @@ fn errored_lane_copy_text(source: &str, error: &str) -> String {
     text
 }
 
+/// Strip compiler-style `line N:` prefix noise from a copied error line.
 fn strip_error_line_reference(line: &str) -> String {
     let mut words = line.split_whitespace();
     match (words.next(), words.next()) {
@@ -1284,11 +1402,13 @@ pub(crate) struct GlslOutput {
 }
 
 impl GlslOutput {
+    /// True when the emitted GLSL block is empty.
     fn is_empty(&self) -> bool {
         self.text.is_empty()
     }
 }
 
+/// Calculate only newly added lines and their starting row in a new GLSL text.
 fn new_glsl_since(previous: &str, current: &str) -> GlslOutput {
     if previous.is_empty() {
         return GlslOutput {
@@ -1355,10 +1475,12 @@ struct TranscriptLayout {
 }
 
 impl TranscriptLayout {
+    /// Register pane bounds for hit-testing.
     fn record_pane(&mut self, pane: SplitPane, area: Rect) {
         self.panes.push(RenderedPane { pane, area });
     }
 
+    /// Lay out entries bottom-to-top within a rectangle, applying scroll + gaps.
     fn record_bottom_to_top(
         &mut self,
         area: Rect,
@@ -1422,6 +1544,7 @@ impl TranscriptLayout {
         }
     }
 
+    /// Find an entry id under cursor coordinates.
     fn entry_at(&self, x: u16, y: u16) -> Option<usize> {
         self.entries
             .iter()
@@ -1429,6 +1552,7 @@ impl TranscriptLayout {
             .map(|entry| entry.index)
     }
 
+    /// Find a pane under cursor coordinates.
     fn pane_at(&self, x: u16, y: u16) -> Option<SplitPane> {
         self.panes
             .iter()
@@ -1461,6 +1585,7 @@ struct RenderedPane {
     area: Rect,
 }
 
+/// Hit-test a point inside a rectangle.
 fn contains(area: Rect, x: u16, y: u16) -> bool {
     x >= area.x
         && x < area.x.saturating_add(area.width)
@@ -1468,16 +1593,19 @@ fn contains(area: Rect, x: u16, y: u16) -> bool {
         && y < area.y.saturating_add(area.height)
 }
 
+/// Write OSC-52 sequence to the current terminal for clipboard copy.
 fn copy_text_to_clipboard(text: &str) -> io::Result<()> {
     let mut stdout = io::stdout();
     write_osc52_clipboard(&mut stdout, text)
 }
 
+/// Emit OSC-52 escape sequence through a writer.
 fn write_osc52_clipboard(writer: &mut impl Write, text: &str) -> io::Result<()> {
     write!(writer, "\x1b]52;c;{}\x07", base64_encode(text.as_bytes()))?;
     writer.flush()
 }
 
+/// Base64 encode bytes for OSC-52 clipboard payload.
 fn base64_encode(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut encoded = String::with_capacity(bytes.len().div_ceil(3).saturating_mul(4));
@@ -1523,6 +1651,7 @@ enum TranscriptKind {
 }
 
 impl TranscriptEntry {
+    /// Create a command transcript row.
     fn command(text: String, group: Option<usize>) -> Self {
         Self {
             kind: TranscriptKind::Command,
@@ -1534,6 +1663,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Create a user/ lane transcript row, or command if it begins with `/`.
     fn submitted(text: String, group: Option<usize>, line_start: Option<usize>) -> Self {
         if text.starts_with('/') {
             Self::command(text, group)
@@ -1549,6 +1679,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Create a GLSL output transcript row.
     fn glsl(text: String, group: Option<usize>, line_start: Option<usize>) -> Self {
         Self {
             kind: TranscriptKind::Glsl,
@@ -1560,6 +1691,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Create an error row.
     fn error(text: String, group: Option<usize>) -> Self {
         Self {
             kind: TranscriptKind::Error,
@@ -1571,6 +1703,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Create a system row.
     fn system(text: impl Into<String>) -> Self {
         Self {
             kind: TranscriptKind::System,
@@ -1582,6 +1715,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Create a welcome row shown on startup.
     fn welcome(text: impl Into<String>) -> Self {
         Self {
             kind: TranscriptKind::Welcome,
@@ -1593,6 +1727,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Create a help-row used for `/help`.
     fn help(text: impl Into<String>) -> Self {
         Self {
             kind: TranscriptKind::Help,
@@ -1604,6 +1739,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Return text users can copy from this entry, including error context.
     fn copyable_text(&self) -> Option<String> {
         match self.kind {
             TranscriptKind::Welcome => None,
@@ -1615,6 +1751,7 @@ impl TranscriptEntry {
         }
     }
 
+    /// Count how many screen lines this entry consumes (including feed padding).
     fn line_count(&self) -> u16 {
         let lines = if matches!(self.kind, TranscriptKind::Lane) && self.error.is_some() {
             self.error
@@ -1631,6 +1768,7 @@ impl TranscriptEntry {
         lines.saturating_add(2)
     }
 
+    /// Style the row, with selected grouping emphasis and errored variants.
     fn style(&self, selected_group: Option<usize>) -> Style {
         if self.group.is_some() && self.group == selected_group {
             return match self.kind {
@@ -1654,6 +1792,7 @@ impl TranscriptEntry {
         self.base_style()
     }
 
+    /// Style for unselected rows.
     fn base_style(&self) -> Style {
         match self.kind {
             TranscriptKind::Lane if self.errored => Style::default().fg(ERROR_FG).bg(ERROR_BG),
@@ -1694,10 +1833,12 @@ pub(crate) enum SubmitOutcome {
 }
 
 impl ReplSession {
+    /// Current source line number is one past last stored line.
     fn next_line_number(&self) -> usize {
         self.source.lines().count().saturating_add(1)
     }
 
+    /// Submit a user block: either command, module-safe lane line, or const output.
     pub(crate) fn submit(&mut self, input: &str) -> SubmitOutcome {
         let line = input.trim_end_matches(['\r', '\n']);
         if line.is_empty() {
@@ -1726,6 +1867,7 @@ impl ReplSession {
         }
     }
 
+    /// Dispatch REPL commands beginning with `/`.
     fn run_command(&mut self, command: &str) -> SubmitOutcome {
         let command = command.trim_end();
         if let Some(path) = command.strip_prefix("/save ") {
@@ -1756,6 +1898,7 @@ impl ReplSession {
         }
     }
 
+    /// Write source buffer to disk.
     fn save_source(&self, path: &str) -> SubmitOutcome {
         if path.is_empty() {
             return SubmitOutcome::Error("usage: /save <filename>".to_string());
@@ -1766,6 +1909,7 @@ impl ReplSession {
         }
     }
 
+    /// Re-run and export the current source to a GLSL output file.
     fn export_glsl(&self, path: &str) -> SubmitOutcome {
         if path.is_empty() {
             return SubmitOutcome::Error("usage: /export <filename>".to_string());
@@ -1780,6 +1924,7 @@ impl ReplSession {
     }
 }
 
+/// Compose the short `/help` message.
 fn help_text() -> String {
     [
         "Ctrl-F formats the current input.",
@@ -1799,6 +1944,7 @@ fn help_text() -> String {
     .join("\n")
 }
 
+/// Convert program info into grouped, human-readable sections.
 fn format_program_info(info: &lane::ProgramInfo) -> String {
     [
         info_section("Loaded modules", &info.loaded_modules),
@@ -1808,6 +1954,7 @@ fn format_program_info(info: &lane::ProgramInfo) -> String {
     .join("\n")
 }
 
+/// Format a section header and list values or `(none)`.
 fn info_section(title: &str, items: &[String]) -> String {
     if items.is_empty() {
         return format!("{title}:\n  (none)");
@@ -1815,6 +1962,7 @@ fn info_section(title: &str, items: &[String]) -> String {
     format!("{title}:\n  {}", items.join("\n  "))
 }
 
+/// Highlight helper text tokens like commands and key combos.
 fn highlight_help_text(source: &str) -> Text<'static> {
     let lines = source
         .lines()
@@ -1846,6 +1994,7 @@ fn highlight_help_text(source: &str) -> Text<'static> {
     Text::from(lines)
 }
 
+/// True when token resembles a keymap like `Ctrl-C`.
 fn is_help_keymap_token(token: &str) -> bool {
     let cleaned = token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-');
     if cleaned.is_empty() || !cleaned.contains('-') {
@@ -1856,6 +2005,7 @@ fn is_help_keymap_token(token: &str) -> bool {
         .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_alphabetic()))
 }
 
+/// Append one non-empty line to an existing source body.
 fn append_line(source: &str, line: &str) -> String {
     let mut out = source.to_string();
     if !out.is_empty() && !out.ends_with('\n') {
@@ -1866,14 +2016,17 @@ fn append_line(source: &str, line: &str) -> String {
     out
 }
 
+/// Detect if a line is a `const` declaration.
 fn is_const_declaration(line: &str) -> bool {
     strip_comment(line).trim_start().starts_with("const ")
 }
 
+/// Detect `#module` directives and reject them in interactive mode.
 fn is_module_directive(line: &str) -> bool {
     strip_comment(line).trim() == "#module"
 }
 
+/// Remove inline `//` comments for declaration checks.
 fn strip_comment(line: &str) -> &str {
     line.split_once("//").map_or(line, |(before, _)| before)
 }
@@ -1885,6 +2038,7 @@ struct SyntaxHighlighter {
 }
 
 impl SyntaxHighlighter {
+    /// Build lane/glsl highlighter configurations when available.
     fn new() -> Self {
         let lane = HighlightConfiguration::new(
             LANGUAGE_LANE.into(),
@@ -1911,14 +2065,17 @@ impl SyntaxHighlighter {
         }
     }
 
+    /// Highlight a Lane snippet.
     fn highlight_lane(&mut self, source: &str) -> Text<'static> {
         self.highlight(source, Syntax::Lane)
     }
 
+    /// Highlight a GLSL snippet.
     fn highlight_glsl(&mut self, source: &str) -> Text<'static> {
         self.highlight(source, Syntax::Glsl)
     }
 
+    /// Highlight source in the requested syntax, with safe fallback.
     fn highlight(&mut self, source: &str, syntax: Syntax) -> Text<'static> {
         let config = match syntax {
             Syntax::Lane => self.lane.as_ref(),
@@ -1939,11 +2096,13 @@ enum Syntax {
     Glsl,
 }
 
+/// Configure tree-sitter highlight capture set from canonical capture names.
 fn configure_highlights(mut config: HighlightConfiguration) -> HighlightConfiguration {
     config.configure(HIGHLIGHT_NAMES);
     config
 }
 
+/// Convert highlight events into styled spans.
 fn highlight_spans(
     highlighter: &mut Highlighter,
     config: &HighlightConfiguration,
@@ -1970,6 +2129,7 @@ fn highlight_spans(
     Ok(spans)
 }
 
+/// Build text from styled spans while preserving newlines.
 fn spans_to_text(spans: Vec<Span<'static>>) -> Text<'static> {
     let mut lines = vec![Line::default()];
     for span in spans {
@@ -1990,6 +2150,7 @@ fn spans_to_text(spans: Vec<Span<'static>>) -> Text<'static> {
     Text::from(lines)
 }
 
+/// Translate tree-sitter style indexes into terminal styles.
 fn highlight_style(index: usize) -> Style {
     let name = HIGHLIGHT_NAMES.get(index).copied().unwrap_or("");
     match name {
@@ -2014,1358 +2175,5 @@ fn highlight_style(index: usize) -> Style {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn temp_history_file() -> PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!("lane-repl-history-test-{unique}.txt"))
-    }
-
-    fn set_app_input(app: &mut App, input: &str) {
-        app.input = input.to_string();
-        app.input_cursor = app.input.len();
-    }
-
-    #[test]
-    fn accepts_setup_and_emits_after_const() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-        let outcome = session.submit("const Object output = Ball3D(r=radius)");
-        let SubmitOutcome::Emitted(glsl) = outcome else {
-            panic!("expected GLSL output");
-        };
-        assert!(glsl.text.contains("sdf0_Ball3D(p, ParamBall3D(radius))"));
-    }
-
-    #[test]
-    fn later_const_emits_only_lines_after_previous_output() {
-        let mut session = ReplSession::default();
-        let SubmitOutcome::Emitted(first_glsl) = session.submit("const R radius = 1") else {
-            panic!("expected first GLSL output");
-        };
-        assert!(first_glsl.text.contains("const float radius = 1.0f;"));
-        let outcome = session.submit("const Object output = Ball3D(r=radius)");
-        let SubmitOutcome::Emitted(glsl) = outcome else {
-            panic!("expected GLSL output");
-        };
-        assert!(glsl.text.contains("struct ParamBall3D"));
-        assert!(glsl.text.contains("float scene_sdf(vec3 p)"));
-        assert!(!glsl.text.contains("const float radius = 1.0f;"));
-    }
-
-    #[test]
-    fn later_const_emits_new_product_structs_inserted_before_old_output() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("Set Pair = R x R"), SubmitOutcome::Accepted);
-        let first = session.submit("const Pair pair = Pair(1, 2)");
-        assert!(matches!(first, SubmitOutcome::Emitted(_)));
-
-        assert_eq!(
-            session.submit("Set Triple = R x R x R"),
-            SubmitOutcome::Accepted
-        );
-        let SubmitOutcome::Emitted(second) =
-            session.submit("const Triple triple = Triple(1, 2, 3)")
-        else {
-            panic!("expected emitted GLSL");
-        };
-
-        assert!(second.text.contains("struct Triple"));
-        assert!(second
-            .text
-            .contains("const Triple triple = Triple(1.0f, 2.0f, 3.0f);"));
-        assert!(!second.text.contains("struct Pair"));
-        assert!(!second.text.contains("const Pair pair"));
-    }
-
-    #[test]
-    fn new_glsl_since_keeps_insertions_before_existing_lines() {
-        let previous = "struct Pair {\n    float x;\n};\n\nconst Pair pair = Pair(1.0);";
-        let current = concat!(
-            "struct Pair {\n    float x;\n};\n\n",
-            "struct Triple {\n    float x;\n};\n\n",
-            "const Pair pair = Pair(1.0);\n",
-            "const Triple triple = Triple(1.0);"
-        );
-
-        let added = new_glsl_since(previous, current);
-
-        assert!(added.text.contains("struct Triple"));
-        assert!(added.text.contains("const Triple triple = Triple(1.0);"));
-        assert!(!added.text.contains("struct Pair"));
-        assert!(!added.text.contains("const Pair pair"));
-        assert_eq!(added.line_start, 5);
-    }
-
-    #[test]
-    fn first_glsl_emission_starts_at_line_one() {
-        let mut session = ReplSession::default();
-        let SubmitOutcome::Emitted(glsl) = session.submit("const R radius = 1") else {
-            panic!("expected emitted GLSL");
-        };
-
-        assert_eq!(glsl.line_start, 1);
-        assert!(glsl.text.contains("const float radius = 1.0f;"));
-    }
-
-    #[test]
-    fn invalid_line_does_not_mutate_session() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-        assert!(matches!(
-            session.submit("const Object broken = Missing("),
-            SubmitOutcome::Error(_)
-        ));
-        let outcome = session.submit("const Object output = Ball3D(r=radius)");
-        assert!(matches!(outcome, SubmitOutcome::Emitted(_)));
-    }
-
-    #[test]
-    fn rejects_module_directive() {
-        let mut session = ReplSession::default();
-        assert_eq!(
-            session.submit("#module"),
-            SubmitOutcome::Error("#module is not allowed in the interactive shell".into())
-        );
-    }
-
-    #[test]
-    fn restart_clears_accumulated_source() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-        assert_eq!(session.submit("/restart"), SubmitOutcome::Restarted);
-        let outcome = session.submit("const Object output = Ball3D(r=radius)");
-        assert!(matches!(outcome, SubmitOutcome::Error(_)));
-    }
-
-    #[test]
-    fn split_command_toggles_split_mode() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("/split"), SubmitOutcome::ToggleSplit);
-    }
-
-    #[test]
-    fn split_toggle_preserves_transcript_text() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.transcript.push(TranscriptEntry::submitted(
-            "const R radius = 1".to_string(),
-            Some(0),
-            Some(1),
-        ));
-        app.transcript.push(TranscriptEntry::glsl(
-            "float radius = 1.0;".to_string(),
-            Some(0),
-            None,
-        ));
-        app.input = "/split".to_string();
-
-        app.submit_input();
-
-        assert!(app.split_mode);
-        assert_eq!(app.transcript.len(), 2);
-        assert_eq!(app.transcript[0].text, "const R radius = 1");
-        assert_eq!(app.transcript[1].text, "float radius = 1.0;");
-    }
-
-    #[test]
-    fn left_and_right_arrows_move_input_cursor_for_insertions() {
-        let mut app = App::new();
-        app.input = "ab".to_string();
-        app.input_cursor = app.input.len();
-
-        app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
-        app.handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE));
-        assert_eq!(app.input, "aXb");
-
-        app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
-        app.handle_key(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::NONE));
-        assert_eq!(app.input, "aXbY");
-    }
-
-    #[test]
-    fn backspace_removes_character_before_input_cursor() {
-        let mut app = App::new();
-        app.input = "abc".to_string();
-        app.input_cursor = 2;
-
-        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
-
-        assert_eq!(app.input, "ac");
-        assert_eq!(app.input_cursor, 1);
-    }
-
-    #[test]
-    fn transcript_scroll_moves_and_submit_returns_to_latest() {
-        let mut app = App::new();
-        app.transcript = vec![
-            TranscriptEntry::system("old"),
-            TranscriptEntry::system("middle"),
-            TranscriptEntry::system("new"),
-        ];
-
-        app.scroll_transcript_up();
-        app.scroll_transcript_up();
-        assert_eq!(app.transcript_scroll, 2);
-        app.scroll_transcript_down();
-        assert_eq!(app.transcript_scroll, 1);
-
-        app.input = "R radius = 1".to_string();
-        app.input_cursor = app.input.len();
-        app.submit_input();
-
-        assert_eq!(app.transcript_scroll, 0);
-    }
-
-    #[test]
-    fn split_scroll_offsets_move_independently() {
-        let mut app = App::new();
-        app.split_mode = true;
-        app.transcript = vec![
-            TranscriptEntry::submitted("R old = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0), None),
-            TranscriptEntry::submitted("R new = 2".to_string(), Some(1), Some(2)),
-            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1), None),
-        ];
-
-        app.scroll_split_pane_up(SplitPane::Glsl);
-        assert_eq!(app.split_user_scroll, 0);
-        assert_eq!(app.split_glsl_scroll, 1);
-
-        app.scroll_split_pane_up(SplitPane::User);
-        app.scroll_split_pane_down(SplitPane::Glsl);
-        assert_eq!(app.split_user_scroll, 1);
-        assert_eq!(app.split_glsl_scroll, 0);
-    }
-
-    #[test]
-    fn split_mouse_wheel_scrolls_pane_under_pointer() {
-        let backend = ratatui::backend::TestBackend::new(80, 12);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new();
-        app.split_mode = true;
-        app.transcript = vec![
-            TranscriptEntry::submitted("R old = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float old = 1.0;".to_string(), Some(0), None),
-            TranscriptEntry::submitted("R new = 2".to_string(), Some(1), Some(2)),
-            TranscriptEntry::glsl("float new = 2.0;".to_string(), Some(1), None),
-        ];
-
-        terminal.draw(|frame| app.draw(frame)).unwrap();
-
-        app.scroll_at(45, 1, ScrollDirection::Up);
-        assert_eq!(app.split_user_scroll, 0);
-        assert_eq!(app.split_glsl_scroll, 1);
-
-        app.scroll_at(5, 1, ScrollDirection::Up);
-        assert_eq!(app.split_user_scroll, 1);
-        assert_eq!(app.split_glsl_scroll, 1);
-    }
-
-    #[test]
-    fn input_cursor_position_tracks_multiline_columns() {
-        assert_eq!(input_cursor_position("abc\nde", 6), (1, 2));
-    }
-
-    #[test]
-    fn help_command_prints_help() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("/help"), SubmitOutcome::Help);
-    }
-
-    #[test]
-    fn help_command_ignores_trailing_spaces() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("/help   "), SubmitOutcome::Help);
-    }
-
-    #[test]
-    fn help_text_omits_redundant_basic_keymap_lines() {
-        let text = help_text();
-        assert!(!text.contains("Enter submits."));
-        assert!(!text.contains("Shift-Enter inserts a newline"));
-        assert!(!text.contains("Up and Down recall submitted input history."));
-        assert!(!text.contains("Tab completes to the longest unambiguous prefix"));
-        assert!(text.contains("Ctrl-F formats the current input."));
-        assert!(text.contains("Right-click a transcript block to copy its text."));
-    }
-
-    #[test]
-    fn help_highlighting_marks_key_combinations_in_blue() {
-        let text = highlight_help_text("Ctrl-F formats current input.");
-        assert_eq!(text.lines[0].spans[0].content.as_ref(), "Ctrl-F");
-        assert_eq!(text.lines[0].spans[0].style.fg, Some(KEYMAP_FG));
-    }
-
-    #[test]
-    fn unknown_command_ignores_trailing_spaces() {
-        let mut session = ReplSession::default();
-        assert_eq!(
-            session.submit("/wat   "),
-            SubmitOutcome::Error("unknown shell command '/wat'".to_string())
-        );
-    }
-
-    #[test]
-    fn info_command_reports_session_metadata() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("#import std"), SubmitOutcome::Accepted);
-        assert_eq!(session.submit("#2D"), SubmitOutcome::Accepted);
-        assert_eq!(session.submit("#prec 0.002"), SubmitOutcome::Accepted);
-        assert_eq!(session.submit("provided R time"), SubmitOutcome::Accepted);
-
-        let SubmitOutcome::Info(info) = session.submit("/info") else {
-            panic!("expected info output");
-        };
-        assert!(info.contains("Loaded modules:\n  std"));
-        assert!(info.contains("Used directives:\n  #2D\n  #prec 0.002"));
-        assert!(info.contains("Provided objects:\n  R time"));
-    }
-
-    #[test]
-    fn info_command_reports_empty_sections() {
-        let mut session = ReplSession::default();
-
-        assert_eq!(
-            session.submit("/info"),
-            SubmitOutcome::Info(
-                "Loaded modules:\n  (none)\nUsed directives:\n  (none)\nProvided objects:\n  (none)"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn show_command_returns_current_source() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-        assert_eq!(
-            session.submit("/show"),
-            SubmitOutcome::Show("R radius = 1\n".to_string())
-        );
-    }
-
-    #[test]
-    fn code_command_returns_full_session_source() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-        assert_eq!(
-            session.submit("/code"),
-            SubmitOutcome::Code("R radius = 1".to_string())
-        );
-    }
-
-    #[test]
-    fn save_command_writes_full_session_source() {
-        let path = temp_history_file();
-        let mut session = ReplSession::default();
-        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-
-        let outcome = session.submit(&format!("/save {}", path.display()));
-
-        assert!(matches!(outcome, SubmitOutcome::Saved(_)));
-        assert_eq!(fs::read_to_string(&path).unwrap(), "R radius = 1\n");
-        let _ = fs::remove_file(path);
-    }
-
-    #[test]
-    fn export_command_writes_generated_glsl() {
-        let path = temp_history_file();
-        let mut session = ReplSession::default();
-        assert_eq!(
-            session.submit("const R radius = 1"),
-            SubmitOutcome::Emitted(GlslOutput {
-                text: crate::compile_program_output("const R radius = 1\n").unwrap(),
-                line_start: 1,
-            })
-        );
-
-        let outcome = session.submit(&format!("/export {}", path.display()));
-
-        assert!(matches!(outcome, SubmitOutcome::Exported(_)));
-        assert!(fs::read_to_string(&path)
-            .unwrap()
-            .contains("const float radius = 1.0f;"));
-        let _ = fs::remove_file(path);
-    }
-
-    #[test]
-    fn file_commands_require_a_filename() {
-        let mut session = ReplSession::default();
-
-        assert_eq!(
-            session.submit("/save"),
-            SubmitOutcome::Error("usage: /save <filename>".to_string())
-        );
-        assert_eq!(
-            session.submit("/save   "),
-            SubmitOutcome::Error("usage: /save <filename>".to_string())
-        );
-        assert_eq!(
-            session.submit("/export   "),
-            SubmitOutcome::Error("usage: /export <filename>".to_string())
-        );
-    }
-
-    #[test]
-    fn slash_command_only_works_when_it_starts_the_input_block() {
-        let mut session = ReplSession::default();
-        assert_eq!(
-            session.submit("/help\nR radius = 1"),
-            SubmitOutcome::Error("unknown shell command '/help\nR radius = 1'".to_string())
-        );
-        assert!(matches!(
-            session.submit("R radius = 1\n/help"),
-            SubmitOutcome::Error(_)
-        ));
-    }
-
-    #[test]
-    fn session_tracks_next_source_line_number() {
-        let mut session = ReplSession::default();
-        assert_eq!(session.next_line_number(), 1);
-
-        assert_eq!(session.submit("R radius = 1"), SubmitOutcome::Accepted);
-        assert_eq!(session.next_line_number(), 2);
-
-        assert!(matches!(
-            session.submit("const Object broken = Missing("),
-            SubmitOutcome::Error(_)
-        ));
-        assert_eq!(session.next_line_number(), 2);
-    }
-
-    #[test]
-    fn consecutive_lane_submissions_share_one_feed_box() {
-        let mut app = App::new();
-        app.transcript.clear();
-
-        let first_group = app.push_submitted_input("R radius = 1".to_string(), Some(1), true);
-        let second_group =
-            app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2), true);
-
-        assert_eq!(first_group, second_group);
-        assert_eq!(app.transcript.len(), 1);
-        assert_eq!(
-            app.transcript[0].text,
-            "R radius = 1\nR diameter = radius * 2"
-        );
-        assert_eq!(app.transcript[0].line_start, Some(1));
-    }
-
-    #[test]
-    fn lane_submissions_do_not_merge_across_generated_glsl() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.input = "const R radius = 1".to_string();
-        app.submit_input();
-        app.input = "R diameter = radius * 2".to_string();
-        app.submit_input();
-
-        assert_eq!(app.transcript.len(), 3);
-        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert!(matches!(app.transcript[1].kind, TranscriptKind::Glsl));
-        assert!(matches!(app.transcript[2].kind, TranscriptKind::Lane));
-        assert_eq!(app.transcript[0].text, "const R radius = 1");
-        assert_eq!(app.transcript[2].text, "R diameter = radius * 2");
-        assert_eq!(app.transcript[0].line_start, Some(1));
-        assert_eq!(app.transcript[0].group, app.transcript[1].group);
-        assert_ne!(app.transcript[0].group, app.transcript[2].group);
-    }
-
-    #[test]
-    fn generated_glsl_outputs_do_not_merge_across_lane_blocks() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.split_mode = true;
-        app.input = "const R radius = 1".to_string();
-        app.submit_input();
-        app.input = "const R diameter = radius * 2".to_string();
-        app.submit_input();
-
-        assert_eq!(app.transcript.len(), 4);
-        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert!(matches!(app.transcript[1].kind, TranscriptKind::Glsl));
-        assert!(matches!(app.transcript[2].kind, TranscriptKind::Lane));
-        assert!(matches!(app.transcript[3].kind, TranscriptKind::Glsl));
-        assert!(app.transcript[1]
-            .text
-            .contains("const float radius = 1.0f;"));
-        assert!(app.transcript[3]
-            .text
-            .contains("const float diameter = (radius * 2.0f);"));
-    }
-
-    #[test]
-    fn adjacent_glsl_outputs_share_one_feed_box() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.push_glsl_output(
-            GlslOutput {
-                text: "float radius = 1.0;".to_string(),
-                line_start: 1,
-            },
-            Some(0),
-        );
-        app.push_glsl_output(
-            GlslOutput {
-                text: "float diameter = radius * 2.0;".to_string(),
-                line_start: 2,
-            },
-            Some(0),
-        );
-
-        assert_eq!(app.transcript.len(), 1);
-        assert!(matches!(app.transcript[0].kind, TranscriptKind::Glsl));
-        assert_eq!(
-            app.transcript[0].text,
-            "float radius = 1.0;\nfloat diameter = radius * 2.0;"
-        );
-        assert_eq!(app.transcript[0].line_start, Some(1));
-    }
-
-    #[test]
-    fn app_loads_persisted_input_history() {
-        let history_file = temp_history_file();
-        fs::write(
-            &history_file,
-            "R radius = 1\n\nconst Object output = Ball3D(r=radius)\n",
-        )
-        .unwrap();
-
-        let app = App::new_with_history_file(Some(history_file.clone()));
-
-        assert_eq!(
-            app.input_history,
-            vec![
-                "R radius = 1".to_string(),
-                "const Object output = Ball3D(r=radius)".to_string()
-            ]
-        );
-        let _ = fs::remove_file(history_file);
-    }
-
-    #[test]
-    fn submitting_input_persists_history_to_disk() {
-        let history_file = temp_history_file();
-        let mut app = App::new_with_history_file(Some(history_file.clone()));
-
-        app.input = "R radius = 1".to_string();
-        app.submit_input();
-        app.input = "const R radius2 = 2".to_string();
-        app.submit_input();
-
-        let stored = fs::read_to_string(&history_file).unwrap();
-        assert_eq!(stored, "R radius = 1\nconst R radius2 = 2\n");
-        let _ = fs::remove_file(history_file);
-    }
-
-    #[test]
-    fn up_arrow_recalls_previous_submitted_input() {
-        let mut app = App::new();
-
-        app.input = "R radius = 1".to_string();
-        app.submit_input();
-        app.input = "const R diameter = radius * 2".to_string();
-        app.submit_input();
-
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.input, "const R diameter = radius * 2");
-
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.input, "R radius = 1");
-
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.input, "R radius = 1");
-    }
-
-    #[test]
-    fn down_arrow_moves_forward_and_restores_draft() {
-        let mut app = App::new();
-
-        app.input = "R radius = 1".to_string();
-        app.submit_input();
-        app.input = "const R diameter = radius * 2".to_string();
-        app.submit_input();
-        app.input = "R draft = ".to_string();
-
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.input, "const R diameter = radius * 2");
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.input, "R radius = 1");
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.input, "const R diameter = radius * 2");
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.input, "R draft = ");
-    }
-
-    #[test]
-    fn editing_recalled_input_starts_a_new_history_navigation() {
-        let mut app = App::new();
-
-        app.input = "R radius = 1".to_string();
-        app.submit_input();
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        app.handle_key(KeyEvent::from(KeyCode::Char('0')));
-
-        assert_eq!(app.input, "R radius = 10");
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.input, "R radius = 10");
-    }
-
-    #[test]
-    fn empty_input_shows_gray_placeholder_text() {
-        let mut app = App::new();
-
-        let text = app.input_text();
-
-        assert_eq!(text.lines.len(), 3);
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[1].spans[1].content.as_ref(), "    ");
-        assert_eq!(text.lines[1].spans[2].content.as_ref(), INPUT_PLACEHOLDER);
-        assert_eq!(text.lines[1].spans[2].style.fg, Some(INPUT_PLACEHOLDER_FG));
-    }
-
-    #[test]
-    fn typed_input_replaces_placeholder_text() {
-        let mut app = App::new();
-        app.input = "R radius = 1".to_string();
-
-        let text = app.input_text();
-        let rendered = text
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .map(|span| span.content.as_ref())
-            .collect::<String>();
-
-        assert!(rendered.contains("R radius = 1"));
-        assert!(!rendered.contains(INPUT_PLACEHOLDER));
-    }
-
-    #[test]
-    fn current_input_uses_blank_gutter_to_align_with_numbered_lane_source() {
-        let mut app = App::new();
-        app.input = "R radius = 1".to_string();
-
-        let text = app.input_text();
-
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[1].spans[1].content.as_ref(), "    ");
-        assert_eq!(
-            app.current_input_gutter_width(),
-            line_number_gutter_width(1)
-        );
-    }
-
-    #[test]
-    fn current_input_gutter_widens_with_next_source_line_number() {
-        let mut app = App::new();
-        app.session.source = (1..=9)
-            .map(|line| format!("R r{line} = {line}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        app.input = "R radius = 1".to_string();
-
-        let text = app.input_text();
-        let numbered = numbered_lane_text(Text::from("R radius = 1"), 10);
-
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[1].spans[1].content.as_ref(), "     ");
-        assert_eq!(
-            text.lines[1].spans[1].content.chars().count(),
-            numbered.lines[0].spans[0].content.chars().count()
-        );
-    }
-
-    #[test]
-    fn empty_input_placeholder_uses_next_source_line_gutter_width() {
-        let mut app = App::new();
-        app.session.source = (1..=9)
-            .map(|line| format!("R r{line} = {line}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let text = app.input_text();
-
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[1].spans[1].content.as_ref(), "     ");
-        assert_eq!(text.lines[1].spans[2].content.as_ref(), INPUT_PLACEHOLDER);
-    }
-
-    #[test]
-    fn tab_completes_current_input_from_lsp_items() {
-        let mut app = App::new();
-        set_app_input(&mut app, "const Object output = Bal");
-
-        app.handle_key(KeyEvent::from(KeyCode::Tab));
-
-        assert_eq!(app.input, "const Object output = Ball");
-        assert!(app
-            .completion_matches
-            .iter()
-            .any(|item| item.label == "Ball3D"));
-    }
-
-    #[test]
-    fn tab_completes_repl_commands_when_input_starts_with_slash() {
-        let mut app = App::new();
-        set_app_input(&mut app, "/he");
-
-        app.handle_key(KeyEvent::from(KeyCode::Tab));
-
-        assert_eq!(app.input, "/help");
-        assert!(app
-            .completion_matches
-            .iter()
-            .any(|item| item.label == "/help"));
-    }
-
-    #[test]
-    fn tab_does_not_extend_beyond_ambiguous_command_prefix() {
-        let mut app = App::new();
-        set_app_input(&mut app, "/s");
-
-        app.handle_key(KeyEvent::from(KeyCode::Tab));
-
-        assert_eq!(app.input, "/s");
-        assert!(app
-            .completion_matches
-            .iter()
-            .any(|item| item.label == "/show"));
-        assert!(app
-            .completion_matches
-            .iter()
-            .any(|item| item.label == "/split"));
-    }
-
-    #[test]
-    fn input_shows_gray_completion_hint_without_inserting_it() {
-        let mut app = App::new();
-        set_app_input(&mut app, "const Object output = Bal");
-
-        let text = app.input_text();
-        let hint = text.lines[1]
-            .spans
-            .last()
-            .expect("expected completion hint");
-
-        assert_eq!(app.input, "const Object output = Bal");
-        assert_eq!(hint.content.as_ref(), "l2D");
-        assert_eq!(hint.style.fg, Some(COMPLETION_HINT_FG));
-    }
-
-    #[test]
-    fn completion_hint_uses_selected_tab_completion_candidate() {
-        let mut app = App::new();
-        set_app_input(&mut app, "const Object output = Bal");
-        app.completion_matches = lane::lane_completion_items()
-            .into_iter()
-            .filter(|item| matches!(item.label.as_str(), "Ball2D" | "Ball3D"))
-            .collect();
-        app.completion_index = app
-            .completion_matches
-            .iter()
-            .position(|item| item.label == "Ball3D")
-            .expect("expected Ball3D completion");
-
-        let text = app.input_text();
-        let hint = text.lines[1]
-            .spans
-            .last()
-            .expect("expected completion hint");
-
-        assert_eq!(hint.content.as_ref(), "l3D");
-        assert_eq!(hint.style.fg, Some(COMPLETION_HINT_FG));
-    }
-
-    #[test]
-    fn slash_input_shows_command_completion_hint() {
-        let mut app = App::new();
-        set_app_input(&mut app, "/sp");
-
-        let text = app.input_text();
-        let hint = text.lines[1]
-            .spans
-            .last()
-            .expect("expected completion hint");
-
-        assert_eq!(hint.content.as_ref(), "lit");
-        assert_eq!(hint.style.fg, Some(COMPLETION_HINT_FG));
-    }
-
-    #[test]
-    fn ctrl_f_formats_current_input() {
-        let mut app = App::new();
-        set_app_input(
-            &mut app,
-            "R radius = 1   \n\n\nconst R diameter = radius * 2   ",
-        );
-
-        app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
-
-        assert_eq!(app.input, "R radius = 1\n\nconst R diameter = radius * 2");
-    }
-
-    #[test]
-    fn shift_enter_inserts_newline_without_submitting() {
-        let mut app = App::new();
-        app.transcript.clear();
-        set_app_input(&mut app, "R radius = 1");
-
-        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
-
-        assert_eq!(app.input, "R radius = 1\n");
-        assert!(app.transcript.is_empty());
-    }
-
-    #[test]
-    fn alt_enter_inserts_newline_without_submitting() {
-        let mut app = App::new();
-        app.transcript.clear();
-        set_app_input(&mut app, "R radius = 1");
-
-        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
-
-        assert_eq!(app.input, "R radius = 1\n");
-        assert!(app.transcript.is_empty());
-    }
-
-    #[test]
-    fn ctrl_enter_submits_input() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.input = "R radius = 1".to_string();
-
-        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL));
-
-        assert!(app.input.is_empty());
-        assert_eq!(app.transcript.len(), 1);
-        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-    }
-
-    #[test]
-    fn lane_submission_after_message_starts_new_feed_box() {
-        let mut app = App::new();
-        app.transcript.clear();
-
-        app.push_submitted_input("R radius = 1".to_string(), Some(1), true);
-        app.transcript
-            .push(TranscriptEntry::system("Session note."));
-        app.push_submitted_input("R diameter = radius * 2".to_string(), Some(2), true);
-
-        assert_eq!(app.transcript.len(), 3);
-        assert_eq!(app.transcript[0].text, "R radius = 1");
-        assert_eq!(app.transcript[2].text, "R diameter = radius * 2");
-    }
-
-    #[test]
-    fn bottom_to_top_layout_places_first_rendered_entry_at_bottom() {
-        let entries = vec![
-            TranscriptEntry::system("old"),
-            TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0), None),
-        ];
-        let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 11), &[2, 1, 0], &entries, 0);
-
-        assert_eq!(layout.entry_at(0, 10), Some(2));
-        assert_eq!(layout.entry_at(0, 7), None);
-        assert_eq!(layout.entry_at(0, 6), Some(1));
-        assert_eq!(layout.entry_at(0, 3), None);
-        assert_eq!(layout.entry_at(0, 2), Some(0));
-    }
-
-    #[test]
-    fn bottom_to_top_layout_scrolls_by_rows_not_entries() {
-        let entries = vec![
-            TranscriptEntry::submitted("R first = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::submitted("R second = 2".to_string(), Some(1), Some(2)),
-            TranscriptEntry::submitted("R third = 3".to_string(), Some(2), Some(3)),
-        ];
-        let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[2, 1, 0], &entries, 1);
-
-        assert_eq!(layout.entry_at(0, 6), Some(2));
-        assert_eq!(layout.entry_at(0, 4), None);
-        assert_eq!(layout.entry_at(0, 3), Some(1));
-    }
-
-    #[test]
-    fn split_layout_keeps_gap_between_lane_entries_separated_by_glsl() {
-        let entries = vec![
-            TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0), None),
-            TranscriptEntry::submitted("R diameter = 2".to_string(), Some(1), Some(2)),
-        ];
-        let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[2, 0], &entries, 0);
-
-        assert_eq!(layout.entry_at(0, 6), Some(2));
-        assert_eq!(layout.entry_at(0, 3), None);
-        assert_eq!(layout.entry_at(0, 2), Some(0));
-    }
-
-    #[test]
-    fn split_layout_keeps_gap_between_glsl_entries_separated_by_lane() {
-        let entries = vec![
-            TranscriptEntry::submitted("const R radius = 1".to_string(), Some(0), Some(1)),
-            TranscriptEntry::glsl("float radius = 1.0;".to_string(), Some(0), None),
-            TranscriptEntry::submitted("const R diameter = 2".to_string(), Some(1), Some(2)),
-            TranscriptEntry::glsl("float diameter = 2.0;".to_string(), Some(1), None),
-        ];
-        let mut layout = TranscriptLayout::default();
-        layout.record_bottom_to_top(Rect::new(0, 0, 20, 7), &[3, 1], &entries, 0);
-
-        assert_eq!(layout.entry_at(0, 6), Some(3));
-        assert_eq!(layout.entry_at(0, 3), None);
-        assert_eq!(layout.entry_at(0, 2), Some(1));
-    }
-
-    #[test]
-    fn oversized_glsl_entry_still_renders_visible_lines() {
-        let backend = ratatui::backend::TestBackend::new(60, 8);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new();
-        app.transcript.clear();
-        app.transcript.push(TranscriptEntry::glsl(
-            (0..20)
-                .map(|index| format!("glsl_line_{index}"))
-                .collect::<Vec<_>>()
-                .join("\n"),
-            Some(0),
-            None,
-        ));
-
-        terminal.draw(|frame| app.draw(frame)).unwrap();
-        let buffer_text = terminal_buffer_text(terminal.backend().buffer());
-
-        assert!(buffer_text.contains("glsl_line_0"));
-    }
-
-    #[test]
-    fn transcript_area_matches_input_left_padding() {
-        let frame_area = Rect::new(0, 0, 20, 12);
-
-        assert_eq!(transcript_area(frame_area).x, input_area(frame_area).x);
-        assert_eq!(
-            transcript_area(frame_area).width,
-            input_area(frame_area).width
-        );
-    }
-
-    #[test]
-    fn input_area_leaves_one_blank_row_above_and_below_the_input_block() {
-        let frame_area = Rect::new(0, 0, 20, 12);
-
-        assert_eq!(input_area(frame_area).y, 8);
-        assert_eq!(input_area(frame_area).height, FEED_ENTRY_MIN_HEIGHT);
-        assert_eq!(input_top_gap(frame_area), 1);
-        assert_eq!(
-            input_area(frame_area)
-                .y
-                .saturating_add(input_area(frame_area).height),
-            frame_area
-                .y
-                .saturating_add(frame_area.height)
-                .saturating_sub(INPUT_BOTTOM_GAP)
-        );
-        assert_eq!(
-            transcript_area(frame_area).height,
-            input_area(frame_area)
-                .y
-                .saturating_sub(frame_area.y)
-                .saturating_sub(INPUT_TOP_GAP)
-        );
-    }
-
-    #[test]
-    fn transcript_entries_reserve_input_height() {
-        let single_line = TranscriptEntry::system("Session restarted.");
-        let multi_line = TranscriptEntry::help("Enter submits.\n/exit leaves.");
-
-        assert_eq!(single_line.line_count(), FEED_ENTRY_MIN_HEIGHT);
-        assert_eq!(multi_line.line_count(), 4);
-    }
-
-    #[test]
-    fn command_entries_render_as_plain_text_without_box_margins() {
-        let command = TranscriptEntry::command("/info".to_string(), None);
-        let mut app = App::new();
-
-        assert_eq!(command.line_count(), 1);
-        assert_eq!(app.render_entry(&command).height(), 1);
-    }
-
-    #[test]
-    fn welcome_entry_renders_as_plain_text_without_box_margins() {
-        let welcome = TranscriptEntry::welcome("Lane 0.1.0");
-        let mut app = App::new();
-
-        assert_eq!(welcome.line_count(), 1);
-        assert_eq!(app.render_entry(&welcome).height(), 1);
-    }
-
-    #[test]
-    fn command_entries_leave_one_blank_row_before_user_code_blocks() {
-        let command = TranscriptEntry::command("/info".to_string(), None);
-        let lane = TranscriptEntry::submitted("R radius = 1".to_string(), Some(0), Some(1));
-        let mut app = App::new();
-
-        let items = spaced_transcript_items(vec![
-            (app.render_entry(&lane), lane.kind),
-            (app.render_entry(&command), command.kind),
-        ]);
-        assert_eq!(items.len(), 3);
-        assert_eq!(items[1].height(), 1);
-    }
-
-    #[test]
-    fn command_entries_stay_attached_to_command_responses() {
-        let command = TranscriptEntry::command("/info".to_string(), None);
-        let response = TranscriptEntry::system("Loaded modules:\n  std");
-        let mut app = App::new();
-
-        let items = spaced_transcript_items(vec![
-            (app.render_entry(&response), response.kind),
-            (app.render_entry(&command), command.kind),
-        ]);
-        assert_eq!(items.len(), 2);
-    }
-
-    #[test]
-    fn command_entries_leave_one_blank_row_before_error_boxes() {
-        let command = TranscriptEntry::command("/wat".to_string(), None);
-        let error = TranscriptEntry::error("unknown shell command '/wat'".to_string(), None);
-        let mut app = App::new();
-
-        let items = spaced_transcript_items(vec![
-            (app.render_entry(&error), error.kind),
-            (app.render_entry(&command), command.kind),
-        ]);
-        assert_eq!(items.len(), 3);
-        assert_eq!(items[1].height(), 1);
-    }
-
-    #[test]
-    fn invalid_commands_render_only_as_errors_not_green_commands() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.input = "/wat".to_string();
-
-        app.submit_input();
-
-        assert_eq!(app.transcript.len(), 1);
-        assert!(matches!(app.transcript[0].kind, TranscriptKind::Error));
-        assert!(app.transcript[0]
-            .text
-            .contains("unknown shell command '/wat'"));
-    }
-
-    #[test]
-    fn failed_submission_marks_submitted_lane_block_as_error() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.input = "const Object output = Missing3D(r=1)".to_string();
-
-        app.submit_input();
-
-        assert!(app.transcript[0].errored);
-        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert_eq!(app.transcript[0].base_style().bg, Some(ERROR_BG));
-        assert!(app.transcript[0].error.is_some());
-        assert_eq!(app.transcript.len(), 1);
-    }
-
-    #[test]
-    fn failed_submission_does_not_mark_previous_successful_lane_block_as_error() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.input = "R radius = 1".to_string();
-        app.submit_input();
-
-        app.input = "const Object output = Missing3D(r=1)".to_string();
-        app.submit_input();
-
-        assert_eq!(app.transcript.len(), 2);
-        assert!(matches!(app.transcript[0].kind, TranscriptKind::Lane));
-        assert!(!app.transcript[0].errored);
-        assert_eq!(app.transcript[0].base_style().bg, Some(USER_BG));
-        assert!(app.transcript[1]
-            .error
-            .as_deref()
-            .is_some_and(|error| !error.is_empty()));
-        assert!(app.transcript[1].errored);
-    }
-
-    #[test]
-    fn consecutive_failed_submissions_do_not_merge() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.input = "const Object output = Missing3D(r=1)".to_string();
-        app.submit_input();
-        app.input = "const Object output = Missing3D(r=2)".to_string();
-        app.submit_input();
-
-        assert_eq!(app.transcript.len(), 2);
-        assert!(app.transcript[0].errored);
-        assert!(app.transcript[1].errored);
-    }
-
-    #[test]
-    fn failed_submission_marks_latest_lane_entry_when_group_is_shared() {
-        let mut app = App::new();
-        app.transcript.clear();
-        app.push_submitted_input("R radius = 1".to_string(), Some(1), true);
-        app.push_submitted_input(
-            "const Object output = Missing3D(r=1)".to_string(),
-            Some(2),
-            true,
-        );
-
-        assert_eq!(app.transcript.len(), 1);
-        let shared_group = app.transcript[0].group.expect("expected lane group");
-        app.attach_group_error(shared_group, "unknown object Missing3D".to_string());
-        assert_eq!(
-            app.transcript[0].error.as_deref(),
-            Some("unknown object Missing3D")
-        );
-        assert!(app.transcript[0].errored);
-        assert_eq!(
-            app.transcript[0].text,
-            "R radius = 1\nconst Object output = Missing3D(r=1)"
-        );
-    }
-
-    #[test]
-    fn selecting_one_submission_group_does_not_highlight_other_groups() {
-        let lane_a = TranscriptEntry::submitted("const R a = 1".to_string(), Some(0), Some(1));
-        let glsl_a = TranscriptEntry::glsl("float a = 1.0;".to_string(), Some(0), None);
-        let lane_b = TranscriptEntry::submitted("const R b = 2".to_string(), Some(1), Some(2));
-        let glsl_b = TranscriptEntry::glsl("float b = 2.0;".to_string(), Some(1), None);
-
-        let lane_a_style = lane_a.style(Some(0));
-        let glsl_a_style = glsl_a.style(Some(0));
-        let lane_b_style = lane_b.style(Some(0));
-        let glsl_b_style = glsl_b.style(Some(0));
-
-        assert_eq!(lane_a_style.bg, Some(SELECTED_USER_BG));
-        assert_eq!(glsl_a_style.bg, Some(SELECTED_OUTPUT_BG));
-        assert_eq!(lane_b_style.bg, Some(USER_BG));
-        assert_eq!(glsl_b_style.bg, Some(OUTPUT_BG));
-    }
-
-    #[test]
-    fn right_click_copy_uses_raw_transcript_entry_text() {
-        let mut app = App::new();
-        app.transcript = vec![TranscriptEntry::submitted(
-            "const R radius = 1".to_string(),
-            Some(0),
-            Some(1),
-        )];
-        app.layout.entries = vec![RenderedEntry {
-            index: 0,
-            area: Rect::new(4, 5, 30, 3),
-        }];
-
-        assert_eq!(
-            app.copyable_text_at(10, 6).as_deref(),
-            Some("const R radius = 1")
-        );
-        assert_eq!(app.copyable_text_at(1, 1), None);
-    }
-
-    #[test]
-    fn right_click_copy_includes_error_message_for_failed_lane_blocks() {
-        let mut app = App::new();
-        let mut entry =
-            TranscriptEntry::submitted("const R radius = *".to_string(), Some(0), Some(1));
-        entry.errored = true;
-        entry.error = Some("line 1: unexpected token '*' in expression".to_string());
-        app.transcript = vec![entry];
-        app.layout.entries = vec![RenderedEntry {
-            index: 0,
-            area: Rect::new(4, 5, 40, 4),
-        }];
-
-        assert_eq!(
-            app.copyable_text_at(10, 6).as_deref(),
-            Some("unexpected token '*' in expression\nconst R radius = *")
-        );
-    }
-
-    #[test]
-    fn welcome_entry_is_not_copied() {
-        let mut app = App::new();
-        app.layout.entries = vec![RenderedEntry {
-            index: 0,
-            area: Rect::new(0, 0, 20, 1),
-        }];
-
-        assert_eq!(app.copyable_text_at(0, 0), None);
-    }
-
-    #[test]
-    fn osc52_clipboard_payload_base64_encodes_text() {
-        let mut output = Vec::new();
-
-        write_osc52_clipboard(&mut output, "R radius = 1").unwrap();
-
-        assert_eq!(
-            String::from_utf8(output).unwrap(),
-            "\x1b]52;c;UiByYWRpdXMgPSAx\x07"
-        );
-    }
-
-    #[test]
-    fn error_entries_reserve_vertical_box_padding() {
-        let single_line = TranscriptEntry::error("unknown shell command '/wat'".to_string(), None);
-        let multi_line = TranscriptEntry::error("line 1: bad\nline 2: worse".to_string(), None);
-
-        assert_eq!(single_line.line_count(), 3);
-        assert_eq!(multi_line.line_count(), 4);
-    }
-
-    #[test]
-    fn error_box_text_has_blank_rows_above_and_below() {
-        let text = error_box_text("line 1: bad\nline 2: worse");
-
-        assert_eq!(text.lines.len(), 4);
-        assert!(text.lines[0].spans.is_empty());
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), "line 1: bad");
-        assert_eq!(text.lines[2].spans[0].content.as_ref(), "line 2: worse");
-        assert!(text.lines[3].spans.is_empty());
-    }
-
-    #[test]
-    fn left_padded_text_adds_one_inner_column_to_each_line() {
-        let text = left_padded_text(Text::from("first\nsecond"));
-
-        assert_eq!(text.lines[0].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[0].spans[1].content.as_ref(), "first");
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[1].spans[1].content.as_ref(), "second");
-    }
-
-    #[test]
-    fn numbered_lane_text_prefixes_each_source_line() {
-        let text = Text::from("R radius = 1\nconst R diameter = 2");
-        let text = numbered_lane_text(text, 9);
-
-        assert_eq!(text.lines[0].spans[0].content.as_ref(), " 9 | ");
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), "10 | ");
-        assert_eq!(text.lines[0].spans[1].content.as_ref(), "R radius = 1");
-        assert_eq!(
-            text.lines[1].spans[1].content.as_ref(),
-            "const R diameter = 2"
-        );
-    }
-
-    #[test]
-    fn glsl_entry_rendering_prefixes_each_generated_line() {
-        let mut app = App::new();
-        let entry = TranscriptEntry::glsl(
-            "float radius = 1.0;\nfloat diameter = 2.0;".to_string(),
-            Some(0),
-            Some(41),
-        );
-
-        let text = app.render_entry_text(&entry);
-
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[1].spans[1].content.as_ref(), "41 | ");
-        assert_eq!(text.lines[2].spans[0].content.as_ref(), " ");
-        assert_eq!(text.lines[2].spans[1].content.as_ref(), "42 | ");
-    }
-
-    #[test]
-    fn errored_lane_text_marks_submitted_source_with_error_symbol() {
-        let text = Text::from("const Object output = Missing3D(r=1)");
-        let text = errored_lane_text(text, 7, "unknown object Missing3D");
-
-        assert_eq!(text.lines[0].spans[0].content.as_ref(), "    ");
-        assert_eq!(
-            text.lines[0].spans[1].content.as_ref(),
-            "unknown object Missing3D"
-        );
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), " | ");
-        assert_eq!(
-            text.lines[1].spans[1].content.as_ref(),
-            "const Object output = Missing3D(r=1)"
-        );
-        assert_eq!(text.lines[0].spans[1].style.fg, Some(ERROR_FG));
-        assert_eq!(text.lines[0].spans[1].style.bg, None);
-    }
-
-    #[test]
-    fn selected_failed_lane_error_message_uses_entry_background() {
-        let mut entry = TranscriptEntry::submitted(
-            "const Object output = Missing3D(r=1)".to_string(),
-            Some(0),
-            Some(7),
-        );
-        entry.errored = true;
-        entry.error = Some("unknown object Missing3D".to_string());
-        let text = errored_lane_text(
-            Text::from(entry.text.clone()),
-            7,
-            entry.error.as_deref().unwrap(),
-        );
-
-        assert_eq!(entry.style(Some(0)).bg, Some(SELECTED_ERROR_BG));
-        assert_eq!(entry.style(Some(0)).fg, Some(ERROR_FG));
-        assert!(text
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .all(|span| span.style.bg != Some(ERROR_BG)));
-    }
-
-    #[test]
-    fn errored_lane_text_marks_multiline_submissions_with_error_symbol() {
-        let text = Text::from("R a = 1\nR b = 2\nconst Object output = Missing3D(r=a+b)");
-        let text = errored_lane_text(text, 12, "unknown object Missing3D");
-
-        assert_eq!(text.lines[0].spans[0].content.as_ref(), "     ");
-        assert_eq!(text.lines[1].spans[0].content.as_ref(), "  | ");
-        assert_eq!(text.lines[2].spans[0].content.as_ref(), "  | ");
-        assert_eq!(text.lines[3].spans[0].content.as_ref(), "  | ");
-    }
-
-    #[test]
-    fn errored_lane_text_strips_error_line_references() {
-        let text = Text::from("const Object output = Missing3D(r=1)");
-        let text = errored_lane_text(
-            text,
-            7,
-            "line 7: unknown object Missing3D\nline 8: expected declaration",
-        );
-
-        assert_eq!(
-            text.lines[0].spans[1].content.as_ref(),
-            "unknown object Missing3D"
-        );
-        assert_eq!(
-            text.lines[1].spans[1].content.as_ref(),
-            "expected declaration"
-        );
-        assert_eq!(text.lines[2].spans[0].content.as_ref(), " | ");
-    }
-
-    fn terminal_buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
-        let area = buffer.area;
-        let mut text = String::new();
-        for y in area.y..area.y.saturating_add(area.height) {
-            for x in area.x..area.x.saturating_add(area.width) {
-                text.push_str(buffer[(x, y)].symbol());
-            }
-            text.push('\n');
-        }
-        text
-    }
-}
+#[path = "../tests/unit/repl.rs"]
+mod tests;

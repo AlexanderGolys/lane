@@ -1,1652 +1,24 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
-use std::fs;
-use std::path::{Path, PathBuf};
 
+mod api;
+pub use api::{
+    compile_preview_fragment_from_path, compile_preview_vertex, compile_program,
+    compile_program_from_path, compile_program_with_base_dir, compile_vulkan_preview_fragment,
+    compile_vulkan_preview_fragment_from_path, compile_vulkan_preview_vertex, format_lane_source,
+    lane_completion_items, lane_diagnostics_with_base_dir, lane_hover_for_word, program_info,
+    program_info_with_base_dir, LaneCompletionItem, LaneCompletionKind, LaneDiagnostic,
+    ProgramInfo,
+};
 mod emit;
+mod module_loader;
+pub use module_loader::resolve_import_path;
+pub(crate) use module_loader::{is_placeholder_ident, rename_expr, ModuleLoader};
 mod parser;
 mod registry;
 mod typecheck;
 
-pub fn compile_program(source: &str) -> Result<String, Error> {
-    compile_program_with_base_dir(
-        source,
-        &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    )
-}
-
-pub fn compile_program_from_path(path: impl AsRef<Path>) -> Result<String, Error> {
-    let path = path.as_ref();
-    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    compile_program_with_base_dir(&source, base_dir)
-}
-
-pub fn compile_program_with_base_dir(
-    source: &str,
-    base_dir: impl AsRef<Path>,
-) -> Result<String, Error> {
-    compile_program_with_base(source, base_dir.as_ref())
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProgramInfo {
-    pub loaded_modules: Vec<String>,
-    pub directives: Vec<String>,
-    pub provided_objects: Vec<String>,
-}
-
-pub fn program_info(source: &str) -> Result<ProgramInfo, Error> {
-    program_info_with_base_dir(
-        source,
-        &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    )
-}
-
-pub fn program_info_with_base_dir(
-    source: &str,
-    base_dir: impl AsRef<Path>,
-) -> Result<ProgramInfo, Error> {
-    let program = ModuleLoader::new(base_dir.as_ref()).load_main(source)?;
-    Ok(ProgramInfo {
-        loaded_modules: source_directive_values(source, "#import"),
-        directives: source_info_directives(source),
-        provided_objects: program
-            .inputs
-            .iter()
-            .map(|input| format!("{} {}", format_type(&input.ty), input.name))
-            .collect(),
-    })
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LaneDiagnostic {
-    pub line: usize,
-    pub message: String,
-}
-
-pub fn lane_diagnostics_with_base_dir(
-    source: &str,
-    base_dir: impl AsRef<Path>,
-) -> Vec<LaneDiagnostic> {
-    match check_diagnostic_document(source, base_dir.as_ref()) {
-        Ok(_) => Vec::new(),
-        Err(error) => vec![LaneDiagnostic {
-            line: error.line().unwrap_or(1),
-            message: error.to_string(),
-        }],
-    }
-}
-
-fn check_diagnostic_document(source: &str, base_dir: &Path) -> Result<(), Error> {
-    let registry = Registry::default();
-    let program = ModuleLoader::new(base_dir).load_document(source)?;
-    TypedProgram::from_program(&program, &registry)?;
-    Ok(())
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LaneCompletionKind {
-    Keyword,
-    Module,
-    Constructor,
-    Function,
-    Type,
-    Category,
-    Constant,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LaneCompletionItem {
-    pub label: String,
-    pub kind: LaneCompletionKind,
-    pub detail: Option<String>,
-    pub documentation: Option<String>,
-}
-
-impl LaneCompletionItem {
-    fn new(label: impl Into<String>, kind: LaneCompletionKind) -> Self {
-        Self {
-            label: label.into(),
-            kind,
-            detail: None,
-            documentation: None,
-        }
-    }
-
-    fn with_detail(mut self, detail: impl Into<String>) -> Self {
-        self.detail = Some(detail.into());
-        self
-    }
-
-    fn with_documentation(mut self, documentation: impl Into<String>) -> Self {
-        self.documentation = Some(documentation.into());
-        self
-    }
-}
-
-pub fn lane_completion_items() -> Vec<LaneCompletionItem> {
-    let mut items = Vec::new();
-    for (label, detail) in [
-        (
-            "const",
-            "Emit a Lane binding even when only referenced by generated code",
-        ),
-        ("provided", "Declare a host-provided shader input"),
-        ("Hom", "Function type constructor"),
-        ("Func", "Function type constructor alias"),
-        ("Object", "Current ambient SDF object type"),
-        ("Object2D", "2D SDF object type"),
-        ("Object3D", "3D SDF object type"),
-        ("Type", "Type metatype"),
-        ("Cat", "Category metatype"),
-        ("#import", "Import a Lane module"),
-        ("#prec", "Set default differential precision"),
-        ("#2D", "Switch the program to 2D SDF mode"),
-    ] {
-        items.push(LaneCompletionItem::new(label, LaneCompletionKind::Keyword).with_detail(detail));
-    }
-    for module in ["std", "raytracing"] {
-        items.push(
-            LaneCompletionItem::new(module, LaneCompletionKind::Module)
-                .with_detail("built-in Lane module"),
-        );
-    }
-    for (label, detail, kind) in [
-        (
-            "Mat{n}x{m}",
-            "generic real matrix type",
-            LaneCompletionKind::Type,
-        ),
-        (
-            "Mat{n}",
-            "generic square real matrix type",
-            LaneCompletionKind::Type,
-        ),
-        (
-            "E{n}{m}",
-            "generic matrix basis element",
-            LaneCompletionKind::Constant,
-        ),
-    ] {
-        items.push(LaneCompletionItem::new(label, kind).with_detail(detail));
-    }
-    for primitive in known_primitives() {
-        let fields = primitive
-            .fields
-            .iter()
-            .map(|field| format!("{}: {}", field.name, field.domain))
-            .collect::<Vec<_>>()
-            .join(", ");
-        items.push(
-            LaneCompletionItem::new(primitive.name, LaneCompletionKind::Constructor)
-                .with_detail(format!("{}({fields})", primitive.parameter_space))
-                .with_documentation(format!(
-                    "{} primitive constructor",
-                    primitive.dimension.label()
-                )),
-        );
-    }
-    for object in known_builtin_objects() {
-        let kind = match object.kind {
-            KnownBuiltinObjectKind::Function => LaneCompletionKind::Function,
-            KnownBuiltinObjectKind::Type => LaneCompletionKind::Type,
-            KnownBuiltinObjectKind::Category => LaneCompletionKind::Category,
-        };
-        items.push(LaneCompletionItem::new(object.name, kind).with_detail(object.ty));
-    }
-    items
-}
-
-pub fn lane_hover_for_word(word: &str) -> Option<String> {
-    if let Some(primitive) = known_primitive(word) {
-        let fields = primitive
-            .fields
-            .iter()
-            .map(|field| format!("{}: {}", field.name, field.domain))
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Some(format!(
-            "{}: {}\n\n{} primitive constructor with fields: {}",
-            primitive.name,
-            primitive.parameter_space,
-            primitive.dimension.label(),
-            fields
-        ));
-    }
-    if let Some(object) = known_builtin_object(word) {
-        return Some(format!("{}: {}", object.name, object.ty));
-    }
-    match word {
-        "const" => Some("const emits a Lane value, function, or object binding.".to_string()),
-        "provided" => Some("provided declares a host-provided shader input.".to_string()),
-        "Hom" | "Func" => Some(format!("{word}(A, B) is a function type from A to B.")),
-        "Object" => Some("Object is the current ambient SDF object type.".to_string()),
-        "Object2D" => Some("Object2D is a 2D SDF object type.".to_string()),
-        "Object3D" => Some("Object3D is a 3D SDF object type.".to_string()),
-        "R" => {
-            Some("R is the real scalar type; R{n} denotes generic real vector spaces.".to_string())
-        }
-        "Mat" => {
-            Some("Mat{n} denotes generic square matrices; Mat{n}x{m} denotes generic rectangular matrix types.".to_string())
-        }
-        "E" => Some("E{n}{m} denotes generic matrix basis elements.".to_string()),
-        _ => None,
-    }
-}
-
-pub fn format_lane_source(source: &str) -> String {
-    let mut lines = Vec::new();
-    let mut previous_blank = false;
-    for line in source.lines() {
-        let line = line.trim_end();
-        let blank = line.trim().is_empty();
-        if blank && previous_blank {
-            continue;
-        }
-        lines.push(format_lane_line(line));
-        previous_blank = blank;
-    }
-    if lines.is_empty() {
-        return String::new();
-    }
-    let mut formatted = lines.join("\n");
-    formatted.push('\n');
-    formatted
-}
-
-fn format_lane_line(line: &str) -> String {
-    let Some(equal_index) = find_top_level_equal(line) else {
-        return format_declaration_type_head(line);
-    };
-    if is_product_type_assignment_head(&line[..equal_index]) {
-        let mut formatted = String::new();
-        formatted.push_str(&line[..=equal_index]);
-        formatted.push_str(&format_product_type_assignment_tail(
-            &line[equal_index + 1..],
-        ));
-        return formatted;
-    }
-    let mut formatted = format_declaration_type_head(&line[..equal_index]);
-    formatted.push_str(&line[equal_index..]);
-    formatted
-}
-
-fn format_product_type_assignment_tail(tail: &str) -> String {
-    let Some(field_index) = tail.find('<') else {
-        return format_type_product_separators(tail);
-    };
-    let mut formatted = format_type_product_separators(&tail[..field_index]);
-    formatted.push_str(&tail[field_index..]);
-    formatted
-}
-
-fn format_declaration_type_head(line: &str) -> String {
-    let leading_len = line.len() - line.trim_start().len();
-    let (leading, body) = line.split_at(leading_len);
-    if let Some(rest) = body.strip_prefix("provided ") {
-        return format_prefixed_declaration_type_head(leading, "provided ", rest);
-    }
-    if let Some(rest) = body.strip_prefix("const ") {
-        return format_prefixed_declaration_type_head(leading, "const ", rest);
-    }
-    format_type_before_name(line)
-}
-
-fn format_prefixed_declaration_type_head(leading: &str, prefix: &str, rest: &str) -> String {
-    let mut formatted = String::new();
-    formatted.push_str(leading);
-    formatted.push_str(prefix);
-    if let Some(colon_index) = find_top_level_colon(rest) {
-        formatted.push_str(&rest[..=colon_index]);
-        formatted.push_str(&format_type_product_separators(&rest[colon_index + 1..]));
-        return formatted;
-    }
-    formatted.push_str(&format_type_before_name(rest));
-    formatted
-}
-
-fn format_type_before_name(source: &str) -> String {
-    let trimmed_end_len = source.trim_end().len();
-    let trailing = &source[trimmed_end_len..];
-    let head = &source[..trimmed_end_len];
-    let Some(name_end) = head.rfind(|ch: char| !ch.is_ascii_whitespace()) else {
-        return source.to_string();
-    };
-    let Some(space_before_name) = head[..=name_end].rfind(|ch: char| ch.is_ascii_whitespace())
-    else {
-        return source.to_string();
-    };
-    let mut formatted = format_type_product_separators(&head[..space_before_name]);
-    formatted.push_str(&head[space_before_name..]);
-    formatted.push_str(trailing);
-    formatted
-}
-
-fn format_type_product_separators(source: &str) -> String {
-    let mut formatted = String::new();
-    for (index, ch) in source.char_indices() {
-        if ch == 'x' {
-            let prev_space = index > 0 && source.as_bytes()[index - 1].is_ascii_whitespace();
-            let next_index = index + ch.len_utf8();
-            let next_space = source
-                .as_bytes()
-                .get(next_index)
-                .is_some_and(u8::is_ascii_whitespace);
-            if prev_space && next_space {
-                formatted.push('×');
-                continue;
-            }
-        }
-        formatted.push(ch);
-    }
-    formatted
-}
-
-fn find_top_level_equal(source: &str) -> Option<usize> {
-    let mut depth = 0usize;
-    for (index, ch) in source.char_indices() {
-        match ch {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth = depth.saturating_sub(1),
-            '=' if depth == 0 => return Some(index),
-            _ => {}
-        }
-    }
-    None
-}
-
-fn find_top_level_colon(source: &str) -> Option<usize> {
-    let mut depth = 0usize;
-    for (index, ch) in source.char_indices() {
-        match ch {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth = depth.saturating_sub(1),
-            ':' if depth == 0 => return Some(index),
-            _ => {}
-        }
-    }
-    None
-}
-
-fn is_product_type_assignment_head(head: &str) -> bool {
-    let head = head.trim();
-    let head = head
-        .strip_prefix("provided ")
-        .or_else(|| head.strip_prefix("const "))
-        .unwrap_or(head)
-        .trim();
-    let Some((category, name)) = head.split_once(char::is_whitespace) else {
-        return false;
-    };
-    if !category_by_name(category).is_some() {
-        return false;
-    }
-    let name = name.trim();
-    if name.is_empty() {
-        return false;
-    }
-    if let Some(fields) = name
-        .strip_suffix('>')
-        .and_then(|name| name.rsplit_once('<'))
-    {
-        !fields.0.trim().is_empty()
-    } else {
-        !name.chars().any(char::is_whitespace)
-    }
-}
-
-pub fn compile_preview_fragment_from_path(
-    path: impl AsRef<Path>,
-    version: &str,
-) -> Result<String, Error> {
-    let path = path.as_ref();
-    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    compile_preview_fragment(&source, base_dir, version, PreviewShaderTarget::OpenGl)
-}
-
-pub fn compile_vulkan_preview_fragment_from_path(path: impl AsRef<Path>) -> Result<String, Error> {
-    let path = path.as_ref();
-    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    compile_preview_fragment(&source, base_dir, "450", PreviewShaderTarget::Vulkan)
-}
-
-pub fn compile_vulkan_preview_fragment(source: &str) -> Result<String, Error> {
-    compile_preview_fragment(
-        source,
-        &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        "450",
-        PreviewShaderTarget::Vulkan,
-    )
-}
-
-pub fn compile_preview_vertex(version: &str) -> String {
-    format!(
-        "{}\nprecision highp float;\n\nconst vec2 vertices[3] = vec2[3](\n    vec2(-1.0, -1.0),\n    vec2(3.0, -1.0),\n    vec2(-1.0, 3.0)\n);\n\nvoid main() {{\n    gl_Position = vec4(vertices[gl_VertexID], 0.0, 1.0);\n}}\n",
-        glsl_version_directive(version)
-    )
-}
-
-pub fn compile_vulkan_preview_vertex() -> String {
-    "#version 450\n\nconst vec2 vertices[3] = vec2[3](\n    vec2(-1.0, -1.0),\n    vec2(3.0, -1.0),\n    vec2(-1.0, 3.0)\n);\n\nvoid main() {\n    gl_Position = vec4(vertices[gl_VertexIndex], 0.0, 1.0);\n}\n"
-        .to_string()
-}
-
-fn compile_program_with_base(source: &str, base_dir: &Path) -> Result<String, Error> {
-    let registry = Registry::default();
-    let program = ModuleLoader::new(base_dir).load_main(source)?;
-    let typed = TypedProgram::from_program(&program, &registry)?;
-    Ok(typed.emit_glsl(&registry))
-}
-
-#[derive(Clone, Copy)]
-enum PreviewShaderTarget {
-    OpenGl,
-    Vulkan,
-}
-
-fn compile_preview_fragment(
-    source: &str,
-    base_dir: &Path,
-    version: &str,
-    target: PreviewShaderTarget,
-) -> Result<String, Error> {
-    validate_preview_requirements(source)?;
-    let source = prepare_preview_source(source);
-    let registry = Registry::default();
-    let program = ModuleLoader::new(base_dir).load_main(&source)?;
-    reject_preview_provided_functions(&program)?;
-    let uniforms = preview_uniforms(&program, target);
-    let typed = TypedProgram::from_program(&program, &registry)?;
-    let body = typed.emit_glsl(&registry);
-    let output = match target {
-        PreviewShaderTarget::OpenGl => "out vec4 outColor;",
-        PreviewShaderTarget::Vulkan => "layout(location = 0) out vec4 outColor;",
-    };
-    let precision = match target {
-        PreviewShaderTarget::OpenGl => "precision highp float;\n\n",
-        PreviewShaderTarget::Vulkan => "",
-    };
-    Ok(format!(
-        "{}\n\n{}{}\n\n{}\n{}",
-        glsl_version_directive(version),
-        precision,
-        output,
-        uniforms,
-        body
-    ))
-}
-
-fn validate_preview_requirements(source: &str) -> Result<(), Error> {
-    if has_const_main(source) {
-        return Ok(());
-    }
-    let mut missing = Vec::new();
-    if !has_scene_object_for_preview(source) {
-        missing.push("`const Object scene = ...`".to_string());
-    }
-    if !has_scene_material_function(source) {
-        missing.push("`const Hom(R3, Material) scene_material = ...`".to_string());
-    }
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let mut details = String::from(
-        "preview generation requirements were not met. Add an explicit `main`, or define:\n",
-    );
-    for item in &missing {
-        details.push_str("- ");
-        details.push_str(&item);
-        details.push('\n');
-    }
-    Err(Error::new(details.trim_end().to_string()))
-}
-
-fn prepare_preview_source(source: &str) -> String {
-    let mut out = String::new();
-    if !source
-        .lines()
-        .any(|line| line.trim() == "#import raytracing")
-    {
-        out.push_str("#import raytracing\n");
-    }
-    out.push_str(source);
-    if !has_object_binding(source, "scene") {
-        if let Some(name) = last_const_object_name(source) {
-            out.push('\n');
-            out.push_str(&format!("const Object scene = {name}\n"));
-        }
-    }
-    if !has_const_main(source) {
-        append_preview_provided_values(source, &mut out);
-        out.push_str(
-            "\nconst Hom(R2, Ray) preview_camera_ray = camera_ray(Camera(cameraPosition, cameraForward, cameraGlobalUp, resolution))\n\
-const Hom(Ray, Hit) preview_hit = raytrace_with(default_raytrace_config, scene)\n\
-const Hom(Hit, R3) preview_material_color = hit |-> material_color(scene_material(hit.position))\n\
-const Hom(Hit, R3) preview_material_emission = hit |-> material_emission(scene_material(hit.position))\n\
-const Hom(Hit, R) preview_material_reflectiveness = hit |-> material_reflectiveness(scene_material(hit.position))\n\
-const Hom(Ray, R3) preview_color = raycolor_from_hit_with(default_raycolor_config, ambientColor, preview_hit, preview_material_color, preview_material_emission, preview_material_reflectiveness)\n\
-const Hom(R2, R4) preview_shade = shade(preview_camera_ray, preview_color)\n\
-const Hom(*, *) main = fragment_main(preview_shade)\n",
-        );
-    }
-    out
-}
-
-fn source_info_directives(source: &str) -> Vec<String> {
-    source
-        .lines()
-        .filter_map(|line| {
-            let line = strip_source_line_comment(line).trim();
-            if line == "#2D" || line.starts_with("#prec ") {
-                Some(line.to_string())
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-fn source_directive_values(source: &str, directive: &str) -> Vec<String> {
-    source
-        .lines()
-        .filter_map(|line| {
-            let line = strip_source_line_comment(line).trim();
-            line.strip_prefix(directive)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| value.trim_matches('"').to_string())
-        })
-        .collect()
-}
-
-fn strip_source_line_comment(line: &str) -> &str {
-    let mut in_string = false;
-    let mut chars = line.char_indices().peekable();
-    while let Some((index, ch)) = chars.next() {
-        if ch == '"' {
-            in_string = !in_string;
-        }
-        if !in_string && ch == '/' && chars.peek().is_some_and(|(_, next)| *next == '/') {
-            return &line[..index];
-        }
-    }
-    line
-}
-
-fn append_preview_provided_values(source: &str, out: &mut String) {
-    let provided = [
-        ("R3", "cameraPosition"),
-        ("R3", "cameraForward"),
-        ("R3", "cameraGlobalUp"),
-        ("R2", "resolution"),
-        ("R3", "ambientColor"),
-    ];
-    for (ty, name) in provided {
-        if !has_provided_value(source, name) {
-            out.push_str(&format!("\nprovided {ty} {name}"));
-        }
-    }
-}
-
-fn has_scene_object_for_preview(source: &str) -> bool {
-    has_object_binding(source, "scene") || last_const_object_name(source).is_some()
-}
-
-fn last_const_object_name(source: &str) -> Option<String> {
-    let program = parse_preview_program(source)?;
-    preview_object_bindings(&program)
-        .into_iter()
-        .max_by_key(|(line, _)| *line)
-        .map(|(_, name)| name)
-}
-
-fn has_const_main(source: &str) -> bool {
-    parse_preview_program(source)
-        .is_some_and(|program| program.funcs.iter().any(|func| func.name == "main"))
-}
-
-fn has_scene_material_function(source: &str) -> bool {
-    parse_preview_program(source).is_some_and(|program| {
-        program
-            .funcs
-            .iter()
-            .any(|func| func.name == "scene_material")
-    })
-}
-
-fn has_provided_value(source: &str, value_name: &str) -> bool {
-    parse_preview_program(source)
-        .is_some_and(|program| program.inputs.iter().any(|input| input.name == value_name))
-}
-
-fn has_object_binding(source: &str, object_name: &str) -> bool {
-    parse_preview_program(source).is_some_and(|program| {
-        preview_object_bindings(&program)
-            .into_iter()
-            .any(|(_, name)| name == object_name)
-    })
-}
-
-fn parse_preview_program(source: &str) -> Option<Program> {
-    parser::Parser::new(source).parse_program().ok()
-}
-
-fn preview_object_bindings(program: &Program) -> Vec<(usize, String)> {
-    let mut bindings = program
-        .bindings
-        .iter()
-        .filter(|binding| matches!(binding.ty, Type::Object))
-        .map(|binding| (binding.line, binding.name.clone()))
-        .collect::<Vec<_>>();
-    bindings.extend(
-        program
-            .inferred_bindings
-            .iter()
-            .filter(|binding| binding.construct)
-            .map(|binding| (binding.line, binding.name.clone())),
-    );
-    bindings
-}
-
-fn reject_preview_provided_functions(program: &Program) -> Result<(), Error> {
-    for input in &program.inputs {
-        if matches!(input.ty, Type::Func(_, _)) {
-            return Err(Error::new(format!(
-                "preview shaders do not support provided function '{}'",
-                input.name
-            ))
-            .with_line(input.line));
-        }
-    }
-    Ok(())
-}
-
-fn preview_uniforms(program: &Program, target: PreviewShaderTarget) -> String {
-    let uniforms = program
-        .inputs
-        .iter()
-        .filter(|input| !matches!(input.ty, Type::Object | Type::Object2D))
-        .map(|input| format!("    {} {};", input.ty.glsl_name(), input.name))
-        .collect::<Vec<_>>();
-    match target {
-        PreviewShaderTarget::OpenGl => uniforms
-            .into_iter()
-            .map(|uniform| format!("uniform {};", uniform.trim_end_matches(';').trim()))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        PreviewShaderTarget::Vulkan => {
-            if uniforms.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "layout(std140, push_constant) uniform PreviewUniforms {{\n{}\n}};",
-                    uniforms.join("\n")
-                )
-            }
-        }
-    }
-}
-
-fn glsl_version_directive(version: &str) -> String {
-    let trimmed = version.trim();
-    if let Some(number) = trimmed.strip_suffix("es") {
-        format!("#version {} es", number.trim())
-    } else {
-        format!("#version {trimmed}")
-    }
-}
-
-struct ModuleLoader {
-    base_dir: PathBuf,
-}
-
-impl ModuleLoader {
-    fn new(base_dir: &Path) -> Self {
-        Self {
-            base_dir: base_dir.to_path_buf(),
-        }
-    }
-
-    fn load_main(&self, source: &str) -> Result<Program, Error> {
-        let mut stack = Vec::new();
-        let parsed = parser::Parser::new(source).parse_program()?;
-        if parsed.is_module {
-            return Err(Error::new("#module is only valid in imported module files"));
-        }
-        let mut merged = self.expand_program(parsed, false, "main", &mut stack)?;
-        expand_referenced_name_templates(&mut merged);
-        reject_duplicate_product_types(&merged)?;
-        merged.imports.clear();
-        Ok(merged)
-    }
-
-    fn load_document(&self, source: &str) -> Result<Program, Error> {
-        let mut stack = Vec::new();
-        let parsed = parser::Parser::new(source).parse_program()?;
-        let mut merged = if parsed.is_module {
-            self.expand_program(parsed, true, "document", &mut stack)?
-        } else {
-            self.expand_program(parsed, false, "main", &mut stack)?
-        };
-        expand_referenced_name_templates(&mut merged);
-        reject_duplicate_product_types(&merged)?;
-        merged.imports.clear();
-        Ok(merged)
-    }
-
-    fn expand_program(
-        &self,
-        mut program: Program,
-        require_module: bool,
-        module_key: &str,
-        stack: &mut Vec<PathBuf>,
-    ) -> Result<Program, Error> {
-        if require_module && !program.is_module {
-            return Err(Error::new(format!(
-                "imported module '{module_key}' must start with #module"
-            )));
-        }
-
-        let imports = std::mem::take(&mut program.imports);
-        let mut merged = empty_program_like(&program);
-        let mut line_offset = 10_000usize;
-        for import in imports {
-            let imported = self
-                .load_import(&import.path, stack)
-                .map_err(|err| err.with_line(import.line))?;
-            append_program(&mut merged, imported, line_offset);
-            line_offset += 10_000;
-        }
-
-        if program.is_module {
-            mangle_private_module_names(&mut program, module_key);
-        }
-        append_program(&mut merged, program, 0);
-        Ok(merged)
-    }
-
-    fn load_import(&self, import_path: &str, stack: &mut Vec<PathBuf>) -> Result<Program, Error> {
-        let path = self.resolve_import(import_path)?;
-        let canonical = path.canonicalize().unwrap_or(path.clone());
-        if let Some(index) = stack.iter().position(|entry| entry == &canonical) {
-            let mut cycle = stack[index..]
-                .iter()
-                .map(|path| path.display().to_string())
-                .collect::<Vec<_>>();
-            cycle.push(canonical.display().to_string());
-            return Err(Error::new(format!(
-                "module import cycle: {}",
-                cycle.join(" -> ")
-            )));
-        }
-
-        stack.push(canonical);
-        let source = fs::read_to_string(&path).map_err(|err| Error::new(err.to_string()))?;
-        let parsed = parser::Parser::new(&source).parse_program()?;
-        let module_key = import_path.replace(['/', '\\', '.', '-'], "_");
-        let expanded = self.expand_program(parsed, true, &module_key, stack);
-        stack.pop();
-        expanded
-    }
-
-    fn resolve_import(&self, import_path: &str) -> Result<PathBuf, Error> {
-        resolve_import_path(import_path, &self.base_dir)
-    }
-}
-
-pub fn resolve_import_path(
-    import_path: &str,
-    base_dir: impl AsRef<Path>,
-) -> Result<PathBuf, Error> {
-    let relative = import_candidate(import_path);
-    let base_dir = base_dir.as_ref();
-    let mut roots = Vec::new();
-    if let Ok(paths) = std::env::var("LANE_MODULE_PATH") {
-        roots.extend(std::env::split_paths(&paths));
-    }
-    roots.push(base_dir.to_path_buf());
-    roots.push(base_dir.join("modules"));
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("modules"));
-
-    for root in roots {
-        let candidate = root.join(&relative);
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-    Err(Error::new(format!("module '{import_path}' not found")))
-}
-
-fn import_candidate(import_path: &str) -> PathBuf {
-    let path = PathBuf::from(import_path);
-    if path.extension().is_some() {
-        path
-    } else {
-        path.with_extension("lane")
-    }
-}
-
-#[derive(Clone)]
-enum NameTemplatePart {
-    Literal(String),
-    Placeholder(String),
-}
-
-fn expand_referenced_name_templates(program: &mut Program) {
-    let references = referenced_names(program);
-    if references.is_empty() {
-        return;
-    }
-
-    let mut concrete_funcs = Vec::new();
-    let mut seen = program
-        .funcs
-        .iter()
-        .map(|func| (func.name.clone(), format_type(&func.ty)))
-        .collect::<HashSet<_>>();
-
-    program.funcs.retain(|func| {
-        let Some(parts) = parse_name_template(&func.name) else {
-            return true;
-        };
-        for reference in &references {
-            let Some(captures) = match_name_template(&parts, reference) else {
-                continue;
-            };
-            for substitutions in template_substitution_variants(&func.ty, &func.body, &captures) {
-                let concrete = instantiate_name_template_func(func, &substitutions);
-                if seen.insert((concrete.name.clone(), format_type(&concrete.ty))) {
-                    concrete_funcs.push(concrete);
-                }
-            }
-        }
-        false
-    });
-
-    program.funcs.extend(concrete_funcs);
-}
-
-fn referenced_names(program: &Program) -> HashSet<String> {
-    let mut names = HashSet::new();
-    for func in &program.funcs {
-        collect_func_body_names(&func.body, &mut names);
-    }
-    for binding in &program.value_bindings {
-        collect_expr_names(&binding.expr, &mut names);
-    }
-    for binding in &program.bindings {
-        collect_expr_names(&binding.expr, &mut names);
-    }
-    for binding in &program.inferred_bindings {
-        collect_expr_names(&binding.expr, &mut names);
-    }
-    names
-}
-
-fn collect_func_body_names(body: &FuncBody, names: &mut HashSet<String>) {
-    match body {
-        FuncBody::Expr(expr) => collect_expr_names(expr, names),
-        FuncBody::RawGlsl(_) | FuncBody::RawGlslClosure { .. } => {}
-    }
-}
-
-fn collect_expr_names(expr: &Expr, names: &mut HashSet<String>) {
-    match expr {
-        Expr::Ident(name) => {
-            names.insert(name.clone());
-        }
-        Expr::Closure { body, .. } => collect_expr_names(body, names),
-        Expr::Tuple(items) | Expr::Array(items) => {
-            for item in items {
-                collect_expr_names(item, names);
-            }
-        }
-        Expr::Call { callee, args } => {
-            collect_expr_names(callee, names);
-            for arg in args {
-                collect_expr_names(arg, names);
-            }
-        }
-        Expr::FieldAccess { object, .. } => collect_expr_names(object, names),
-        Expr::Conditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            collect_expr_names(condition, names);
-            collect_expr_names(then_branch, names);
-            if let Some(else_branch) = else_branch {
-                collect_expr_names(else_branch, names);
-            }
-        }
-        Expr::Index { array, index } => {
-            collect_expr_names(array, names);
-            collect_expr_names(index, names);
-        }
-        Expr::Unary { expr, .. } => collect_expr_names(expr, names),
-        Expr::Binary { left, right, .. } => {
-            collect_expr_names(left, names);
-            collect_expr_names(right, names);
-        }
-        Expr::Constructor { name, args } => {
-            names.insert(name.clone());
-            match args {
-                ConstructorArgs::Named(args) => {
-                    for (_, arg) in args {
-                        collect_expr_names(arg, names);
-                    }
-                }
-                ConstructorArgs::Positional(args) => {
-                    for arg in args {
-                        collect_expr_names(arg, names);
-                    }
-                }
-            }
-        }
-        Expr::Bool(_) | Expr::Number(_) | Expr::RawString(_) | Expr::Operator(_) => {}
-    }
-}
-
-fn parse_name_template(source: &str) -> Option<Vec<NameTemplatePart>> {
-    let mut parts = Vec::new();
-    let mut index = 0;
-    let mut found_placeholder = false;
-    while let Some(relative_start) = source[index..].find('{') {
-        let start = index + relative_start;
-        if start > index {
-            parts.push(NameTemplatePart::Literal(source[index..start].to_string()));
-        }
-        let name_start = start + 1;
-        let relative_end = source[name_start..].find('}')?;
-        let end = name_start + relative_end;
-        let name = &source[name_start..end];
-        if parse_generic_name(name).is_none() {
-            return None;
-        }
-        parts.push(NameTemplatePart::Placeholder(name.to_string()));
-        found_placeholder = true;
-        index = end + 1;
-    }
-    if index < source.len() {
-        parts.push(NameTemplatePart::Literal(source[index..].to_string()));
-    }
-    found_placeholder.then_some(parts)
-}
-
-fn match_name_template(
-    parts: &[NameTemplatePart],
-    candidate: &str,
-) -> Option<HashMap<String, usize>> {
-    let mut captures = HashMap::new();
-    let mut index = 0;
-    for (part_index, part) in parts.iter().enumerate() {
-        match part {
-            NameTemplatePart::Literal(literal) => {
-                if !candidate[index..].starts_with(literal) {
-                    return None;
-                }
-                index += literal.len();
-            }
-            NameTemplatePart::Placeholder(name) => {
-                let next_literal = parts[part_index + 1..].iter().find_map(|part| match part {
-                    NameTemplatePart::Literal(literal) if !literal.is_empty() => {
-                        Some(literal.as_str())
-                    }
-                    _ => None,
-                });
-                let end = if let Some(next_literal) = next_literal {
-                    index + candidate[index..].find(next_literal)?
-                } else {
-                    candidate.len()
-                };
-                let value = candidate[index..end].parse::<usize>().ok()?;
-                if !captures.get(name).is_none_or(|existing| *existing == value) {
-                    return None;
-                }
-                captures.insert(name.clone(), value);
-                index = end;
-            }
-        }
-    }
-    (index == candidate.len()).then_some(captures)
-}
-
-fn template_substitution_variants(
-    ty: &Type,
-    body: &FuncBody,
-    captures: &HashMap<String, usize>,
-) -> Vec<HashMap<String, usize>> {
-    let mut missing_dims = BTreeSet::new();
-    collect_unbound_generic_dims(ty, captures, &mut missing_dims);
-    let missing_dims = missing_dims.into_iter().collect::<Vec<_>>();
-    let min_dim = template_minimum_vector_dimension(body, captures);
-    let mut variants = Vec::new();
-    build_template_substitution_variants(
-        &missing_dims,
-        0,
-        captures.clone(),
-        min_dim,
-        &mut variants,
-    );
-    variants
-}
-
-fn build_template_substitution_variants(
-    names: &[String],
-    index: usize,
-    current: HashMap<String, usize>,
-    min_dim: usize,
-    out: &mut Vec<HashMap<String, usize>>,
-) {
-    if index == names.len() {
-        out.push(current);
-        return;
-    }
-    let mut next = current;
-    next.insert(names[index].clone(), min_dim.max(2));
-    build_template_substitution_variants(names, index + 1, next, min_dim, out);
-}
-
-fn collect_unbound_generic_dims(
-    ty: &Type,
-    captures: &HashMap<String, usize>,
-    out: &mut BTreeSet<String>,
-) {
-    match ty {
-        Type::VecGeneric(dim) => collect_unbound_generic_dim(dim, captures, out),
-        Type::MatGeneric(rows, columns) => {
-            collect_unbound_generic_dim(rows, captures, out);
-            collect_unbound_generic_dim(columns, captures, out);
-        }
-        Type::Power(base, dim) => {
-            collect_unbound_generic_dims(base, captures, out);
-            collect_unbound_generic_dim(dim, captures, out);
-        }
-        Type::Array(element) => collect_unbound_generic_dims(element, captures, out),
-        Type::Product(parts) => {
-            for part in parts {
-                collect_unbound_generic_dims(part, captures, out);
-            }
-        }
-        Type::Func(input, output) => {
-            collect_unbound_generic_dims(input, captures, out);
-            collect_unbound_generic_dims(output, captures, out);
-        }
-        Type::Bool
-        | Type::Float
-        | Type::Int
-        | Type::Complex
-        | Type::Quat
-        | Type::Isom2
-        | Type::Isom3
-        | Type::Custom { .. }
-        | Type::Object
-        | Type::Object2D
-        | Type::Vec2
-        | Type::Vec3
-        | Type::Vec4
-        | Type::Mat(_, _)
-        | Type::Unit
-        | Type::Generic(_) => {}
-    }
-}
-
-fn collect_unbound_generic_dim(
-    dim: &GenericDim,
-    captures: &HashMap<String, usize>,
-    out: &mut BTreeSet<String>,
-) {
-    if let GenericDim::Var(name) = dim {
-        if !captures.contains_key(name) {
-            out.insert(name.clone());
-        }
-    }
-}
-
-fn template_minimum_vector_dimension(body: &FuncBody, captures: &HashMap<String, usize>) -> usize {
-    match body {
-        FuncBody::Expr(expr) => expr_minimum_vector_dimension(expr, captures),
-        FuncBody::RawGlsl(body) | FuncBody::RawGlslClosure { body, .. } => {
-            string_minimum_vector_dimension(body, captures)
-        }
-    }
-}
-
-fn expr_minimum_vector_dimension(expr: &Expr, captures: &HashMap<String, usize>) -> usize {
-    match expr {
-        Expr::FieldAccess { object, field } => expr_minimum_vector_dimension(object, captures)
-            .max(field_minimum_vector_dimension(field, captures)),
-        Expr::Closure { body, .. } => expr_minimum_vector_dimension(body, captures),
-        Expr::Tuple(items) | Expr::Array(items) => items
-            .iter()
-            .map(|item| expr_minimum_vector_dimension(item, captures))
-            .max()
-            .unwrap_or(2),
-        Expr::Call { callee, args } => args
-            .iter()
-            .map(|arg| expr_minimum_vector_dimension(arg, captures))
-            .fold(expr_minimum_vector_dimension(callee, captures), usize::max),
-        Expr::Conditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            let else_min = else_branch
-                .as_ref()
-                .map(|expr| expr_minimum_vector_dimension(expr, captures))
-                .unwrap_or(2);
-            expr_minimum_vector_dimension(condition, captures)
-                .max(expr_minimum_vector_dimension(then_branch, captures))
-                .max(else_min)
-        }
-        Expr::Index { array, index } => expr_minimum_vector_dimension(array, captures)
-            .max(expr_minimum_vector_dimension(index, captures)),
-        Expr::Unary { expr, .. } => expr_minimum_vector_dimension(expr, captures),
-        Expr::Binary { left, right, .. } => expr_minimum_vector_dimension(left, captures)
-            .max(expr_minimum_vector_dimension(right, captures)),
-        Expr::Constructor { args, .. } => match args {
-            ConstructorArgs::Named(args) => args
-                .iter()
-                .map(|(_, arg)| expr_minimum_vector_dimension(arg, captures))
-                .max()
-                .unwrap_or(2),
-            ConstructorArgs::Positional(args) => args
-                .iter()
-                .map(|arg| expr_minimum_vector_dimension(arg, captures))
-                .max()
-                .unwrap_or(2),
-        },
-        Expr::RawString(source) => string_minimum_vector_dimension(source, captures),
-        Expr::Bool(_) | Expr::Number(_) | Expr::Ident(_) | Expr::Operator(_) => 2,
-    }
-}
-
-fn field_minimum_vector_dimension(field: &str, captures: &HashMap<String, usize>) -> usize {
-    let Some(index) = field.strip_prefix('x') else {
-        return 2;
-    };
-    let Some(placeholder) = index
-        .strip_prefix('{')
-        .and_then(|rest| rest.strip_suffix('}'))
-    else {
-        return index.parse::<usize>().map_or(2, |value| value + 1);
-    };
-    captures.get(placeholder).map_or(2, |value| value + 1)
-}
-
-fn string_minimum_vector_dimension(source: &str, captures: &HashMap<String, usize>) -> usize {
-    captures
-        .iter()
-        .filter_map(|(name, value)| {
-            source
-                .contains(&format!("x{{{name}}}"))
-                .then_some(value + 1)
-        })
-        .max()
-        .unwrap_or(2)
-}
-
-fn instantiate_name_template_func(
-    func: &FuncDecl,
-    substitutions: &HashMap<String, usize>,
-) -> FuncDecl {
-    let generic_substitutions = GenericSubstitution {
-        types: HashMap::new(),
-        dims: substitutions.clone(),
-    };
-    FuncDecl {
-        name: substitute_name_template_text(&func.name, substitutions),
-        ty: substitute_type(&func.ty, &generic_substitutions),
-        body: substitute_func_body_templates(&func.body, substitutions),
-        generated: func.generated,
-        line: func.line,
-    }
-}
-
-fn substitute_func_body_templates(
-    body: &FuncBody,
-    substitutions: &HashMap<String, usize>,
-) -> FuncBody {
-    match body {
-        FuncBody::Expr(expr) => FuncBody::Expr(substitute_expr_templates(expr, substitutions)),
-        FuncBody::RawGlsl(body) => {
-            FuncBody::RawGlsl(substitute_name_template_text(body, substitutions))
-        }
-        FuncBody::RawGlslClosure { params, body } => FuncBody::RawGlslClosure {
-            params: params.clone(),
-            body: substitute_name_template_text(body, substitutions),
-        },
-    }
-}
-
-fn substitute_expr_templates(expr: &Expr, substitutions: &HashMap<String, usize>) -> Expr {
-    match expr {
-        Expr::Ident(name) => Expr::Ident(substitute_name_template_text(name, substitutions)),
-        Expr::Closure { params, body } => Expr::Closure {
-            params: params.clone(),
-            body: Box::new(substitute_expr_templates(body, substitutions)),
-        },
-        Expr::Tuple(items) => Expr::Tuple(
-            items
-                .iter()
-                .map(|item| substitute_expr_templates(item, substitutions))
-                .collect(),
-        ),
-        Expr::Array(items) => Expr::Array(
-            items
-                .iter()
-                .map(|item| substitute_expr_templates(item, substitutions))
-                .collect(),
-        ),
-        Expr::Call { callee, args } => Expr::Call {
-            callee: Box::new(substitute_expr_templates(callee, substitutions)),
-            args: args
-                .iter()
-                .map(|arg| substitute_expr_templates(arg, substitutions))
-                .collect(),
-        },
-        Expr::FieldAccess { object, field } => Expr::FieldAccess {
-            object: Box::new(substitute_expr_templates(object, substitutions)),
-            field: substitute_name_template_text(field, substitutions),
-        },
-        Expr::Conditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => Expr::Conditional {
-            condition: Box::new(substitute_expr_templates(condition, substitutions)),
-            then_branch: Box::new(substitute_expr_templates(then_branch, substitutions)),
-            else_branch: else_branch
-                .as_ref()
-                .map(|expr| Box::new(substitute_expr_templates(expr, substitutions))),
-        },
-        Expr::Index { array, index } => Expr::Index {
-            array: Box::new(substitute_expr_templates(array, substitutions)),
-            index: Box::new(substitute_expr_templates(index, substitutions)),
-        },
-        Expr::Unary { op, expr } => Expr::Unary {
-            op: *op,
-            expr: Box::new(substitute_expr_templates(expr, substitutions)),
-        },
-        Expr::Binary { op, left, right } => Expr::Binary {
-            op: *op,
-            left: Box::new(substitute_expr_templates(left, substitutions)),
-            right: Box::new(substitute_expr_templates(right, substitutions)),
-        },
-        Expr::Constructor { name, args } => Expr::Constructor {
-            name: substitute_name_template_text(name, substitutions),
-            args: match args {
-                ConstructorArgs::Named(args) => ConstructorArgs::Named(
-                    args.iter()
-                        .map(|(name, arg)| {
-                            (name.clone(), substitute_expr_templates(arg, substitutions))
-                        })
-                        .collect(),
-                ),
-                ConstructorArgs::Positional(args) => ConstructorArgs::Positional(
-                    args.iter()
-                        .map(|arg| substitute_expr_templates(arg, substitutions))
-                        .collect(),
-                ),
-            },
-        },
-        Expr::RawString(source) => {
-            Expr::RawString(substitute_name_template_text(source, substitutions))
-        }
-        Expr::Bool(value) => Expr::Bool(*value),
-        Expr::Number(value) => Expr::Number(*value),
-        Expr::Operator(op) => Expr::Operator(*op),
-    }
-}
-
-fn substitute_name_template_text(source: &str, substitutions: &HashMap<String, usize>) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut index = 0;
-    while let Some(relative_start) = source[index..].find('{') {
-        let start = index + relative_start;
-        out.push_str(&source[index..start]);
-        let name_start = start + 1;
-        let Some(relative_end) = source[name_start..].find('}') else {
-            out.push_str(&source[start..]);
-            return out;
-        };
-        let end = name_start + relative_end;
-        let name = &source[name_start..end];
-        if let Some(value) = substitutions.get(name) {
-            out.push_str(&value.to_string());
-        } else {
-            out.push_str(&source[start..=end]);
-        }
-        index = end + 1;
-    }
-    out.push_str(&source[index..]);
-    out
-}
-
-fn empty_program_like(program: &Program) -> Program {
-    Program {
-        ambient_dimension: program.ambient_dimension,
-        derivative_epsilon: program.derivative_epsilon,
-        gradient_epsilon: program.gradient_epsilon,
-        is_module: false,
-        imports: Vec::new(),
-        product_types: Vec::new(),
-        category_types: Vec::new(),
-        inputs: Vec::new(),
-        funcs: Vec::new(),
-        value_bindings: Vec::new(),
-        bindings: Vec::new(),
-        inferred_bindings: Vec::new(),
-    }
-}
-
-fn append_program(target: &mut Program, mut source: Program, line_offset: usize) {
-    bump_program_lines(&mut source, line_offset);
-    target.product_types.extend(source.product_types);
-    target.category_types.extend(source.category_types);
-    target.inputs.extend(source.inputs);
-    target.funcs.extend(source.funcs);
-    target.value_bindings.extend(source.value_bindings);
-    target.bindings.extend(source.bindings);
-    target.inferred_bindings.extend(source.inferred_bindings);
-}
-
-fn bump_program_lines(program: &mut Program, offset: usize) {
-    for item in &mut program.product_types {
-        item.line += offset;
-    }
-    for item in &mut program.category_types {
-        item.line += offset;
-    }
-    for item in &mut program.inputs {
-        item.line += offset;
-    }
-    for item in &mut program.funcs {
-        item.line += offset;
-    }
-    for item in &mut program.value_bindings {
-        item.line += offset;
-    }
-    for item in &mut program.bindings {
-        item.line += offset;
-    }
-    for item in &mut program.inferred_bindings {
-        item.line += offset;
-    }
-}
-
-fn reject_duplicate_product_types(program: &Program) -> Result<(), Error> {
-    let mut names = HashSet::new();
-    for decl in &program.product_types {
-        if !names.insert(decl.name.clone()) {
-            return Err(
-                Error::new(format!("duplicate product type '{}'", decl.name)).with_line(decl.line),
-            );
-        }
-    }
-    for decl in &program.category_types {
-        if !names.insert(decl.name.clone()) {
-            return Err(
-                Error::new(format!("duplicate category type '{}'", decl.name)).with_line(decl.line),
-            );
-        }
-    }
-    Ok(())
-}
-
-fn mangle_private_module_names(program: &mut Program, module_key: &str) {
-    let mut renames = HashMap::new();
-    for decl in &program.product_types {
-        if !decl.eager_ops && !decl.provided {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.funcs {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.value_bindings {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.bindings {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.inferred_bindings {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-
-    for decl in &mut program.product_types {
-        rename_type_refs(&mut decl.components, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
-    }
-    for decl in &mut program.inputs {
-        rename_type(&mut decl.ty, &renames);
-    }
-    for decl in &mut program.funcs {
-        rename_type(&mut decl.ty, &renames);
-        rename_func_body(&mut decl.body, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
-    }
-    for decl in &mut program.value_bindings {
-        rename_type(&mut decl.ty, &renames);
-        rename_expr(&mut decl.expr, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
-    }
-    for decl in &mut program.bindings {
-        rename_type(&mut decl.ty, &renames);
-        rename_expr(&mut decl.expr, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
-    }
-    for decl in &mut program.inferred_bindings {
-        rename_expr(&mut decl.expr, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
-    }
-}
-
-fn private_module_name(module_key: &str, name: &str) -> String {
-    format!("__lane_mod_{}_{}", sanitize_module_ident(module_key), name)
-}
-
-fn sanitize_module_ident(source: &str) -> String {
-    source
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '_' {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-fn rename_type_refs(types: &mut [Type], renames: &HashMap<String, String>) {
-    for ty in types {
-        rename_type(ty, renames);
-    }
-}
-
-fn rename_type(ty: &mut Type, renames: &HashMap<String, String>) {
-    match ty {
-        Type::Custom { name, .. } => {
-            if let Some(replacement) = renames.get(name) {
-                *name = replacement.clone();
-            }
-        }
-        Type::Array(element) => rename_type(element, renames),
-        Type::Product(parts) => rename_type_refs(parts, renames),
-        Type::Func(input, output) => {
-            rename_type(input, renames);
-            rename_type(output, renames);
-        }
-        _ => {}
-    }
-}
-
-fn rename_func_body(body: &mut FuncBody, renames: &HashMap<String, String>) {
-    match body {
-        FuncBody::Expr(expr) => rename_expr(expr, renames),
-        FuncBody::RawGlsl(body) => *body = rename_raw_glsl_placeholders(body, renames),
-        FuncBody::RawGlslClosure { body, .. } => {
-            *body = rename_raw_glsl_placeholders(body, renames)
-        }
-    }
-}
-
-fn rename_raw_glsl_placeholders(body: &str, renames: &HashMap<String, String>) -> String {
-    rewrite_raw_glsl_placeholders(body, |name| {
-        if let Some((base, field)) = name.split_once('.') {
-            let base = renames.get(base).map(String::as_str).unwrap_or(base);
-            format!("{base}.{field}")
-        } else {
-            renames
-                .get(name)
-                .cloned()
-                .unwrap_or_else(|| name.to_string())
-        }
-    })
-}
-
-fn rewrite_raw_glsl_placeholders(body: &str, mut rewrite: impl FnMut(&str) -> String) -> String {
-    let mut out = String::with_capacity(body.len());
-    let mut index = 0;
-    while let Some(relative_start) = body[index..].find("${") {
-        let start = index + relative_start;
-        out.push_str(&body[index..start]);
-        let name_start = start + 2;
-        let Some(relative_end) = body[name_start..].find('}') else {
-            out.push_str(&body[start..]);
-            return out;
-        };
-        let end = name_start + relative_end;
-        let name = &body[name_start..end];
-        if is_placeholder_ident(name) {
-            out.push_str("${");
-            out.push_str(&rewrite(name));
-            out.push('}');
-        } else {
-            out.push_str(&body[start..=end]);
-        }
-        index = end + 1;
-    }
-    out.push_str(&body[index..]);
-    out
-}
-
-fn is_placeholder_ident(name: &str) -> bool {
-    if let Some((base, field)) = name.split_once('.') {
-        return is_placeholder_ident(base) && is_placeholder_ident(field);
-    }
-    let mut chars = name.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-}
-
-fn rename_expr(expr: &mut Expr, renames: &HashMap<String, String>) {
-    match expr {
-        Expr::Bool(_) | Expr::Number(_) => {}
-        Expr::RawString(_) => {}
-        Expr::Closure { params, body } => {
-            for param in params {
-                rename_ident(param, renames);
-            }
-            rename_expr(body, renames);
-        }
-        Expr::Ident(name) => rename_ident(name, renames),
-        Expr::Operator(_) => {}
-        Expr::Tuple(items) | Expr::Array(items) => {
-            for item in items {
-                rename_expr(item, renames);
-            }
-        }
-        Expr::Call { callee, args } => {
-            rename_expr(callee, renames);
-            for arg in args {
-                rename_expr(arg, renames);
-            }
-        }
-        Expr::FieldAccess { object, .. } => rename_expr(object, renames),
-        Expr::Conditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            rename_expr(condition, renames);
-            rename_expr(then_branch, renames);
-            if let Some(else_branch) = else_branch {
-                rename_expr(else_branch, renames);
-            }
-        }
-        Expr::Index { array, index } => {
-            rename_expr(array, renames);
-            rename_expr(index, renames);
-        }
-        Expr::Unary { expr, .. } => rename_expr(expr, renames),
-        Expr::Binary { left, right, .. } => {
-            rename_expr(left, renames);
-            rename_expr(right, renames);
-        }
-        Expr::Constructor { name, args } => {
-            rename_ident(name, renames);
-            match args {
-                ConstructorArgs::Named(args) => {
-                    for (_, expr) in args {
-                        rename_expr(expr, renames);
-                    }
-                }
-                ConstructorArgs::Positional(args) => {
-                    for expr in args {
-                        rename_expr(expr, renames);
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn rename_ident(name: &mut String, renames: &HashMap<String, String>) {
-    if let Some(replacement) = renames.get(name) {
-        *name = replacement.clone();
-    }
-}
-
+/// Performs `suffix_glsl_float_literals` behavior.
 pub(crate) fn suffix_glsl_float_literals(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     let chars = source.chars().collect::<Vec<_>>();
@@ -1710,11 +82,13 @@ pub(crate) fn suffix_glsl_float_literals(source: &str) -> String {
     out
 }
 
+/// Returns all known built-in primitives from the active registry.
 pub fn known_primitives() -> Vec<KnownPrimitive> {
     let registry = Registry::default();
     registry.known_primitives()
 }
 
+/// Returns built-ins filtered to the requested ambient shape dimension.
 pub fn known_primitives_by_dimension(dimension: ShapeDimension) -> Vec<KnownPrimitive> {
     known_primitives()
         .into_iter()
@@ -1722,26 +96,31 @@ pub fn known_primitives_by_dimension(dimension: ShapeDimension) -> Vec<KnownPrim
         .collect()
 }
 
+/// Looks up a primitive definition by exact name.
 pub fn known_primitive(name: &str) -> Option<KnownPrimitive> {
     let registry = Registry::default();
     registry.known_primitive(name)
 }
 
+/// Returns all preregistered object descriptors for internal render use.
 pub fn known_preregistered_objects() -> Vec<PreregisteredObject> {
     let registry = Registry::default();
     registry.preregistered_objects()
 }
 
+/// Returns the user-facing built-in object catalogue.
 pub fn known_builtin_objects() -> Vec<KnownBuiltinObject> {
     let registry = Registry::default();
     registry.known_builtin_objects()
 }
 
+/// Returns a built-in object's detailed type/body payload by name.
 pub fn known_builtin_object(name: &str) -> Option<KnownBuiltinObjectDetail> {
     let registry = Registry::default();
     registry.known_builtin_object(name)
 }
 
+/// Resolves a preregistered object definition by name.
 pub fn preregistered_object(name: &str) -> Option<PreregisteredObject> {
     let registry = Registry::default();
     registry.preregistered_object(name)
@@ -1754,6 +133,7 @@ pub struct Error {
 }
 
 impl Error {
+    /// Performs `new` behavior.
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -1761,6 +141,7 @@ impl Error {
         }
     }
 
+    /// Performs `with_line` behavior.
     fn with_line(mut self, line: usize) -> Self {
         if self.line.is_none() {
             self.line = Some(line);
@@ -1768,12 +149,14 @@ impl Error {
         self
     }
 
+    /// Returns the stored diagnostic line number if one was attached.
     pub fn line(&self) -> Option<usize> {
         self.line
     }
 }
 
 impl fmt::Display for Error {
+    /// Performs `fmt` behavior.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(line) = self.line {
             write!(f, "line {line}: {}", self.message)
@@ -1802,6 +185,7 @@ pub enum ShapeDimension {
 }
 
 impl ShapeDimension {
+    /// Returns the dimension label (`2D` or `3D`) as a static string.
     pub fn label(self) -> &'static str {
         match self {
             Self::D2 => "2D",
@@ -1841,6 +225,7 @@ pub enum KnownBuiltinObjectKind {
 pub const TYPE_METATYPE_NAME: &str = "Type";
 pub const CATEGORY_METATYPE_NAME: &str = "Cat";
 
+/// Returns all built-in scalar/matrix type names and aliases.
 pub fn known_type_names() -> Vec<&'static str> {
     let mut names = BUILTIN_TYPE_DEFS
         .iter()
@@ -1850,14 +235,17 @@ pub fn known_type_names() -> Vec<&'static str> {
     names
 }
 
+/// Checks whether the provided name exists in built-in type aliases.
 pub fn is_known_type_name(name: &str) -> bool {
     parse_builtin_type_name(name).is_some()
 }
 
+/// Returns all known algebraic category names for validation and rendering.
 pub fn known_category_names() -> Vec<&'static str> {
     ALGEBRAIC_CATEGORY_DEFS.iter().map(|def| def.name).collect()
 }
 
+/// Checks whether a name matches a known algebraic category.
 pub fn is_known_category_name(name: &str) -> bool {
     category_by_name(name).is_some()
 }
@@ -1876,6 +264,7 @@ const COMPLEX_OVERLOAD_NAMES: [&str; 10] = [
     "inv", "exp", "log", "sqrt", "sin", "cos", "tan", "sinh", "cosh", "tanh",
 ];
 
+/// Performs `complex_overload_name` behavior.
 fn complex_overload_name(name: &str) -> Option<&'static str> {
     match name {
         "cinv" => Some("inv"),
@@ -1902,6 +291,7 @@ fn complex_overload_name(name: &str) -> Option<&'static str> {
     }
 }
 
+/// Performs `complex_overload_support_glsl` behavior.
 fn complex_overload_support_glsl(name: &str) -> Option<&'static str> {
     match name {
         "inv" => Some("vec2 inv(vec2 z) {\n    return vec2(z.x, -z.y) / dot(z, z);\n}"),
@@ -1982,6 +372,7 @@ const ALGEBRAIC_CATEGORY_DEFS: [AlgebraicCategoryDef; 9] = [
     },
 ];
 
+/// Performs `category_by_name` behavior.
 fn category_by_name(name: &str) -> Option<AlgebraicCategory> {
     ALGEBRAIC_CATEGORY_DEFS
         .iter()
@@ -1989,6 +380,7 @@ fn category_by_name(name: &str) -> Option<AlgebraicCategory> {
         .map(|def| def.category)
 }
 
+/// Performs `category_name` behavior.
 fn category_name(category: AlgebraicCategory) -> &'static str {
     ALGEBRAIC_CATEGORY_DEFS
         .iter()
@@ -1997,6 +389,7 @@ fn category_name(category: AlgebraicCategory) -> &'static str {
         .unwrap()
 }
 
+/// Performs `type_category_signature` behavior.
 fn type_category_signature(name: &str) -> Option<String> {
     let ty = parse_builtin_type_name(name)?;
     let categories = minimal_categories(type_direct_categories(&ty));
@@ -2006,6 +399,7 @@ fn type_category_signature(name: &str) -> Option<String> {
     Some(format_categories(&categories))
 }
 
+/// Performs `minimal_categories` behavior.
 fn minimal_categories(categories: Vec<AlgebraicCategory>) -> Vec<AlgebraicCategory> {
     categories
         .iter()
@@ -2018,6 +412,7 @@ fn minimal_categories(categories: Vec<AlgebraicCategory>) -> Vec<AlgebraicCatego
         .collect()
 }
 
+/// Performs `type_direct_categories` behavior.
 fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {
     if let Type::Mat(rows, columns) = ty {
         let mut categories = Vec::new();
@@ -2035,6 +430,7 @@ fn type_direct_categories(ty: &Type) -> Vec<AlgebraicCategory> {
         .unwrap_or_default()
 }
 
+/// Performs `format_categories` behavior.
 fn format_categories(categories: &[AlgebraicCategory]) -> String {
     categories
         .iter()
@@ -2154,6 +550,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
     },
 ];
 
+/// Performs `builtin_type_support_glsl` behavior.
 fn builtin_type_support_glsl(name: &str) -> Option<&'static str> {
     BUILTIN_TYPE_DEFS
         .iter()
@@ -2210,10 +607,12 @@ enum Type {
 }
 
 impl Type {
+    /// Performs `func` behavior.
     fn func(input: Type, output: Type) -> Self {
         Self::Func(Box::new(input), Box::new(output))
     }
 
+    /// Performs `glsl_name` behavior.
     fn glsl_name(&self) -> String {
         match self {
             Self::Unit => "void".to_string(),
@@ -2237,6 +636,7 @@ impl Type {
         }
     }
 
+    /// Performs `type_name` behavior.
     fn type_name(&self) -> String {
         match self {
             Self::Mat(rows, columns) => return matrix_type_name(*rows, *columns),
@@ -2276,6 +676,7 @@ impl Type {
     }
 }
 
+/// Performs `parse_builtin_type_name` behavior.
 fn parse_builtin_type_name(name: &str) -> Option<Type> {
     if let Some(ty) = parse_generic_type_name(name) {
         return Some(ty);
@@ -2287,6 +688,7 @@ fn parse_builtin_type_name(name: &str) -> Option<Type> {
         .or_else(|| parse_matrix_type_name(name))
 }
 
+/// Performs `parse_generic_type_name` behavior.
 fn parse_generic_type_name(name: &str) -> Option<Type> {
     if let Some(inner) = name
         .strip_prefix('R')
@@ -2307,6 +709,7 @@ fn parse_generic_type_name(name: &str) -> Option<Type> {
     parse_generic_name(inner).map(Type::Generic)
 }
 
+/// Performs `custom_type` behavior.
 fn custom_type(name: &str, category: AlgebraicCategory) -> Type {
     Type::Custom {
         name: name.to_string(),
@@ -2314,10 +717,12 @@ fn custom_type(name: &str, category: AlgebraicCategory) -> Type {
     }
 }
 
+/// Performs `product_type_decl_type` behavior.
 fn product_type_decl_type(decl: &ProductTypeDecl) -> Type {
     custom_type(&decl.name, decl.category)
 }
 
+/// Performs `parse_matrix_type_name` behavior.
 fn parse_matrix_type_name(name: &str) -> Option<Type> {
     let suffix = name.strip_prefix("Mat")?;
     if suffix.len() == 1 {
@@ -2332,6 +737,7 @@ fn parse_matrix_type_name(name: &str) -> Option<Type> {
     ))
 }
 
+/// Performs `parse_matrix_dimension` behavior.
 fn parse_matrix_dimension(source: &str) -> Option<usize> {
     source
         .parse::<usize>()
@@ -2339,6 +745,7 @@ fn parse_matrix_dimension(source: &str) -> Option<usize> {
         .filter(|dimension| *dimension > 1)
 }
 
+/// Performs `parse_generic_dim` behavior.
 fn parse_generic_dim(source: &str) -> Option<GenericDim> {
     source
         .parse::<usize>()
@@ -2348,6 +755,7 @@ fn parse_generic_dim(source: &str) -> Option<GenericDim> {
         .or_else(|| parse_generic_name(source).map(GenericDim::Var))
 }
 
+/// Performs `ensure_matrix_generic_dim` behavior.
 fn ensure_matrix_generic_dim(dim: GenericDim) -> Option<GenericDim> {
     match dim {
         GenericDim::Known(value) if value <= 1 => None,
@@ -2355,6 +763,7 @@ fn ensure_matrix_generic_dim(dim: GenericDim) -> Option<GenericDim> {
     }
 }
 
+/// Performs `parse_generic_name` behavior.
 fn parse_generic_name(source: &str) -> Option<String> {
     let mut chars = source.chars();
     let first = chars.next()?;
@@ -2366,11 +775,13 @@ fn parse_generic_name(source: &str) -> Option<String> {
         .then(|| source.to_string())
 }
 
+/// Performs `parse_braced_generic_dim` behavior.
 fn parse_braced_generic_dim(source: &str) -> Option<GenericDim> {
     let inner = source.strip_prefix('{')?.strip_suffix('}')?;
     parse_generic_dim(inner)
 }
 
+/// Performs `split_matrix_generic_dims` behavior.
 fn split_matrix_generic_dims(source: &str) -> Option<(GenericDim, GenericDim)> {
     let rows_end = source.strip_prefix('{')?.find('}')? + 1;
     let rows = ensure_matrix_generic_dim(parse_braced_generic_dim(&source[..=rows_end])?)?;
@@ -2380,6 +791,7 @@ fn split_matrix_generic_dims(source: &str) -> Option<(GenericDim, GenericDim)> {
     Some((rows, columns))
 }
 
+/// Performs `format_generic_dim` behavior.
 fn format_generic_dim(dim: &GenericDim) -> String {
     match dim {
         GenericDim::Known(value) => value.to_string(),
@@ -2387,6 +799,7 @@ fn format_generic_dim(dim: &GenericDim) -> String {
     }
 }
 
+/// Performs `vector_type_for_generic_dim` behavior.
 fn vector_type_for_generic_dim(dim: GenericDim) -> Type {
     match dim {
         GenericDim::Known(2) => Type::Vec2,
@@ -2396,6 +809,7 @@ fn vector_type_for_generic_dim(dim: GenericDim) -> Type {
     }
 }
 
+/// Performs `matrix_type_for_generic_dims` behavior.
 fn matrix_type_for_generic_dims(rows: GenericDim, columns: GenericDim) -> Type {
     match (&rows, &columns) {
         (GenericDim::Known(rows), GenericDim::Known(columns)) => Type::Mat(*rows, *columns),
@@ -2403,13 +817,15 @@ fn matrix_type_for_generic_dims(rows: GenericDim, columns: GenericDim) -> Type {
     }
 }
 
+/// Performs `power_type_for_generic_dim` behavior.
 fn power_type_for_generic_dim(base: Type, dim: GenericDim) -> Type {
     match dim {
-        GenericDim::Known(count) => Type::Product(std::iter::repeat(base).take(count).collect()),
+        GenericDim::Known(count) => Type::Product(std::iter::repeat_n(base, count).collect()),
         dim => Type::Power(Box::new(base), dim),
     }
 }
 
+/// Performs `format_type_power_base` behavior.
 fn format_type_power_base(ty: &Type) -> String {
     match ty {
         Type::Generic(name) => format!("{{{name}}}"),
@@ -2418,6 +834,7 @@ fn format_type_power_base(ty: &Type) -> String {
     }
 }
 
+/// Performs `matrix_type_name` behavior.
 fn matrix_type_name(rows: usize, columns: usize) -> String {
     if rows == columns {
         format!("Mat{rows}")
@@ -2426,6 +843,7 @@ fn matrix_type_name(rows: usize, columns: usize) -> String {
     }
 }
 
+/// Performs `matrix_glsl_type` behavior.
 fn matrix_glsl_type(rows: usize, columns: usize) -> String {
     if rows == columns {
         format!("mat{rows}")
@@ -2434,6 +852,7 @@ fn matrix_glsl_type(rows: usize, columns: usize) -> String {
     }
 }
 
+/// Performs `matrix_constructor_type` behavior.
 fn matrix_constructor_type(rows: usize, columns: usize) -> String {
     if rows == columns {
         format!("mat{rows}")
@@ -2442,6 +861,7 @@ fn matrix_constructor_type(rows: usize, columns: usize) -> String {
     }
 }
 
+/// Performs `has_category` behavior.
 fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
     if category == AlgebraicCategory::Set {
         return !matches!(ty, Type::Object | Type::Object2D | Type::Func(_, _));
@@ -2486,6 +906,7 @@ fn has_category(ty: &Type, category: AlgebraicCategory) -> bool {
         .any(|candidate| *candidate == category || category_implies(*candidate, category))
 }
 
+/// Performs `category_implies` behavior.
 fn category_implies(source: AlgebraicCategory, target: AlgebraicCategory) -> bool {
     matches!(
         (source, target),
@@ -2834,6 +1255,7 @@ enum ValueExpr {
 }
 
 impl ValueExpr {
+    /// Performs `ty` behavior.
     fn ty(&self) -> Type {
         match self {
             Self::Bool(_) => Type::Bool,
@@ -2866,6 +1288,7 @@ impl ValueExpr {
         }
     }
 
+    /// Performs `array_len` behavior.
     fn array_len(&self) -> Option<usize> {
         match self {
             Self::Var { array_len, .. } => *array_len,
@@ -2938,6 +1361,7 @@ enum PointwiseCallArg {
     Value(Box<ValueExpr>),
 }
 
+/// Performs `apply_function_expr` behavior.
 fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
     match &func.kind {
         FunctionExprKind::Named(name) => ValueExpr::Call {
@@ -2958,7 +1382,7 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
             apply_projection_function(*index, field.as_deref(), &func.input, &func.output, arg)
         }
         FunctionExprKind::Diagonal { dimension } => {
-            product_value(std::iter::repeat(arg).take(*dimension).collect())
+            product_value(std::iter::repeat_n(arg, *dimension).collect())
         }
         FunctionExprKind::ObjectGetter {
             object,
@@ -3029,6 +1453,7 @@ fn apply_function_expr(func: &FunctionExpr, arg: ValueExpr) -> ValueExpr {
     }
 }
 
+/// Performs `apply_projection_function` behavior.
 fn apply_projection_function(
     index: usize,
     field: Option<&str>,
@@ -3067,10 +1492,12 @@ fn apply_projection_function(
     }
 }
 
+/// Performs `vector_field_name` behavior.
 fn vector_field_name(index: usize) -> &'static str {
     ["x", "y", "z", "w"][index]
 }
 
+/// Performs `product_projection_value_name` behavior.
 fn product_projection_value_name(name: &str, index: usize) -> String {
     if name == "t" || name.starts_with("_t") {
         return format!("{name}{index}");
@@ -3078,6 +1505,7 @@ fn product_projection_value_name(name: &str, index: usize) -> String {
     format!("__lane_product_{name}_{index}")
 }
 
+/// Performs `operator_function_args` behavior.
 fn operator_function_args(func: &FunctionExpr, arg: ValueExpr) -> (ValueExpr, ValueExpr) {
     match &func.input {
         Type::Product(parts) if parts.len() == 2 => (
@@ -3108,6 +1536,7 @@ fn operator_function_args(func: &FunctionExpr, arg: ValueExpr) -> (ValueExpr, Va
     }
 }
 
+/// Performs `apply_pointwise_call_arg` behavior.
 fn apply_pointwise_call_arg(call_arg: &PointwiseCallArg, arg: ValueExpr) -> ValueExpr {
     match call_arg {
         PointwiseCallArg::Function {
@@ -3118,6 +1547,7 @@ fn apply_pointwise_call_arg(call_arg: &PointwiseCallArg, arg: ValueExpr) -> Valu
     }
 }
 
+/// Performs `cast_value_for_expected_type` behavior.
 fn cast_value_for_expected_type(value: ValueExpr, expected_ty: &Type) -> ValueExpr {
     if value.ty() == *expected_ty {
         return value;
@@ -3131,6 +1561,7 @@ fn cast_value_for_expected_type(value: ValueExpr, expected_ty: &Type) -> ValueEx
     value
 }
 
+/// Performs `product_value` behavior.
 fn product_value(values: Vec<ValueExpr>) -> ValueExpr {
     if !values.iter().all(|value| value.ty() == Type::Float) {
         return ValueExpr::Product(values);
@@ -3307,6 +1738,7 @@ struct Registry {
     value_funcs: HashMap<&'static str, ValueFuncDef>,
 }
 
+/// Performs `object_op_type` behavior.
 fn object_op_type(op: &ObjectOpDef) -> Type {
     let object_domain = if op.object_arg_count == 1 {
         object_op_arg_type(op, 0)
@@ -3325,6 +1757,7 @@ fn object_op_type(op: &ObjectOpDef) -> Type {
     }
 }
 
+/// Performs `object_op_arg_type` behavior.
 fn object_op_arg_type(op: &ObjectOpDef, _index: usize) -> Type {
     if op.name == "revolution" {
         Type::Object2D
@@ -3333,6 +1766,7 @@ fn object_op_arg_type(op: &ObjectOpDef, _index: usize) -> Type {
     }
 }
 
+/// Performs `ensure_type` behavior.
 fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Error> {
     if types_match(actual, expected) {
         return Ok(());
@@ -3367,6 +1801,7 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
     )))
 }
 
+/// Performs `types_compatible_for_expected` behavior.
 fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
     types_match(actual, expected)
         || matches!(
@@ -3392,6 +1827,7 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
         )
 }
 
+/// Performs `types_match` behavior.
 fn types_match(actual: &Type, expected: &Type) -> bool {
     unify_types(actual, expected, &mut GenericSubstitution::default())
 }
@@ -3402,6 +1838,7 @@ struct GenericSubstitution {
     dims: HashMap<String, usize>,
 }
 
+/// Performs `unify_types` behavior.
 fn unify_types(left: &Type, right: &Type, substitutions: &mut GenericSubstitution) -> bool {
     if left == right {
         return true;
@@ -3450,6 +1887,7 @@ fn unify_types(left: &Type, right: &Type, substitutions: &mut GenericSubstitutio
     }
 }
 
+/// Performs `unify_type_var` behavior.
 fn unify_type_var(name: &str, ty: &Type, substitutions: &mut GenericSubstitution) -> bool {
     if let Some(bound) = substitutions.types.get(name).cloned() {
         return unify_types(&bound, ty, substitutions);
@@ -3458,6 +1896,7 @@ fn unify_type_var(name: &str, ty: &Type, substitutions: &mut GenericSubstitution
     true
 }
 
+/// Performs `unify_symbolic_dims` behavior.
 fn unify_symbolic_dims(
     left: &GenericDim,
     right: &GenericDim,
@@ -3473,6 +1912,7 @@ fn unify_symbolic_dims(
     }
 }
 
+/// Performs `unify_generic_dim` behavior.
 fn unify_generic_dim(
     dim: &GenericDim,
     concrete: usize,
@@ -3484,6 +1924,7 @@ fn unify_generic_dim(
     }
 }
 
+/// Performs `unify_generic_dim_var` behavior.
 fn unify_generic_dim_var(
     name: &str,
     concrete: usize,
@@ -3498,6 +1939,7 @@ fn unify_generic_dim_var(
     }
 }
 
+/// Performs `vector_type_dimension` behavior.
 fn vector_type_dimension(ty: &Type) -> Option<usize> {
     match ty {
         Type::Vec2 => Some(2),
@@ -3508,6 +1950,7 @@ fn vector_type_dimension(ty: &Type) -> Option<usize> {
     }
 }
 
+/// Performs `substitute_type` behavior.
 fn substitute_type(ty: &Type, substitutions: &GenericSubstitution) -> Type {
     match ty {
         Type::Generic(name) => substitutions
@@ -3548,6 +1991,7 @@ fn substitute_type(ty: &Type, substitutions: &GenericSubstitution) -> Type {
     }
 }
 
+/// Performs `substitute_dim` behavior.
 fn substitute_dim(dim: &GenericDim, substitutions: &GenericSubstitution) -> GenericDim {
     match dim {
         GenericDim::Known(_) => dim.clone(),
@@ -3560,6 +2004,7 @@ fn substitute_dim(dim: &GenericDim, substitutions: &GenericSubstitution) -> Gene
     }
 }
 
+/// Performs `format_type` behavior.
 fn format_type(ty: &Type) -> String {
     match ty {
         Type::Array(element) => format!("Array({})", format_type(element)),
@@ -3588,6 +2033,7 @@ fn format_type(ty: &Type) -> String {
     }
 }
 
+/// Performs `format_object_type` behavior.
 fn format_object_type(ty: &Type) -> String {
     match ty {
         Type::Product(parts) => parts
@@ -3613,6 +2059,7 @@ fn format_object_type(ty: &Type) -> String {
     }
 }
 
+/// Performs `format_overload_set` behavior.
 fn format_overload_set(overloads: &[Type]) -> String {
     compact_overload_set(overloads).unwrap_or_else(|| {
         overloads
@@ -3623,6 +2070,7 @@ fn format_overload_set(overloads: &[Type]) -> String {
     })
 }
 
+/// Performs `compact_overload_set` behavior.
 fn compact_overload_set(overloads: &[Type]) -> Option<String> {
     let mut remaining = overloads.to_vec();
     let mut parts = Vec::new();
@@ -3722,6 +2170,7 @@ fn compact_overload_set(overloads: &[Type]) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" | "))
 }
 
+/// Performs `take_pattern` behavior.
 fn take_pattern(remaining: &mut Vec<Type>, pattern: &[Type], label: &str, parts: &mut Vec<String>) {
     if pattern.is_empty() || !contains_pattern(remaining, pattern) {
         return;
@@ -3736,6 +2185,7 @@ fn take_pattern(remaining: &mut Vec<Type>, pattern: &[Type], label: &str, parts:
     parts.push(label.to_string());
 }
 
+/// Performs `contains_pattern` behavior.
 fn contains_pattern(remaining: &[Type], pattern: &[Type]) -> bool {
     let mut scratch = remaining.to_vec();
     for ty in pattern {
@@ -3747,35 +2197,41 @@ fn contains_pattern(remaining: &[Type], pattern: &[Type]) -> bool {
     true
 }
 
+/// Performs `compact_same_type_label` behavior.
 fn compact_same_type_label(arity: usize) -> String {
     format!("Hom({}, Rn)", vec!["Rn"; arity].join(" × "))
 }
 
+/// Performs `compact_vector_scalar_last_label` behavior.
 fn compact_vector_scalar_last_label(arity: usize) -> String {
     let mut args = vec!["Rn"];
     args.extend(vec!["R"; arity - 1]);
     format!("Hom({}, Rn)", args.join(" × "))
 }
 
+/// Performs `compact_vectors_then_scalar_label` behavior.
 fn compact_vectors_then_scalar_label(arity: usize) -> String {
     let mut args = vec!["Rn"; arity - 1];
     args.push("R");
     format!("Hom({}, Rn)", args.join(" × "))
 }
 
+/// Performs `compact_scalar_vector_first_label` behavior.
 fn compact_scalar_vector_first_label(arity: usize) -> String {
     let mut args = vec!["R"];
     args.extend(vec!["Rn"; arity - 1]);
     format!("Hom({}, Rn)", args.join(" × "))
 }
 
+/// Performs `compact_scalars_then_vector_label` behavior.
 fn compact_scalars_then_vector_label(arity: usize) -> String {
     let mut args = vec!["R"; arity - 1];
     args.push("Rn");
     format!("Hom({}, Rn)", args.join(" × "))
 }
 
-fn flatten_func_type<'a>(ty: &'a Type) -> (Vec<&'a Type>, &'a Type) {
+// Splits a curried function type into input parameters and final output type.
+fn flatten_func_type(ty: &Type) -> (Vec<&Type>, &Type) {
     let mut inputs = Vec::new();
     let mut current = ty;
     while let Type::Func(input, output) = current {
@@ -3785,7 +2241,8 @@ fn flatten_func_type<'a>(ty: &'a Type) -> (Vec<&'a Type>, &'a Type) {
     (inputs, current)
 }
 
-fn flatten_call<'a>(expr: &'a Expr) -> Result<(String, Vec<&'a Expr>), Error> {
+// Flattens a function application expression into callee name and argument list.
+fn flatten_call(expr: &Expr) -> Result<(String, Vec<&Expr>), Error> {
     let mut args = Vec::new();
     let mut current = expr;
     loop {
@@ -3826,6 +2283,7 @@ fn flatten_call<'a>(expr: &'a Expr) -> Result<(String, Vec<&'a Expr>), Error> {
     }
 }
 
+/// Performs `listed_builtin_value_func_overload_types` behavior.
 fn listed_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
     let mut overloads = glsl_builtin_value_func_overload_types(name).unwrap_or_default();
     if COMPLEX_OVERLOAD_NAMES.contains(&name) {
@@ -3834,6 +2292,7 @@ fn listed_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
     (!overloads.is_empty()).then_some(overloads)
 }
 
+/// Performs `listed_builtin_value_func_overloads` behavior.
 fn listed_builtin_value_func_overloads(name: &str) -> Option<String> {
     if name == "pow" {
         return Some(format!(
@@ -3844,6 +2303,7 @@ fn listed_builtin_value_func_overloads(name: &str) -> Option<String> {
     listed_builtin_value_func_overload_types(name).map(|overloads| format_overload_set(&overloads))
 }
 
+/// Performs `glsl_builtin_value_func_overload_types` behavior.
 fn glsl_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
     let mut result = Vec::new();
     for (candidate, overloads) in glsl_builtin_value_func_overloads() {
@@ -3854,6 +2314,7 @@ fn glsl_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
     (!result.is_empty()).then_some(result)
 }
 
+/// Performs `glsl_builtin_value_func_overloads` behavior.
 fn glsl_builtin_value_func_overloads() -> Vec<(&'static str, Vec<Type>)> {
     let mut funcs = Vec::new();
 
@@ -3945,6 +2406,7 @@ fn glsl_builtin_value_func_overloads() -> Vec<(&'static str, Vec<Type>)> {
     funcs
 }
 
+/// Performs `unary_float_gen_type_overloads` behavior.
 fn unary_float_gen_type_overloads() -> Vec<Type> {
     float_gen_types()
         .into_iter()
@@ -3952,19 +2414,23 @@ fn unary_float_gen_type_overloads() -> Vec<Type> {
         .collect()
 }
 
+/// Performs `generic_dim_var` behavior.
 fn generic_dim_var(name: &str) -> GenericDim {
     GenericDim::Var(name.to_string())
 }
 
+/// Performs `generic_matrix_type` behavior.
 fn generic_matrix_type(rows: &str, columns: &str) -> Type {
     Type::MatGeneric(generic_dim_var(rows), generic_dim_var(columns))
 }
 
+/// Performs `generic_square_matrix_type` behavior.
 fn generic_square_matrix_type(dim: &str) -> Type {
     let dim = generic_dim_var(dim);
     Type::MatGeneric(dim.clone(), dim)
 }
 
+/// Performs `generic_transpose_matrix_overloads` behavior.
 fn generic_transpose_matrix_overloads() -> Vec<Type> {
     vec![Type::func(
         generic_matrix_type("n", "m"),
@@ -3972,20 +2438,24 @@ fn generic_transpose_matrix_overloads() -> Vec<Type> {
     )]
 }
 
+/// Performs `generic_same_matrix_overloads` behavior.
 fn generic_same_matrix_overloads() -> Vec<Type> {
     let matrix = generic_matrix_type("n", "m");
     vec![func_type(vec![matrix.clone(), matrix.clone()], matrix)]
 }
 
+/// Performs `generic_square_matrix_to_float_overloads` behavior.
 fn generic_square_matrix_to_float_overloads() -> Vec<Type> {
     vec![Type::func(generic_square_matrix_type("n"), Type::Float)]
 }
 
+/// Performs `generic_square_matrix_overloads` behavior.
 fn generic_square_matrix_overloads() -> Vec<Type> {
     let matrix = generic_square_matrix_type("n");
     vec![Type::func(matrix.clone(), matrix)]
 }
 
+/// Performs `same_type_float_gen_overloads` behavior.
 fn same_type_float_gen_overloads(arity: usize) -> Vec<Type> {
     float_gen_types()
         .into_iter()
@@ -3993,18 +2463,21 @@ fn same_type_float_gen_overloads(arity: usize) -> Vec<Type> {
         .collect()
 }
 
+/// Performs `same_or_scalar_float_gen_overloads` behavior.
 fn same_or_scalar_float_gen_overloads(arity: usize) -> Vec<Type> {
     let mut overloads = same_type_float_gen_overloads(arity);
     overloads.extend(vector_scalar_last_overloads(arity));
     overloads
 }
 
+/// Performs `same_or_scalar_symmetric_float_gen_overloads` behavior.
 fn same_or_scalar_symmetric_float_gen_overloads() -> Vec<Type> {
     let mut overloads = same_or_scalar_float_gen_overloads(2);
     overloads.extend(scalar_vector_first_overloads(2));
     overloads
 }
 
+/// Performs `vector_scalar_last_overloads` behavior.
 fn vector_scalar_last_overloads(arity: usize) -> Vec<Type> {
     vector_types()
         .into_iter()
@@ -4016,6 +2489,7 @@ fn vector_scalar_last_overloads(arity: usize) -> Vec<Type> {
         .collect()
 }
 
+/// Performs `scalar_vector_first_overloads` behavior.
 fn scalar_vector_first_overloads(arity: usize) -> Vec<Type> {
     vector_types()
         .into_iter()
@@ -4027,6 +2501,7 @@ fn scalar_vector_first_overloads(arity: usize) -> Vec<Type> {
         .collect()
 }
 
+/// Performs `vectors_then_scalar_overloads` behavior.
 fn vectors_then_scalar_overloads(arity: usize) -> Vec<Type> {
     vector_types()
         .into_iter()
@@ -4038,6 +2513,7 @@ fn vectors_then_scalar_overloads(arity: usize) -> Vec<Type> {
         .collect()
 }
 
+/// Performs `scalars_then_vector_overloads` behavior.
 fn scalars_then_vector_overloads(arity: usize) -> Vec<Type> {
     vector_types()
         .into_iter()
@@ -4049,6 +2525,7 @@ fn scalars_then_vector_overloads(arity: usize) -> Vec<Type> {
         .collect()
 }
 
+/// Performs `scalar_or_same_first_float_gen_overloads` behavior.
 fn scalar_or_same_first_float_gen_overloads() -> Vec<Type> {
     let mut overloads = same_type_float_gen_overloads(2);
     for ty in vector_types() {
@@ -4057,6 +2534,7 @@ fn scalar_or_same_first_float_gen_overloads() -> Vec<Type> {
     overloads
 }
 
+/// Performs `scalar_or_same_prefix_float_gen_overloads` behavior.
 fn scalar_or_same_prefix_float_gen_overloads() -> Vec<Type> {
     let mut overloads = same_type_float_gen_overloads(3);
     for ty in vector_types() {
@@ -4065,6 +2543,7 @@ fn scalar_or_same_prefix_float_gen_overloads() -> Vec<Type> {
     overloads
 }
 
+/// Performs `same_prefix_scalar_last_float_gen_overloads` behavior.
 fn same_prefix_scalar_last_float_gen_overloads() -> Vec<Type> {
     let mut overloads = same_type_float_gen_overloads(3);
     for ty in vector_types() {
@@ -4073,6 +2552,7 @@ fn same_prefix_scalar_last_float_gen_overloads() -> Vec<Type> {
     overloads
 }
 
+/// Performs `gen_type_with_scalar_last_overloads` behavior.
 fn gen_type_with_scalar_last_overloads(arity: usize) -> Vec<Type> {
     float_gen_types()
         .into_iter()
@@ -4084,6 +2564,7 @@ fn gen_type_with_scalar_last_overloads(arity: usize) -> Vec<Type> {
         .collect()
 }
 
+/// Performs `vector_measure_overloads` behavior.
 fn vector_measure_overloads(arity: usize) -> Vec<Type> {
     float_gen_types()
         .into_iter()
@@ -4091,6 +2572,7 @@ fn vector_measure_overloads(arity: usize) -> Vec<Type> {
         .collect()
 }
 
+/// Performs `same_matrix_overloads` behavior.
 fn same_matrix_overloads() -> Vec<Type> {
     matrix_types()
         .into_iter()
@@ -4098,6 +2580,7 @@ fn same_matrix_overloads() -> Vec<Type> {
         .collect()
 }
 
+/// Performs `transpose_matrix_overloads` behavior.
 fn transpose_matrix_overloads() -> Vec<Type> {
     matrix_shapes()
         .into_iter()
@@ -4105,6 +2588,7 @@ fn transpose_matrix_overloads() -> Vec<Type> {
         .collect()
 }
 
+/// Performs `square_matrix_to_float_overloads` behavior.
 fn square_matrix_to_float_overloads() -> Vec<Type> {
     square_matrix_types()
         .into_iter()
@@ -4112,6 +2596,7 @@ fn square_matrix_to_float_overloads() -> Vec<Type> {
         .collect()
 }
 
+/// Performs `square_matrix_overloads` behavior.
 fn square_matrix_overloads() -> Vec<Type> {
     square_matrix_types()
         .into_iter()
@@ -4119,6 +2604,7 @@ fn square_matrix_overloads() -> Vec<Type> {
         .collect()
 }
 
+/// Performs `func_type` behavior.
 fn func_type(inputs: Vec<Type>, output: Type) -> Type {
     let input = match inputs.as_slice() {
         [single] => single.clone(),
@@ -4127,16 +2613,19 @@ fn func_type(inputs: Vec<Type>, output: Type) -> Type {
     Type::func(input, output)
 }
 
+/// Performs `float_gen_types` behavior.
 fn float_gen_types() -> Vec<Type> {
     let mut types = vec![Type::Float];
     types.extend(vector_types());
     types
 }
 
+/// Performs `vector_types` behavior.
 fn vector_types() -> Vec<Type> {
     vec![Type::Vec2, Type::Vec3, Type::Vec4]
 }
 
+/// Performs `matrix_types` behavior.
 fn matrix_types() -> Vec<Type> {
     matrix_shapes()
         .into_iter()
@@ -4144,12 +2633,14 @@ fn matrix_types() -> Vec<Type> {
         .collect()
 }
 
+/// Performs `square_matrix_types` behavior.
 fn square_matrix_types() -> Vec<Type> {
     (2..=4)
         .map(|dimension| Type::Mat(dimension, dimension))
         .collect()
 }
 
+/// Performs `matrix_shapes` behavior.
 fn matrix_shapes() -> Vec<(usize, usize)> {
     let mut shapes = Vec::new();
     for rows in 2..=4 {
@@ -4161,6 +2652,7 @@ fn matrix_shapes() -> Vec<(usize, usize)> {
 }
 
 impl UnaryOp {
+    /// Performs `symbol` behavior.
     fn symbol(self) -> &'static str {
         match self {
             Self::Inv => "~",
@@ -4169,6 +2661,7 @@ impl UnaryOp {
 }
 
 impl BinOp {
+    /// Performs `symbol` behavior.
     fn symbol(self) -> &'static str {
         match self {
             Self::Add => "+",
@@ -4188,40 +2681,5 @@ impl BinOp {
 }
 
 #[cfg(test)]
-mod format_tests {
-    use super::format_lane_source;
-
-    #[test]
-    fn formats_ascii_product_separators_in_types() {
-        let source = "\
-provided Hom(R3 x R3, R3) cross
-provided f: X x Y -> Z
-const Hom(R x R, R) wave = sin x cos
-";
-
-        assert_eq!(
-            format_lane_source(source),
-            "\
-provided Hom(R3 × R3, R3) cross
-provided f: X × Y -> Z
-const Hom(R × R, R) wave = sin x cos
-"
-        );
-    }
-
-    #[test]
-    fn formats_product_type_definition_without_renaming_x_bindings() {
-        let source = "\
-Set Pair<left, right> = R x R
-const R x = 1
-";
-
-        assert_eq!(
-            format_lane_source(source),
-            "\
-Set Pair<left, right> = R × R
-const R x = 1
-"
-        );
-    }
-}
+#[path = "../tests/unit/format.rs"]
+mod format_tests;

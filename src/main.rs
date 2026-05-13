@@ -11,6 +11,11 @@ const COLOR_TYPE: &str = "33";
 const COLOR_CATEGORY: &str = "92";
 const COLOR_CAT_METATYPE: &str = "38;2;255;255;255";
 const COLOR_ERROR: &str = "31";
+const GLSL_KEYWORDS: &[&str] = &[
+    "float", "int", "bool", "void", "return", "if", "else", "for", "while", "const", "struct",
+];
+const GLSL_TYPES: &[&str] = &["vec2", "vec3", "vec4", "mat2", "mat3", "mat4"];
+const GLSL_HELPER_PREFIXES: &[&str] = &["sdf_", "op_", "Param"];
 
 const HELP: &str = "lane compiles lane source files into GLSL.\n\nUsage:\n  lane [SOURCE [TARGET]] [--show]\n  lane SOURCE [--frag=FRAG] [--vert=VERT] [--version=VERSION] [--target=opengl|vulkan]\n  lane SOURCE [--frag-spv=SPV] [--vert-spv=SPV]\n  lane repl\n  lane preview SOURCE\n  lane list [NAME]\n  lane list 2d\n  lane list 3d\n  lane list all\n  lane -pc, --print-completion <bash|zsh|fish>\n  lane -h, --help\n\nWhen SOURCE is omitted, lane opens the interactive shell when stdin is a terminal and reads source from stdin otherwise. `lane repl` opens the same shell explicitly. The REPL keeps submitted Lane code, REPL messages, and generated GLSL in one padded colored transcript by default, with one character of inner left padding, source line numbers on submitted Lane entries, adjacent submitted Lane entries and adjacent generated GLSL outputs merged into continuous boxes, blank rows between boxes, and errors shown as red boxes with one blank row between command lines and error boxes; later const submissions show newly added GLSL lines even when support structs are inserted before older output. `/info` shows loaded modules, used directives, and provided objects. `/code` shows the full session source, `/save <filename>` writes that source to a file, and `/export <filename>` writes generated GLSL to a file. `/show` opens a native Vulkan preview window for the current session. `/split` toggles a split view where generated GLSL is shown only in its separate pane, mouse-wheel scrolling is independent per pane, and toggling back restores the linear transcript without adding toggle messages. REPL commands ignore trailing spaces. Up and Down recall submitted input history across sessions, Left and Right move through the current input, and PageUp/PageDown or the mouse wheel scrolls the transcript. Clicking a submitted Lane entry or its generated GLSL highlights both parts of that submission, and right-clicking a transcript block copies that block's text to the terminal clipboard. When TARGET is present, lane writes GLSL to that path instead of stdout. Use --show or -s with SOURCE TARGET to also print the compiled GLSL. Preview shader flags write complete fragment and/or vertex shaders; VERSION defaults to 300es for OpenGL/WebGL. Vulkan preview SPIR-V output and `lane preview` use glslc.";
 
@@ -80,6 +85,7 @@ complete -c lane -s h -l help -d 'Show help'
 complete -c lane -f -a 'preview' -d 'Open native Vulkan preview'
 "#;
 
+/// CLI process entrypoint: parses args, runs interactive mode, or invokes preview/compile paths.
 fn main() {
     if let Err(err) = run() {
         print_error(err.as_ref());
@@ -87,6 +93,7 @@ fn main() {
     }
 }
 
+/// Renders any top-level error through terminal-aware formatting.
 fn print_error(err: &(dyn std::error::Error + 'static)) {
     let message = format_error(err);
     if io::stderr().is_terminal() {
@@ -96,10 +103,12 @@ fn print_error(err: &(dyn std::error::Error + 'static)) {
     eprintln!("{message}");
 }
 
+/// Adds the classified error kind prefix used by CLI-facing error strings.
 fn format_error(err: &(dyn std::error::Error + 'static)) -> String {
     format!("{}: {}", error_type(err), err)
 }
 
+/// Classifies top-level error kinds for user-facing formatting.
 fn error_type(err: &(dyn std::error::Error + 'static)) -> &'static str {
     if err.is::<lane::Error>() {
         return "lane::Error";
@@ -110,6 +119,7 @@ fn error_type(err: &(dyn std::error::Error + 'static)) -> &'static str {
     "error"
 }
 
+/// Dispatches to compile, preview, list, help, and REPL handlers from CLI args.
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|arg| is_preview_arg(arg)) {
@@ -184,6 +194,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// Handles preview-related flags and dispatches to GLSL/SPIR-V generation.
 fn write_preview_shaders(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let mut source_path = None;
     let mut frag_path = None;
@@ -262,6 +273,7 @@ enum PreviewTarget {
 }
 
 impl PreviewTarget {
+    /// Parses preview target names from CLI input.
     fn parse(value: &str) -> Result<Self, Box<dyn std::error::Error>> {
         match value {
             "opengl" | "gl" | "webgl" => Ok(Self::OpenGl),
@@ -271,6 +283,7 @@ impl PreviewTarget {
     }
 }
 
+/// Detects preview-generation arguments in the top-level CLI parser.
 fn is_preview_arg(arg: &str) -> bool {
     arg.starts_with("--frag=")
         || arg.starts_with("--vert=")
@@ -280,6 +293,7 @@ fn is_preview_arg(arg: &str) -> bool {
         || arg.starts_with("--target=")
 }
 
+/// Writes a temporary SPIR-V file for a shader source and stage.
 fn write_spirv_shader(
     stage: &str,
     source: &str,
@@ -290,6 +304,7 @@ fn write_spirv_shader(
     Ok(())
 }
 
+/// Builds and compiles one temporary SPIR-V shader stage.
 fn compile_spirv_shader(stage: &str, source: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let source_path = unique_preview_shader_path(stage, "glsl")?;
     let target_path = unique_preview_shader_path(stage, "spv")?;
@@ -315,16 +330,19 @@ fn compile_spirv_shader(stage: &str, source: &str) -> Result<Vec<u8>, Box<dyn st
     Ok(bytes)
 }
 
+/// Compiles and opens Vulkan preview for a source file path.
 fn run_preview(source_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let fragment = lane::compile_vulkan_preview_fragment_from_path(source_path)?;
     run_preview_fragment(&fragment)
 }
 
+/// Compiles Vulkan preview from inline source text.
 fn run_preview_source(source: &str) -> Result<(), Box<dyn std::error::Error>> {
     let fragment = lane::compile_vulkan_preview_fragment(source)?;
     run_preview_fragment(&fragment)
 }
 
+/// Runs the preview renderer from already-compiled fragment source.
 fn run_preview_fragment(fragment: &str) -> Result<(), Box<dyn std::error::Error>> {
     let vertex = lane::compile_vulkan_preview_vertex();
     let fragment_spv = compile_spirv_shader("frag", fragment)?;
@@ -335,6 +353,7 @@ fn run_preview_fragment(fragment: &str) -> Result<(), Box<dyn std::error::Error>
     })
 }
 
+/// Generates unique preview staging paths for temporary artifacts.
 fn unique_preview_shader_path(
     stage: &str,
     extension: &str,
@@ -354,12 +373,14 @@ fn unique_preview_shader_path(
     )))
 }
 
+/// Compiles one source file and prints generated GLSL to stdout.
 fn print_compile_path(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let output = lane::compile_program_from_path(path)?;
     print_glsl(&output);
     Ok(())
 }
 
+/// Writes compiled GLSL to target path and optionally prints to stdout.
 fn write_compile_path(
     source_path: &str,
     target_path: &str,
@@ -373,34 +394,41 @@ fn write_compile_path(
     Ok(())
 }
 
+/// Reads from stdin and prints compiled GLSL output.
 fn compile_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
     let mut source = String::new();
     io::stdin().read_to_string(&mut source)?;
     print_compiled_program(&source)
 }
 
+/// Compiles source text and prints formatted GLSL output.
 fn print_compiled_program(source: &str) -> Result<(), Box<dyn std::error::Error>> {
     let output = compile_program_output(source)?;
     print_glsl(&output);
     Ok(())
 }
 
+/// Compiles source text and returns raw GLSL output.
 fn compile_program_output(source: &str) -> Result<String, Box<dyn std::error::Error>> {
     Ok(lane::compile_program(source)?)
 }
 
+/// Prints CLI usage text.
 fn print_help() {
     println!("{HELP}");
 }
 
+/// Checks whether an argument requests help output.
 fn is_help(arg: &str) -> bool {
     matches!(arg, "-h" | "--help")
 }
 
+/// Checks whether an argument requests `--show` behavior.
 fn is_show(arg: &str) -> bool {
     matches!(arg, "-s" | "--show")
 }
 
+/// Prints a full primitive definition, including parameter/body formatting.
 fn print_known_primitive_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(primitive) = lane::known_primitive(name) {
         println!(
@@ -419,6 +447,7 @@ fn print_known_primitive_detail(name: &str) -> Result<(), Box<dyn std::error::Er
     Err(format!("unknown primitive '{name}'").into())
 }
 
+/// Returns the user-facing signature used for `known`/`list` output.
 fn visible_parameter_space(primitive: &lane::KnownPrimitive) -> String {
     let derived_name = format!("Param{}", primitive.name);
     if primitive.parameter_space == derived_name {
@@ -434,6 +463,7 @@ fn visible_parameter_space(primitive: &lane::KnownPrimitive) -> String {
     primitive.parameter_space.clone()
 }
 
+/// Prints shell completion script for requested shell.
 fn print_completion(shell: &str) -> Result<(), Box<dyn std::error::Error>> {
     let script = match shell {
         "bash" => completion_script(BASH_COMPLETION_TEMPLATE),
@@ -445,12 +475,14 @@ fn print_completion(shell: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Expands completion template with available primitive names.
 fn completion_script(template: &str) -> String {
     template
         .replace("__PRIMITIVES__", &completion_primitive_names())
         .replace("__OBJECTS__", &completion_object_names())
 }
 
+/// Builds a whitespace-separated primitive completion list.
 fn completion_primitive_names() -> String {
     lane::known_primitives()
         .into_iter()
@@ -459,6 +491,7 @@ fn completion_primitive_names() -> String {
         .join(" ")
 }
 
+/// Builds a whitespace-separated builtin-object completion list.
 fn completion_object_names() -> String {
     lane::known_builtin_objects()
         .into_iter()
@@ -467,6 +500,7 @@ fn completion_object_names() -> String {
         .join(" ")
 }
 
+/// Prints all registered primitives to stdout.
 fn print_known_primitives() {
     let primitives = lane::known_primitives();
     for (index, primitive) in primitives.iter().enumerate() {
@@ -474,6 +508,7 @@ fn print_known_primitives() {
     }
 }
 
+/// Prints primitives filtered by target shape dimension.
 fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
     let primitives = lane::known_primitives_by_dimension(dimension);
     for (index, primitive) in primitives.iter().enumerate() {
@@ -481,16 +516,19 @@ fn print_known_primitives_for_dimension(dimension: lane::ShapeDimension) {
     }
 }
 
+/// Prints all builtin objects (functions/types/categories) to stdout.
 fn print_known_builtin_objects() {
     for object in lane::known_builtin_objects() {
         print_known_builtin_object_line(&object.name, &object.ty, object.kind);
     }
 }
 
+/// Excludes internal names from the `list all` command.
 fn include_in_list_all(name: &str) -> bool {
     !matches!(name, "matrixCompMult")
 }
 
+/// Prints all known primitive/object entries grouped for `list all`.
 fn print_all_known_builtin_items() {
     for primitive in lane::known_primitives() {
         print_known_builtin_object_line(
@@ -507,6 +545,7 @@ fn print_all_known_builtin_items() {
     }
 }
 
+/// Prints one builtin object by name with optional body.
 fn print_known_builtin_object_detail(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(object) = lane::known_builtin_object(name) {
         print_known_builtin_object_line(&object.name, &object.ty, object.kind);
@@ -519,6 +558,7 @@ fn print_known_builtin_object_detail(name: &str) -> Result<(), Box<dyn std::erro
     Err(format!("unknown builtin object '{name}'").into())
 }
 
+/// Prints one object line and uses color if output is terminal.
 fn print_known_builtin_object_line(name: &str, ty: &str, kind: lane::KnownBuiltinObjectKind) {
     if io::stdout().is_terminal() {
         println!("{}", highlight_builtin_object_line(name, ty, kind));
@@ -528,6 +568,7 @@ fn print_known_builtin_object_line(name: &str, ty: &str, kind: lane::KnownBuilti
     println!("{name}: {ty}");
 }
 
+/// Renders a single object line with syntax highlighting by object kind.
 fn highlight_builtin_object_line(
     name: &str,
     ty: &str,
@@ -541,6 +582,7 @@ fn highlight_builtin_object_line(
     )
 }
 
+/// Highlights builtin name by object kind.
 fn highlight_builtin_object_name(name: &str, kind: lane::KnownBuiltinObjectKind) -> String {
     match kind {
         lane::KnownBuiltinObjectKind::Function => color(COLOR_FUNCTION, name),
@@ -549,6 +591,7 @@ fn highlight_builtin_object_name(name: &str, kind: lane::KnownBuiltinObjectKind)
     }
 }
 
+/// Highlights lane type signatures for display in terminal output.
 fn highlight_lane_signature(source: &str) -> String {
     let mut out = String::new();
     let bytes = source.as_bytes();
@@ -580,6 +623,7 @@ fn highlight_lane_signature(source: &str) -> String {
     out
 }
 
+/// Highlights reserved keywords/types/symbol names in a lane signature.
 fn highlight_lane_ident(token: &str) -> String {
     if matches!(token, "Func" | "Hom" | "End") {
         return color("35", token);
@@ -599,6 +643,7 @@ fn highlight_lane_ident(token: &str) -> String {
     token.to_string()
 }
 
+/// Prints one primitive entry used by `list` and keeps spacing.
 fn print_known_primitive(primitive: &lane::KnownPrimitive, separate_from_previous: bool) {
     if separate_from_previous {
         println!();
@@ -611,6 +656,7 @@ fn print_known_primitive(primitive: &lane::KnownPrimitive, separate_from_previou
     println!("{}", visible_parameter_space(primitive));
 }
 
+/// Dispatches to highlighted or plain GLSL emission.
 fn print_glsl(source: &str) {
     if io::stdout().is_terminal() {
         print!("{}", highlight_glsl(source));
@@ -623,6 +669,7 @@ fn print_glsl(source: &str) {
     println!("{source}");
 }
 
+/// Adds simple GLSL highlighting to support readable CLI preview.
 fn highlight_glsl(source: &str) -> String {
     let mut out = String::new();
     let bytes = source.as_bytes();
@@ -665,6 +712,7 @@ fn highlight_glsl(source: &str) -> String {
     out
 }
 
+/// Advances to the first index after a numeric literal in source bytes.
 fn scan_glsl_number(bytes: &[u8], mut i: usize) -> usize {
     while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
         i += 1;
@@ -695,114 +743,28 @@ fn scan_glsl_number(bytes: &[u8], mut i: usize) -> usize {
     i
 }
 
+/// Highlights GLSL keywords/types/helpers for terminal output.
 fn highlight_ident(token: &str) -> String {
-    if matches!(
-        token,
-        "float"
-            | "int"
-            | "bool"
-            | "void"
-            | "return"
-            | "if"
-            | "else"
-            | "for"
-            | "while"
-            | "const"
-            | "struct"
-    ) {
+    if GLSL_KEYWORDS.contains(&token) {
         return color("35", token).to_string();
     }
-    if matches!(token, "vec2" | "vec3" | "vec4" | "mat2" | "mat3" | "mat4") {
+    if GLSL_TYPES.contains(&token) {
         return color("34", token).to_string();
     }
-    if token.starts_with("sdf")
-        || token.starts_with("op_")
-        || token.starts_with("scene_")
-        || token.starts_with("Param")
+    if GLSL_HELPER_PREFIXES
+        .iter()
+        .any(|prefix| token.starts_with(prefix))
     {
         return color("33", token).to_string();
     }
     token.to_string()
 }
 
+/// Wraps ANSI color code around one token.
 fn color<'a>(code: &'a str, text: &'a str) -> String {
     format!("\x1b[{}m{}\x1b[0m", code, text)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{color, format_error, highlight_builtin_object_line, highlight_glsl, COLOR_ERROR};
-
-    #[test]
-    fn highlights_glsl_keywords_types_and_numbers() {
-        let highlighted = highlight_glsl("float scene_sdf(vec3 p) { return 1.0f-2e-3f; }");
-
-        assert!(highlighted.contains("\x1b[35mfloat\x1b[0m"));
-        assert!(highlighted.contains("\x1b[34mvec3\x1b[0m"));
-        assert!(highlighted.contains("\x1b[33mscene_sdf\x1b[0m"));
-        assert!(highlighted.contains("\x1b[36m1.0f\x1b[0m-\x1b[36m2e-3f\x1b[0m"));
-    }
-
-    #[test]
-    fn highlights_builtin_object_names_and_lane_types() {
-        let highlighted = highlight_builtin_object_line(
-            "union",
-            "Hom(Object × Object, Object)",
-            lane::KnownBuiltinObjectKind::Function,
-        );
-
-        assert!(highlighted.contains("\x1b[34munion\x1b[0m"));
-        assert!(highlighted.contains("\x1b[97m:\x1b[0m"));
-        assert!(highlighted.contains("\x1b[35mHom\x1b[0m"));
-        assert!(highlighted.contains("\x1b[33mObject\x1b[0m"));
-        assert!(highlighted.contains("\x1b[97m(\x1b[0m"));
-        assert!(highlighted.contains("\x1b[97m,\x1b[0m"));
-        assert!(highlighted.contains("\x1b[35m×\x1b[0m"));
-    }
-
-    #[test]
-    fn highlights_builtin_type_names_as_types() {
-        let highlighted =
-            highlight_builtin_object_line("H", "RDivAlg", lane::KnownBuiltinObjectKind::Type);
-
-        assert!(highlighted.contains("\x1b[33mH\x1b[0m"));
-        assert!(highlighted.contains("\x1b[92mRDivAlg\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[33mRDivAlg\x1b[0m"));
-    }
-
-    #[test]
-    fn highlights_categories_as_bright_yellow_and_cat_as_white() {
-        let highlighted =
-            highlight_builtin_object_line("DivRing", "Cat", lane::KnownBuiltinObjectKind::Category);
-
-        assert!(highlighted.contains("\x1b[92mDivRing\x1b[0m"));
-        assert!(highlighted.contains("\x1b[38;2;255;255;255mCat\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[33mDivRing\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[92mCat\x1b[0m"));
-    }
-
-    #[test]
-    fn highlights_type_metatype_as_type_not_category() {
-        let highlighted =
-            highlight_builtin_object_line("Object", "Type", lane::KnownBuiltinObjectKind::Type);
-
-        assert!(highlighted.contains("\x1b[33mObject\x1b[0m"));
-        assert!(highlighted.contains("\x1b[33mType\x1b[0m"));
-        assert!(!highlighted.contains("\x1b[92mType\x1b[0m"));
-    }
-
-    #[test]
-    fn formats_lane_errors_with_error_type() {
-        let err = lane::compile_program("const Object output = Unknown3D(r=1)\n").unwrap_err();
-
-        assert!(format_error(&err).contains("lane::Error: line 1: unknown primitive 'Unknown3D'"));
-    }
-
-    #[test]
-    fn colors_error_messages_red() {
-        assert_eq!(
-            color(COLOR_ERROR, "lane::Error: bad"),
-            "\x1b[31mlane::Error: bad\x1b[0m"
-        );
-    }
-}
+#[path = "../tests/unit/cli.rs"]
+mod tests;

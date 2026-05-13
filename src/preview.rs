@@ -30,6 +30,7 @@ struct PreviewPushConstants {
 }
 
 impl PreviewPushConstants {
+    /// Builds push constants for the current frame from viewport size and elapsed time.
     fn new(width: u32, height: u32, time: f32) -> Self {
         Self {
             camera_position: [0.0, 0.0, -1.35, 0.0],
@@ -42,6 +43,7 @@ impl PreviewPushConstants {
         }
     }
 
+    /// Returns the packed byte view required by Vulkan push-constant uploads.
     fn bytes(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
@@ -52,6 +54,7 @@ impl PreviewPushConstants {
     }
 }
 
+/// Runs the Vulkan preview window and drives frame rendering until close or exit.
 pub fn run(shaders: PreviewShaders) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::new()?;
     let window_attributes = Window::default_attributes()
@@ -167,6 +170,7 @@ enum DrawStatus {
 }
 
 impl Renderer {
+    /// Creates all core Vulkan objects (instance, device, swapchain, and pipeline).
     unsafe fn new(
         event_loop: &EventLoop<()>,
         window: &winit::window::Window,
@@ -272,6 +276,7 @@ impl Renderer {
         })
     }
 
+    /// Rebuilds swapchain state and dependent objects after size changes or errors.
     unsafe fn recreate_swapchain(&mut self, width: u32, height: u32) -> Result<(), Box<dyn Error>> {
         let resources = unsafe {
             create_swapchain_resources(
@@ -297,6 +302,7 @@ impl Renderer {
         Ok(())
     }
 
+    /// Submits one render frame and reports whether swapchain recreation is required.
     unsafe fn draw(&mut self, time: f32) -> Result<DrawStatus, Box<dyn Error>> {
         unsafe {
             self.device
@@ -355,6 +361,7 @@ impl Renderer {
         Ok(DrawStatus::Rendered)
     }
 
+    /// Records command buffer work for one fullscreen draw call into the swapchain image.
     unsafe fn record_command_buffer(
         &self,
         framebuffer_index: usize,
@@ -401,6 +408,7 @@ impl Renderer {
         Ok(())
     }
 
+    /// Swaps active swapchain resource handles with a freshly-created set.
     fn replace_swapchain_resources(&mut self, resources: SwapchainResources) -> SwapchainResources {
         SwapchainResources {
             swapchain: mem::replace(&mut self.swapchain, resources.swapchain),
@@ -413,6 +421,7 @@ impl Renderer {
         }
     }
 
+    /// Detaches current swapchain resources so they can be destroyed independently.
     unsafe fn current_swapchain_resources(&mut self) -> SwapchainResources {
         SwapchainResources {
             swapchain: mem::replace(&mut self.swapchain, vk::SwapchainKHR::null()),
@@ -425,6 +434,7 @@ impl Renderer {
         }
     }
 
+    /// Destroys framebuffers, pipeline, and other resources tied to one swapchain set.
     unsafe fn destroy_swapchain_resources(&self, mut resources: SwapchainResources) {
         unsafe {
             for framebuffer in resources.framebuffers.drain(..) {
@@ -444,6 +454,7 @@ impl Renderer {
 }
 
 impl Drop for Renderer {
+    /// Cleans up Vulkan resources in shutdown order; best-effort errors are ignored.
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();
@@ -460,6 +471,7 @@ impl Drop for Renderer {
     }
 }
 
+/// Finds a Vulkan physical device with graphics and present queue support.
 unsafe fn select_physical_device(
     instance: &ash::Instance,
     surface_loader: &ash::khr::surface::Instance,
@@ -485,6 +497,7 @@ unsafe fn select_physical_device(
     Err("no Vulkan device with graphics+present support".into())
 }
 
+/// Selects a usable surface format, favoring sRGB + non-linear color space.
 unsafe fn choose_surface_format(
     surface_loader: &ash::khr::surface::Instance,
     physical_device: vk::PhysicalDevice,
@@ -502,6 +515,7 @@ unsafe fn choose_surface_format(
         .unwrap_or(formats[0]))
 }
 
+/// Selects a present mode known to be widely supported.
 unsafe fn choose_present_mode(
     _surface_loader: &ash::khr::surface::Instance,
     _physical_device: vk::PhysicalDevice,
@@ -510,6 +524,7 @@ unsafe fn choose_present_mode(
     Ok(vk::PresentModeKHR::FIFO)
 }
 
+/// Creates swapchain plus all dependent render resources for a given extent and assets.
 unsafe fn create_swapchain_resources(
     device: &ash::Device,
     swapchain_loader: &ash::khr::swapchain::Device,
@@ -572,6 +587,7 @@ unsafe fn create_swapchain_resources(
     })
 }
 
+/// Chooses a valid framebuffer extent, clamped to physical device constraints.
 fn choose_extent(
     capabilities: &vk::SurfaceCapabilitiesKHR,
     width: u32,
@@ -592,6 +608,7 @@ fn choose_extent(
     }
 }
 
+/// Creates an image view from a swapchain image for sampling as a color attachment.
 unsafe fn create_image_view(
     device: &ash::Device,
     image: vk::Image,
@@ -611,6 +628,7 @@ unsafe fn create_image_view(
     Ok(unsafe { device.create_image_view(&info, None)? })
 }
 
+/// Builds a single-pass render pass used by the preview presentation pipeline.
 unsafe fn create_render_pass(
     device: &ash::Device,
     format: vk::Format,
@@ -643,6 +661,7 @@ unsafe fn create_render_pass(
     Ok(unsafe { device.create_render_pass(&info, None)? })
 }
 
+/// Creates graphics pipeline objects for fullscreen rendering with default push-constant layout.
 unsafe fn create_pipeline(
     device: &ash::Device,
     render_pass: vk::RenderPass,
@@ -722,6 +741,7 @@ unsafe fn create_pipeline(
     Ok((pipeline_layout, pipeline))
 }
 
+/// Creates a Vulkan shader module from SPIR-V bytes.
 unsafe fn create_shader_module(
     device: &ash::Device,
     spv: &[u8],
@@ -731,6 +751,7 @@ unsafe fn create_shader_module(
     Ok(unsafe { device.create_shader_module(&info, None)? })
 }
 
+/// Creates a framebuffer for one swapchain image view.
 unsafe fn create_framebuffer(
     device: &ash::Device,
     render_pass: vk::RenderPass,

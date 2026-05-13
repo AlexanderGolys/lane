@@ -1,23 +1,13 @@
 use tower_lsp::lsp_types::{DocumentSymbol, Position, Range, SymbolKind};
-use tree_sitter::{Node, Parser};
-use tree_sitter_language::LanguageFn;
+use tree_sitter::Node;
 
-unsafe extern "C" {
-    fn tree_sitter_lane() -> *const ();
-}
-
-const LANGUAGE_LANE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_lane) };
-
+/// Returns top-level document symbols discovered from a Lane source buffer.
 pub fn symbols(source: &str) -> Vec<DocumentSymbol> {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&LANGUAGE_LANE.into())
-        .expect("lane tree-sitter parser should load");
-    let Some(tree) = parser.parse(source, None) else {
+    let Some(tree) = super::parse_lane_tree(source) else {
         return Vec::new();
     };
 
-    let line_start_bytes = line_start_bytes(source);
+    let line_start_bytes = super::line_start_bytes(source);
     let mut cursor = tree.walk();
     tree.root_node()
         .named_children(&mut cursor)
@@ -25,6 +15,7 @@ pub fn symbols(source: &str) -> Vec<DocumentSymbol> {
         .collect()
 }
 
+/// Collects symbols for one top-level declaration node.
 fn symbols_for_declaration(
     source: &str,
     line_start_bytes: &[usize],
@@ -65,6 +56,7 @@ fn symbols_for_declaration(
     }
 }
 
+/// Produces a namespace/module symbol entry for a directive declaration.
 fn directive_symbol(
     source: &str,
     line_start_bytes: &[usize],
@@ -83,6 +75,7 @@ fn directive_symbol(
     Some(make_symbol(source, line_start_bytes, node, name, kind))
 }
 
+/// Produces symbol entries for declaration nodes that carry named fields.
 fn named_field_symbols(
     source: &str,
     line_start_bytes: &[usize],
@@ -102,6 +95,7 @@ fn named_field_symbols(
         .collect()
 }
 
+/// Determines whether a binding should be surfaced as a constant or variable symbol.
 fn binding_symbol_kind(source: &str, node: Node<'_>) -> SymbolKind {
     if modifier_text(source, node).as_deref() == Some("const") {
         SymbolKind::CONSTANT
@@ -110,11 +104,13 @@ fn binding_symbol_kind(source: &str, node: Node<'_>) -> SymbolKind {
     }
 }
 
+/// Extracts the optional declaration modifier text from a declaration node.
 fn modifier_text(source: &str, node: Node<'_>) -> Option<String> {
     let modifier = node.child_by_field_name("modifier")?;
     node_text(source, modifier)
 }
 
+/// Builds a fully-populated symbol from an arbitrary named declaration node.
 fn make_symbol(
     source: &str,
     line_start_bytes: &[usize],
@@ -135,6 +131,7 @@ fn make_symbol(
     }
 }
 
+/// Maps declaration kinds to human-readable symbol details for the UI.
 fn detail_for_node(node: Node<'_>) -> &'static str {
     match node.kind() {
         "directive" => "directive",
@@ -149,10 +146,12 @@ fn detail_for_node(node: Node<'_>) -> &'static str {
     }
 }
 
+/// Reads the UTF-8 text covered by a Tree-sitter node, when available.
 fn node_text(source: &str, node: Node<'_>) -> Option<String> {
     node.utf8_text(source.as_bytes()).ok().map(str::to_string)
 }
 
+/// Returns a symbol range for the given node based on precomputed line starts.
 fn node_range(source: &str, line_start_bytes: &[usize], node: Node<'_>) -> Range {
     Range::new(
         byte_to_position(source, line_start_bytes, node.start_byte()),
@@ -160,16 +159,7 @@ fn node_range(source: &str, line_start_bytes: &[usize], node: Node<'_>) -> Range
     )
 }
 
-fn line_start_bytes(source: &str) -> Vec<usize> {
-    let mut starts = vec![0];
-    for (index, ch) in source.char_indices() {
-        if ch == '\n' {
-            starts.push(index + 1);
-        }
-    }
-    starts
-}
-
+/// Converts a byte offset to LSP position using `line_start_bytes`.
 fn byte_to_position(source: &str, line_start_bytes: &[usize], byte: usize) -> Position {
     let line = match line_start_bytes.binary_search(&byte) {
         Ok(line) => line,

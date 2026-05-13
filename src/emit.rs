@@ -7,6 +7,7 @@ enum EmitItem {
 }
 
 impl TypedProgram {
+    /// Performs `emit_glsl` behavior.
     pub(super) fn emit_glsl(&self, registry: &Registry) -> String {
         let mut lines = Vec::new();
         let locals = self.emit_locals();
@@ -28,7 +29,7 @@ impl TypedProgram {
         let global_value_names = self.global_value_binding_names();
         let emitted_func_names = self.emitted_func_names();
         let helper_names = self.func_names();
-        let scene_input_names = self.scene_input_names();
+        let object_call_arg_names = self.object_call_arg_names();
         let object_bindings = self.object_bindings();
         let object_getter_bindings = self.object_getter_bindings();
 
@@ -45,14 +46,10 @@ impl TypedProgram {
         if !object_getter_bindings.is_empty() {
             lines.push(String::new());
         }
-        for prototype in self.raw_glsl_function_ref_prototypes(&emitted_func_names, &locals) {
+        for prototype in self.function_prototypes(&emitted_func_names, &locals) {
             lines.push(prototype);
         }
-        if self
-            .funcs
-            .iter()
-            .any(|func| !func.raw_glsl_refs.funcs.is_empty())
-        {
+        if !emitted_func_names.is_empty() {
             lines.push(String::new());
         }
         for item in self.ordered_emitted_items(&emitted_func_names, &object_getter_bindings) {
@@ -75,7 +72,7 @@ impl TypedProgram {
                         binding,
                         &object_bindings,
                         &helper_names,
-                        &scene_input_names,
+                        &object_call_arg_names,
                         &global_value_names,
                         &locals,
                     ));
@@ -86,6 +83,7 @@ impl TypedProgram {
         suffix_glsl_float_literals(&lines.join("\n"))
     }
 
+    /// Performs `object_helper_signature` behavior.
     fn object_helper_signature(&self, point_name: &str, dimension: ShapeDimension) -> Vec<String> {
         vec![format!(
             "{} {}",
@@ -94,10 +92,12 @@ impl TypedProgram {
         )]
     }
 
-    fn scene_input_names(&self) -> Vec<String> {
+    /// Reserved for future object-helper capture arguments (e.g. additional scene inputs).
+    fn object_call_arg_names(&self) -> Vec<String> {
         Vec::new()
     }
 
+    /// Performs `emit_value_binding_lines` behavior.
     fn emit_value_binding_lines(
         &self,
         helper_names: &HashMap<String, String>,
@@ -114,6 +114,7 @@ impl TypedProgram {
             .collect()
     }
 
+    /// Performs `emit_global_value_binding_lines` behavior.
     fn emit_global_value_binding_lines(
         &self,
         global_value_names: &BTreeSet<String>,
@@ -126,6 +127,7 @@ impl TypedProgram {
             .collect()
     }
 
+    /// Performs `global_value_binding_names` behavior.
     fn global_value_binding_names(&self) -> BTreeSet<String> {
         let raw_refs = self.raw_glsl_value_ref_names();
         let mut names = BTreeSet::new();
@@ -142,6 +144,7 @@ impl TypedProgram {
         names
     }
 
+    /// Performs `raw_glsl_value_ref_names` behavior.
     fn raw_glsl_value_ref_names(&self) -> BTreeSet<String> {
         self.funcs
             .iter()
@@ -149,6 +152,7 @@ impl TypedProgram {
             .collect()
     }
 
+    /// Performs `emitted_func_names` behavior.
     fn emitted_func_names(&self) -> BTreeSet<String> {
         let mut names = self
             .funcs
@@ -205,6 +209,7 @@ impl TypedProgram {
         names
     }
 
+    /// Performs `needed_value_binding_names` behavior.
     fn needed_value_binding_names(
         &self,
         expr: &ObjectExpr,
@@ -232,6 +237,7 @@ impl TypedProgram {
         names
     }
 
+    /// Performs `object_bindings` behavior.
     fn object_bindings(&self) -> BTreeMap<String, ObjectBinding> {
         self.bindings
             .iter()
@@ -247,6 +253,7 @@ impl TypedProgram {
             .collect()
     }
 
+    /// Performs `emit_func` behavior.
     fn emit_func(
         &self,
         func: &TypedFunc,
@@ -294,6 +301,7 @@ impl TypedProgram {
         ]
     }
 
+    /// Performs `ordered_emitted_items` behavior.
     fn ordered_emitted_items(
         &self,
         emitted_func_names: &BTreeSet<String>,
@@ -313,12 +321,13 @@ impl TypedProgram {
         items.into_iter().map(|(_, item)| item).collect()
     }
 
+    /// Performs `emit_generated_binding` behavior.
     fn emit_generated_binding(
         &self,
         binding: &TypedBinding,
         object_bindings: &BTreeMap<String, ObjectBinding>,
         helper_names: &HashMap<String, String>,
-        scene_input_names: &[String],
+        object_call_arg_names: &[String],
         global_value_names: &BTreeSet<String>,
         locals: &EmitLocals,
     ) -> Vec<String> {
@@ -346,7 +355,7 @@ impl TypedProgram {
                 dimension,
                 object_bindings,
                 helper_names,
-                scene_input_names,
+                object_call_arg_names,
             )
         ));
         lines.push("}".to_string());
@@ -370,7 +379,7 @@ impl TypedProgram {
                     &format!("sdf_{}", binding.name),
                     &locals.point,
                     &locals.eps,
-                    scene_input_names,
+                    object_call_arg_names,
                     dimension,
                 )
             ));
@@ -381,6 +390,7 @@ impl TypedProgram {
         lines
     }
 
+    /// Performs `emit_locals` behavior.
     fn emit_locals(&self) -> EmitLocals {
         let mut forbidden = BTreeSet::new();
         for input in &self.inputs {
@@ -425,6 +435,7 @@ impl TypedProgram {
         }
     }
 
+    /// Performs `support_blocks` behavior.
     fn support_blocks(&self, registry: &Registry) -> Vec<String> {
         let mut names = BTreeSet::new();
         let product_types = self
@@ -455,12 +466,10 @@ impl TypedProgram {
             collect_object_support(&binding.expr, &mut names);
         }
         for product_type in &self.product_types {
-            if product_type.eager_ops {
-                if !product_type.provided {
-                    names.insert(product_type_type_support_name(&product_type.name));
-                    for &op in product_category_ops(product_type.category) {
-                        names.insert(product_type_op_support_name(&product_type.name, op));
-                    }
+            if product_type.eager_ops && !product_type.provided {
+                names.insert(product_type_type_support_name(&product_type.name));
+                for &op in product_category_ops(product_type.category) {
+                    names.insert(product_type_op_support_name(&product_type.name, op));
                 }
             }
         }
@@ -539,6 +548,7 @@ impl TypedProgram {
         blocks
     }
 
+    /// Performs `func_names` behavior.
     fn func_names(&self) -> HashMap<String, String> {
         self.funcs
             .iter()
@@ -546,6 +556,7 @@ impl TypedProgram {
             .collect()
     }
 
+    /// Performs `object_getter_bindings` behavior.
     fn object_getter_bindings(&self) -> BTreeSet<String> {
         let mut names = BTreeSet::new();
         for func in &self.funcs {
@@ -563,6 +574,7 @@ impl TypedProgram {
         names
     }
 
+    /// Performs `object_getter_prototypes` behavior.
     fn object_getter_prototypes(
         &self,
         object_getter_bindings: &BTreeSet<String>,
@@ -588,37 +600,35 @@ impl TypedProgram {
         lines
     }
 
-    fn raw_glsl_function_ref_prototypes(
+    /// Performs `function_prototypes` behavior.
+    fn function_prototypes(
         &self,
         emitted_func_names: &BTreeSet<String>,
         locals: &EmitLocals,
     ) -> Vec<String> {
-        let mut names = BTreeSet::new();
-        for func in &self.funcs {
-            names.extend(func.raw_glsl_refs.funcs.iter().cloned());
-        }
-        names
-            .into_iter()
-            .filter(|name| emitted_func_names.contains(name))
-            .filter_map(|name| {
-                let func = self.funcs.iter().find(|func| func.name == name)?;
-                if matches!(
-                    func.body,
-                    TypedFuncBody::RawGlsl(_) | TypedFuncBody::RawGlslTemplate
-                ) {
-                    return None;
-                }
-                Some(format!(
-                    "{} {}({} {});",
+        let mut lines = Vec::new();
+        for func in self
+            .funcs
+            .iter()
+            .filter(|func| emitted_func_names.contains(&func.name))
+        {
+            let signature = match func.body {
+                TypedFuncBody::Expr(_) => format!(
+                    "{} {}({})",
                     func.output.glsl_name(),
                     helper_name(&func.name),
-                    func.input.glsl_name(),
-                    locals.func_param
-                ))
-            })
-            .collect()
+                    emit_func_signature_params(&func.input, locals)
+                ),
+                TypedFuncBody::RawGlsl(_) | TypedFuncBody::RawGlslTemplate => {
+                    raw_glsl_function_signature(func)
+                }
+            };
+            lines.push(format!("{signature};"));
+        }
+        lines
     }
 
+    /// Performs `concat_helpers` behavior.
     fn concat_helpers(&self) -> Vec<ConcatHelper> {
         let mut helpers = BTreeMap::new();
         for func in &self.funcs {
@@ -635,6 +645,7 @@ impl TypedProgram {
         helpers.into_values().collect()
     }
 
+    /// Performs `conditional_helpers` behavior.
     fn conditional_helpers(&self) -> Vec<ConditionalHelper> {
         let mut helpers = BTreeMap::new();
         for func in &self.funcs {
@@ -651,6 +662,7 @@ impl TypedProgram {
         helpers.into_values().collect()
     }
 
+    /// Performs `monoid_pow_type_by_name` behavior.
     fn monoid_pow_type_by_name(&self, name: &str) -> Option<Type> {
         if let Some(ty) = parse_builtin_type_name(name) {
             return Some(ty);
@@ -683,6 +695,7 @@ impl TypedProgram {
     }
 }
 
+/// Performs `find_custom_type_by_name` behavior.
 fn find_custom_type_by_name(ty: &Type, name: &str) -> Option<Type> {
     match ty {
         Type::Custom {
@@ -703,6 +716,7 @@ fn find_custom_type_by_name(ty: &Type, name: &str) -> Option<Type> {
     }
 }
 
+/// Performs `collect_object_getter_object_refs` behavior.
 fn collect_object_getter_object_refs(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
     match expr {
         ObjectExpr::Var(_) => {}
@@ -748,6 +762,7 @@ fn collect_object_getter_object_refs(expr: &ObjectExpr, names: &mut BTreeSet<Str
     }
 }
 
+/// Performs `collect_object_getter_value_refs` behavior.
 fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
         ValueExpr::Bool(_)
@@ -857,6 +872,7 @@ fn collect_object_getter_value_refs(expr: &ValueExpr, names: &mut BTreeSet<Strin
     }
 }
 
+/// Performs `collect_object_getter_function_refs` behavior.
 fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet<String>) {
     match &func.kind {
         FunctionExprKind::Named(_) => {}
@@ -907,6 +923,7 @@ fn collect_object_getter_function_refs(func: &FunctionExpr, names: &mut BTreeSet
     }
 }
 
+/// Performs `collect_object_getter_pointwise_call_arg_refs` behavior.
 fn collect_object_getter_pointwise_call_arg_refs(
     arg: &PointwiseCallArg,
     names: &mut BTreeSet<String>,
@@ -917,6 +934,7 @@ fn collect_object_getter_pointwise_call_arg_refs(
     }
 }
 
+/// Performs `collect_type_support` behavior.
 fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
     match ty {
         Type::Isom2 | Type::Isom3 => {
@@ -967,6 +985,7 @@ enum ProductOp {
 }
 
 impl ProductOp {
+    /// Performs `as_str` behavior.
     fn as_str(self) -> &'static str {
         match self {
             Self::Zero => "zero",
@@ -987,14 +1006,17 @@ enum ProductSupport {
     Op(ProductOp),
 }
 
+/// Performs `product_type_type_support_name` behavior.
 fn product_type_type_support_name(name: &str) -> String {
     format!("product:{name}:type")
 }
 
+/// Performs `product_type_op_support_name` behavior.
 fn product_type_op_support_name(name: &str, op: ProductOp) -> String {
     format!("product:{name}:{}", op.as_str())
 }
 
+/// Performs `parse_product_support_name` behavior.
 fn parse_product_support_name(name: &str) -> Option<(&str, ProductSupport)> {
     let rest = name.strip_prefix("product:")?;
     let (product_name, support_name) = rest.rsplit_once(':')?;
@@ -1013,14 +1035,17 @@ fn parse_product_support_name(name: &str) -> Option<(&str, ProductSupport)> {
     Some((product_name, support))
 }
 
+/// Performs `monoid_pow_support_name` behavior.
 fn monoid_pow_support_name(ty: &Type) -> String {
     format!("monoid-pow:{}", ty.type_name())
 }
 
+/// Performs `monoid_pow_function_name` behavior.
 fn monoid_pow_function_name(ty: &Type) -> String {
     format!("pow_monoid_{}", sanitize_glsl_name(&ty.type_name()))
 }
 
+/// Performs `sanitize_glsl_name` behavior.
 fn sanitize_glsl_name(name: &str) -> String {
     name.chars()
         .map(|ch| {
@@ -1033,6 +1058,7 @@ fn sanitize_glsl_name(name: &str) -> String {
         .collect()
 }
 
+/// Performs `emit_monoid_pow_support` behavior.
 fn emit_monoid_pow_support(
     ty: &Type,
     product_types: &HashMap<&str, &ProductTypeDecl>,
@@ -1069,6 +1095,7 @@ fn emit_monoid_pow_support(
     blocks.push(emit_monoid_pow_function(ty));
 }
 
+/// Performs `emit_monoid_pow_function` behavior.
 fn emit_monoid_pow_function(ty: &Type) -> String {
     let name = monoid_pow_function_name(ty);
     let glsl_ty = ty.glsl_name();
@@ -1080,6 +1107,7 @@ fn emit_monoid_pow_function(ty: &Type) -> String {
     )
 }
 
+/// Performs `product_category_ops` behavior.
 fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
     match category {
         AlgebraicCategory::Ab => &[ProductOp::Zero, ProductOp::Add, ProductOp::Sub],
@@ -1110,6 +1138,7 @@ fn product_category_ops(category: AlgebraicCategory) -> &'static [ProductOp] {
     }
 }
 
+/// Performs `product_op_for_binary` behavior.
 fn product_op_for_binary(op: BinOp) -> Option<ProductOp> {
     match op {
         BinOp::Add => Some(ProductOp::Add),
@@ -1127,6 +1156,7 @@ fn product_op_for_binary(op: BinOp) -> Option<ProductOp> {
     }
 }
 
+/// Performs `product_op_for_neutral` behavior.
 fn product_op_for_neutral(kind: NeutralKind) -> Option<ProductOp> {
     match kind {
         NeutralKind::Zero => Some(ProductOp::Zero),
@@ -1135,6 +1165,7 @@ fn product_op_for_neutral(kind: NeutralKind) -> Option<ProductOp> {
     }
 }
 
+/// Performs `emit_product_support` behavior.
 fn emit_product_support(
     decl: &ProductTypeDecl,
     support: ProductSupport,
@@ -1164,6 +1195,7 @@ fn emit_product_support(
     }
 }
 
+/// Performs `emit_category_type_support` behavior.
 fn emit_category_type_support(
     decl: &CategoryTypeDecl,
     support: ProductSupport,
@@ -1186,6 +1218,7 @@ fn emit_category_type_support(
     }
 }
 
+/// Performs `emit_category_type_decl` behavior.
 fn emit_category_type_decl(
     decl: &CategoryTypeDecl,
     emitted_category_types: &mut BTreeSet<String>,
@@ -1201,10 +1234,12 @@ fn emit_category_type_decl(
     ));
 }
 
+/// Performs `category_type_is_promotion` behavior.
 fn category_type_is_promotion(decl: &CategoryTypeDecl) -> bool {
     decl.name == decl.base.type_name()
 }
 
+/// Performs `emit_category_type_op` behavior.
 fn emit_category_type_op(decl: &CategoryTypeDecl, op: ProductOp) -> Option<String> {
     match op {
         ProductOp::Zero => decl.ops.zero.as_deref().map(|name| {
@@ -1257,6 +1292,7 @@ fn emit_category_type_op(decl: &CategoryTypeDecl, op: ProductOp) -> Option<Strin
     }
 }
 
+/// Performs `wrap_category_value` behavior.
 fn wrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
     if category_type_is_promotion(decl) {
         value.to_string()
@@ -1265,6 +1301,7 @@ fn wrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
     }
 }
 
+/// Performs `unwrap_category_value` behavior.
 fn unwrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
     if category_type_is_promotion(decl) {
         value.to_string()
@@ -1273,6 +1310,7 @@ fn unwrap_category_value(decl: &CategoryTypeDecl, value: &str) -> String {
     }
 }
 
+/// Performs `emit_product_type_support` behavior.
 fn emit_product_type_support(
     decl: &ProductTypeDecl,
     product_types: &HashMap<&str, &ProductTypeDecl>,
@@ -1305,6 +1343,7 @@ fn emit_product_type_support(
     blocks.push(format!("struct {} {{\n{}\n}};", decl.name, fields));
 }
 
+/// Performs `emit_product_op_support` behavior.
 fn emit_product_op_support(
     decl: &ProductTypeDecl,
     op: ProductOp,
@@ -1340,6 +1379,7 @@ fn emit_product_op_support(
     blocks.push(emit_product_op(decl, op));
 }
 
+/// Performs `emit_component_type_dependency` behavior.
 fn emit_component_type_dependency(
     ty: &Type,
     product_types: &HashMap<&str, &ProductTypeDecl>,
@@ -1366,6 +1406,7 @@ fn emit_component_type_dependency(
     }
 }
 
+/// Performs `emit_component_op_dependency` behavior.
 fn emit_component_op_dependency(
     ty: &Type,
     op: ProductOp,
@@ -1408,6 +1449,7 @@ fn emit_component_op_dependency(
     }
 }
 
+/// Performs `emit_builtin_support_once` behavior.
 fn emit_builtin_support_once(
     name: &str,
     emitted_builtin_support: &mut BTreeSet<String>,
@@ -1420,6 +1462,7 @@ fn emit_builtin_support_once(
     }
 }
 
+/// Performs `emit_product_op` behavior.
 fn emit_product_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
     match op {
         ProductOp::Zero | ProductOp::One | ProductOp::Identity => emit_product_neutral(decl, op),
@@ -1429,6 +1472,7 @@ fn emit_product_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
     }
 }
 
+/// Performs `emit_product_neutral` behavior.
 fn emit_product_neutral(decl: &ProductTypeDecl, op: ProductOp) -> String {
     let fields = decl
         .components
@@ -1446,6 +1490,7 @@ fn emit_product_neutral(decl: &ProductTypeDecl, op: ProductOp) -> String {
     )
 }
 
+/// Performs `emit_product_binary_op` behavior.
 fn emit_product_binary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
     let fields = decl
         .components
@@ -1473,6 +1518,7 @@ fn emit_product_binary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
     )
 }
 
+/// Performs `emit_product_unary_op` behavior.
 fn emit_product_unary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
     let fields = decl
         .components
@@ -1494,6 +1540,7 @@ fn emit_product_unary_op(decl: &ProductTypeDecl, op: ProductOp) -> String {
     )
 }
 
+/// Performs `component_product_op` behavior.
 fn component_product_op(op: ProductOp, ty: &Type) -> ProductOp {
     if has_category(ty, AlgebraicCategory::Grp) || !has_category(ty, AlgebraicCategory::Ab) {
         return op;
@@ -1507,6 +1554,7 @@ fn component_product_op(op: ProductOp, ty: &Type) -> ProductOp {
     }
 }
 
+/// Performs `emit_product_scale_op` behavior.
 fn emit_product_scale_op(decl: &ProductTypeDecl) -> String {
     let fields = decl
         .components
@@ -1521,6 +1569,7 @@ fn emit_product_scale_op(decl: &ProductTypeDecl) -> String {
     )
 }
 
+/// Performs `emit_component_neutral` behavior.
 fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
     match op {
         ProductOp::Zero => emit_neutral_value(NeutralKind::Zero, ty),
@@ -1553,6 +1602,7 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
     }
 }
 
+/// Performs `emit_component_binary` behavior.
 fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> String {
     match (op, ty) {
         (ProductOp::Add | ProductOp::Sub, Type::Bool) => format!("({} != {})", left, right),
@@ -1573,6 +1623,7 @@ fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> S
     }
 }
 
+/// Performs `emit_component_unary` behavior.
 fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
     match (op, ty) {
         (ProductOp::Sub, _) => emit_component_binary(
@@ -1593,6 +1644,7 @@ fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
     }
 }
 
+/// Performs `emit_component_scale` behavior.
 fn emit_component_scale(ty: &Type, value: &str, scalar: &str) -> String {
     match ty {
         Type::Custom { name, .. } => format!("scale_{name}({value}, {scalar})"),
@@ -1600,6 +1652,7 @@ fn emit_component_scale(ty: &Type, value: &str, scalar: &str) -> String {
     }
 }
 
+/// Performs `product_binary_symbol` behavior.
 fn product_binary_symbol(op: ProductOp) -> &'static str {
     match op {
         ProductOp::Add => "+",
@@ -1628,6 +1681,7 @@ struct ObjectBinding {
 }
 
 impl ConcatHelper {
+    /// Performs `from_expr` behavior.
     fn from_expr(expr: &ValueExpr) -> Option<Self> {
         match expr {
             ValueExpr::Concat {
@@ -1645,11 +1699,13 @@ impl ConcatHelper {
 }
 
 impl ConditionalHelper {
+    /// Performs `from_type` behavior.
     fn from_type(ty: &Type) -> Option<Self> {
         matches!(ty, Type::Custom { .. }).then(|| Self { ty: ty.clone() })
     }
 }
 
+/// Performs `emit_value_binding_type` behavior.
 fn emit_value_binding_type(ty: &Type, name: &str, array_len: Option<usize>) -> String {
     match ty {
         Type::Array(element_ty) => match array_len {
@@ -1660,6 +1716,7 @@ fn emit_value_binding_type(ty: &Type, name: &str, array_len: Option<usize>) -> S
     }
 }
 
+/// Performs `emit_value_binding_lines_for` behavior.
 fn emit_value_binding_lines_for(
     binding: &TypedValueBinding,
     helper_names: &HashMap<String, String>,
@@ -1687,6 +1744,7 @@ fn emit_value_binding_lines_for(
     )]
 }
 
+/// Performs `emit_array_constructor` behavior.
 fn emit_array_constructor(
     element_ty: &Type,
     elements: &[ValueExpr],
@@ -1706,6 +1764,7 @@ fn emit_array_constructor(
     )
 }
 
+/// Performs `emit_concat_helper` behavior.
 fn emit_concat_helper(helper: &ConcatHelper) -> String {
     let result_len = helper.left_len + helper.right_len;
     format!(
@@ -1721,6 +1780,7 @@ fn emit_concat_helper(helper: &ConcatHelper) -> String {
     )
 }
 
+/// Performs `emit_conditional_helper` behavior.
 fn emit_conditional_helper(helper: &ConditionalHelper) -> String {
     let ty = &helper.ty;
     format!(
@@ -1732,10 +1792,12 @@ fn emit_conditional_helper(helper: &ConditionalHelper) -> String {
     )
 }
 
+/// Performs `glsl_sized_array_type` behavior.
 fn glsl_sized_array_type(element_ty: &Type, len: usize) -> String {
     format!("{}[{len}]", element_ty.glsl_name())
 }
 
+/// Performs `concat_helper_name` behavior.
 fn concat_helper_name(helper: &ConcatHelper) -> String {
     format!(
         "concat_{}_{}_{}",
@@ -1745,6 +1807,7 @@ fn concat_helper_name(helper: &ConcatHelper) -> String {
     )
 }
 
+/// Performs `conditional_helper_name` behavior.
 fn conditional_helper_name(helper: &ConditionalHelper) -> String {
     format!(
         "conditional_{}",
@@ -1752,6 +1815,7 @@ fn conditional_helper_name(helper: &ConditionalHelper) -> String {
     )
 }
 
+/// Performs `sanitize_glsl_identifier` behavior.
 fn sanitize_glsl_identifier(source: &str) -> String {
     source
         .chars()
@@ -1765,6 +1829,7 @@ fn sanitize_glsl_identifier(source: &str) -> String {
         .collect()
 }
 
+/// Performs `collect_object_concat_helpers` behavior.
 fn collect_object_concat_helpers(expr: &ObjectExpr, helpers: &mut BTreeMap<String, ConcatHelper>) {
     match expr {
         ObjectExpr::Var(_) => {}
@@ -1808,6 +1873,7 @@ fn collect_object_concat_helpers(expr: &ObjectExpr, helpers: &mut BTreeMap<Strin
     }
 }
 
+/// Performs `collect_object_conditional_helpers` behavior.
 fn collect_object_conditional_helpers(
     expr: &ObjectExpr,
     helpers: &mut BTreeMap<String, ConditionalHelper>,
@@ -1856,6 +1922,7 @@ fn collect_object_conditional_helpers(
     }
 }
 
+/// Performs `collect_concat_helpers` behavior.
 fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, ConcatHelper>) {
     if let Some(helper) = ConcatHelper::from_expr(expr) {
         helpers.insert(concat_helper_name(&helper), helper);
@@ -1957,6 +2024,7 @@ fn collect_concat_helpers(expr: &ValueExpr, helpers: &mut BTreeMap<String, Conca
     }
 }
 
+/// Performs `collect_conditional_helpers` behavior.
 fn collect_conditional_helpers(
     expr: &ValueExpr,
     helpers: &mut BTreeMap<String, ConditionalHelper>,
@@ -2058,6 +2126,7 @@ fn collect_conditional_helpers(
     }
 }
 
+/// Performs `is_global_const_value_expr` behavior.
 fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> bool {
     match expr {
         ValueExpr::Bool(_)
@@ -2105,15 +2174,13 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
                 && is_global_const_value_expr(then_branch, names)
                 && is_global_const_value_expr(else_branch, names)
         }
-        ValueExpr::Call { args, ty, .. }
-            if matches!(
-                ty,
-                Type::Custom { .. } | Type::Isom2 | Type::Isom3 | Type::Vec4
-            ) =>
-        {
-            args.iter()
-                .all(|arg| is_global_const_value_expr(arg, names))
-        }
+        ValueExpr::Call {
+            args,
+            ty: Type::Custom { .. } | Type::Isom2 | Type::Isom3 | Type::Vec4,
+            ..
+        } => args
+            .iter()
+            .all(|arg| is_global_const_value_expr(arg, names)),
         ValueExpr::Array { .. }
         | ValueExpr::Index { .. }
         | ValueExpr::Concat { .. }
@@ -2128,6 +2195,7 @@ fn is_global_const_value_expr(expr: &ValueExpr, names: &BTreeSet<String>) -> boo
     }
 }
 
+/// Performs `collect_object_value_refs` behavior.
 fn collect_object_value_refs(
     expr: &ObjectExpr,
     object_bindings: &BTreeMap<String, ObjectBinding>,
@@ -2181,6 +2249,7 @@ fn collect_object_value_refs(
     }
 }
 
+/// Performs `collect_value_refs` behavior.
 fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
         ValueExpr::Bool(_)
@@ -2283,6 +2352,7 @@ fn collect_value_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     }
 }
 
+/// Performs `collect_value_function_refs` behavior.
 fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
         ValueExpr::Bool(_)
@@ -2374,6 +2444,7 @@ fn collect_value_function_refs(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     }
 }
 
+/// Performs `collect_object_function_refs` behavior.
 fn collect_object_function_refs(
     expr: &ObjectExpr,
     object_bindings: &BTreeMap<String, ObjectBinding>,
@@ -2427,6 +2498,7 @@ fn collect_object_function_refs(
     }
 }
 
+/// Performs `collect_object_support` behavior.
 fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
     match expr {
         ObjectExpr::Var(_) => {}
@@ -2473,6 +2545,7 @@ fn collect_object_support(expr: &ObjectExpr, names: &mut BTreeSet<String>) {
     }
 }
 
+/// Performs `collect_value_support` behavior.
 fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     match expr {
         ValueExpr::Bool(_)
@@ -2618,6 +2691,7 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
     }
 }
 
+/// Performs `collect_function_support` behavior.
 fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
     match &func.kind {
         FunctionExprKind::Named(name) => {
@@ -2677,6 +2751,7 @@ fn collect_function_support(func: &FunctionExpr, names: &mut BTreeSet<String>) {
     }
 }
 
+/// Performs `collect_pointwise_call_arg_support` behavior.
 fn collect_pointwise_call_arg_support(arg: &PointwiseCallArg, names: &mut BTreeSet<String>) {
     match arg {
         PointwiseCallArg::Function { func, .. } => collect_function_support(func, names),
@@ -2684,6 +2759,7 @@ fn collect_pointwise_call_arg_support(arg: &PointwiseCallArg, names: &mut BTreeS
     }
 }
 
+/// Performs `operator_function_support_types` behavior.
 fn operator_function_support_types(input: &Type) -> Option<(Type, Type)> {
     match input {
         Type::Vec2 => Some((Type::Float, Type::Float)),
@@ -2692,6 +2768,7 @@ fn operator_function_support_types(input: &Type) -> Option<(Type, Type)> {
     }
 }
 
+/// Performs `emit_value_expr` behavior.
 fn emit_value_expr(
     expr: &ValueExpr,
     helper_names: &HashMap<String, String>,
@@ -2860,6 +2937,7 @@ fn emit_value_expr(
     }
 }
 
+/// Performs `emit_value_name` behavior.
 fn emit_value_name(name: &str, value_names: &HashMap<String, String>) -> String {
     if let Some(mapped) = value_names.get(name) {
         return mapped.clone();
@@ -2881,6 +2959,7 @@ fn emit_value_name(name: &str, value_names: &HashMap<String, String>) -> String 
     name.to_string()
 }
 
+/// Performs `product_projection_source_name` behavior.
 fn product_projection_source_name(name: &str) -> Option<String> {
     let rest = name.strip_prefix("__lane_product_")?;
     let (source, index) = rest.rsplit_once('_')?;
@@ -2888,6 +2967,7 @@ fn product_projection_source_name(name: &str) -> Option<String> {
     Some(source.to_string())
 }
 
+/// Performs `emit_scalar_first_min_max` behavior.
 fn emit_scalar_first_min_max(
     func: &str,
     args: &[ValueExpr],
@@ -2908,14 +2988,17 @@ fn emit_scalar_first_min_max(
     ))
 }
 
+/// Performs `is_vector_type` behavior.
 fn is_vector_type(ty: &Type) -> bool {
     matches!(ty, Type::Vec2 | Type::Vec3 | Type::Vec4)
 }
 
+/// Performs `emit_plain_value_expr` behavior.
 fn emit_plain_value_expr(expr: &ValueExpr, helper_names: &HashMap<String, String>) -> String {
     emit_value_expr(expr, helper_names, &HashMap::new())
 }
 
+/// Performs `emit_matrix` behavior.
 fn emit_matrix(
     rows: &[ValueExpr],
     columns: usize,
@@ -2934,6 +3017,7 @@ fn emit_matrix(
     )
 }
 
+/// Performs `emit_matrix_basis` behavior.
 fn emit_matrix_basis(row: usize, column: usize, ty: &Type) -> String {
     let Type::Mat(rows, columns) = ty else {
         unreachable!("matrix basis literal has non-matrix type")
@@ -2953,6 +3037,7 @@ fn emit_matrix_basis(row: usize, column: usize, ty: &Type) -> String {
     format!("{}({})", matrix_glsl_type(*rows, *columns), values)
 }
 
+/// Performs `emit_unit_vector_basis` behavior.
 fn emit_unit_vector_basis(dimension: usize, index: usize, ty: &Type) -> String {
     debug_assert_eq!(vector_type_dimension(ty), Some(dimension));
     let values = (1..=dimension)
@@ -2962,6 +3047,7 @@ fn emit_unit_vector_basis(dimension: usize, index: usize, ty: &Type) -> String {
     format!("{}({})", ty.glsl_name(), values)
 }
 
+/// Performs `emit_binary_expr` behavior.
 fn emit_binary_expr(
     op: BinOp,
     left: &ValueExpr,
@@ -3041,6 +3127,7 @@ fn emit_binary_expr(
     }
 }
 
+/// Performs `emit_unary_expr` behavior.
 fn emit_unary_expr(
     op: UnaryOp,
     expr: &ValueExpr,
@@ -3054,6 +3141,7 @@ fn emit_unary_expr(
     }
 }
 
+/// Performs `bool_numeric_cast_type_for_emit` behavior.
 fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
     if other == &Type::Int {
         Some(Type::Int)
@@ -3067,6 +3155,7 @@ fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
     }
 }
 
+/// Performs `emit_custom_binary_expr` behavior.
 fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> String {
     let Type::Custom { name, .. } = ty else {
         unreachable!();
@@ -3087,6 +3176,7 @@ fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> Str
     }
 }
 
+/// Performs `emit_custom_scale_expr` behavior.
 fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> String {
     let Type::Custom { name, .. } = ty else {
         unreachable!();
@@ -3107,6 +3197,7 @@ fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> St
     }
 }
 
+/// Performs `scalar_to_algebra` behavior.
 fn scalar_to_algebra(ty: &Type, value: &str) -> String {
     match ty {
         Type::Complex => format!("vec2({}, 0.0)", value),
@@ -3115,6 +3206,7 @@ fn scalar_to_algebra(ty: &Type, value: &str) -> String {
     }
 }
 
+/// Performs `emit_neutral_value` behavior.
 fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
     match (kind, ty) {
         (NeutralKind::Zero, Type::Bool) => "false".to_string(),
@@ -3145,6 +3237,7 @@ fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
     }
 }
 
+/// Performs `matrix_zero_expr` behavior.
 fn matrix_zero_expr(rows: usize, columns: usize) -> String {
     if rows == columns {
         format!("mat{rows}(0.0)")
@@ -3153,6 +3246,7 @@ fn matrix_zero_expr(rows: usize, columns: usize) -> String {
     }
 }
 
+/// Performs `binary_support_name` behavior.
 fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
     match (op, left, right) {
         (BinOp::Mul | BinOp::Div, Type::Complex, Type::Complex)
@@ -3181,6 +3275,7 @@ fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
     }
 }
 
+/// Performs `unary_support_name` behavior.
 fn unary_support_name(op: UnaryOp, ty: &Type) -> Option<String> {
     match (op, ty) {
         (UnaryOp::Inv, Type::Complex) => Some("C".to_string()),
@@ -3194,6 +3289,7 @@ fn unary_support_name(op: UnaryOp, ty: &Type) -> Option<String> {
     }
 }
 
+/// Performs `emit_function_application` behavior.
 fn emit_function_application(
     func: &FunctionExpr,
     arg: ValueExpr,
@@ -3203,11 +3299,12 @@ fn emit_function_application(
     emit_value_expr(&apply_function_expr(func, arg), helper_names, value_names)
 }
 
+/// Performs `emit_sdf_gradient_expr` behavior.
 fn emit_sdf_gradient_expr(
     function_name: &str,
     point_name: &str,
     epsilon_name: &str,
-    scene_input_names: &[String],
+    object_call_arg_names: &[String],
     dimension: ShapeDimension,
 ) -> String {
     match dimension {
@@ -3217,7 +3314,7 @@ fn emit_sdf_gradient_expr(
                 function_name,
                 point_name,
                 epsilon_name,
-                scene_input_names,
+                object_call_arg_names,
                 dimension,
                 0
             ),
@@ -3225,7 +3322,7 @@ fn emit_sdf_gradient_expr(
                 function_name,
                 point_name,
                 epsilon_name,
-                scene_input_names,
+                object_call_arg_names,
                 dimension,
                 1
             ),
@@ -3236,7 +3333,7 @@ fn emit_sdf_gradient_expr(
                 function_name,
                 point_name,
                 epsilon_name,
-                scene_input_names,
+                object_call_arg_names,
                 dimension,
                 0
             ),
@@ -3244,7 +3341,7 @@ fn emit_sdf_gradient_expr(
                 function_name,
                 point_name,
                 epsilon_name,
-                scene_input_names,
+                object_call_arg_names,
                 dimension,
                 1
             ),
@@ -3252,7 +3349,7 @@ fn emit_sdf_gradient_expr(
                 function_name,
                 point_name,
                 epsilon_name,
-                scene_input_names,
+                object_call_arg_names,
                 dimension,
                 2
             ),
@@ -3260,11 +3357,12 @@ fn emit_sdf_gradient_expr(
     }
 }
 
+/// Performs `emit_sdf_partial_derivative` behavior.
 fn emit_sdf_partial_derivative(
     function_name: &str,
     point_name: &str,
     epsilon_name: &str,
-    scene_input_names: &[String],
+    object_call_arg_names: &[String],
     dimension: ShapeDimension,
     axis: usize,
 ) -> String {
@@ -3279,24 +3377,30 @@ fn emit_sdf_partial_derivative(
     let forward = emit_sdf_call(
         function_name,
         &format!("{} + {}", point_name, offset),
-        scene_input_names,
+        object_call_arg_names,
     );
     let backward = emit_sdf_call(
         function_name,
         &format!("{} - {}", point_name, offset),
-        scene_input_names,
+        object_call_arg_names,
     );
     format!("(({} - {}) / (2.0 * {}))", forward, backward, epsilon_name)
 }
 
-fn emit_sdf_call(function_name: &str, point_expr: &str, scene_input_names: &[String]) -> String {
+/// Performs `emit_sdf_call` behavior.
+fn emit_sdf_call(
+    function_name: &str,
+    point_expr: &str,
+    object_call_arg_names: &[String],
+) -> String {
     let args = std::iter::once(point_expr.to_string())
-        .chain(scene_input_names.iter().cloned())
+        .chain(object_call_arg_names.iter().cloned())
         .collect::<Vec<_>>()
         .join(", ");
     format!("{}({})", function_name, args)
 }
 
+/// Performs `emit_scalar_derivative` behavior.
 fn emit_scalar_derivative(
     func: &FunctionExpr,
     epsilon: &ValueExpr,
@@ -3307,6 +3411,7 @@ fn emit_scalar_derivative(
     emit_derivative(func, epsilon, at, helper_names, value_names)
 }
 
+/// Performs `emit_partial_derivative` behavior.
 fn emit_partial_derivative(
     axis: usize,
     func: &FunctionExpr,
@@ -3318,6 +3423,7 @@ fn emit_partial_derivative(
     emit_axis_derivative(axis, func, epsilon, at, helper_names, value_names)
 }
 
+/// Performs `emit_gradient` behavior.
 fn emit_gradient(
     func: &FunctionExpr,
     epsilon: &ValueExpr,
@@ -3328,6 +3434,7 @@ fn emit_gradient(
     emit_derivative(func, epsilon, at, helper_names, value_names)
 }
 
+/// Performs `emit_derivative` behavior.
 fn emit_derivative(
     func: &FunctionExpr,
     epsilon: &ValueExpr,
@@ -3361,6 +3468,7 @@ fn emit_derivative(
     )
 }
 
+/// Performs `emit_axis_derivative` behavior.
 fn emit_axis_derivative(
     axis: usize,
     func: &FunctionExpr,
@@ -3385,6 +3493,7 @@ fn emit_axis_derivative(
     )
 }
 
+/// Performs `derivative_emit_dimension` behavior.
 fn derivative_emit_dimension(ty: &Type) -> Option<usize> {
     match ty {
         Type::Float => Some(1),
@@ -3395,6 +3504,7 @@ fn derivative_emit_dimension(ty: &Type) -> Option<usize> {
     }
 }
 
+/// Performs `vector_constructor` behavior.
 fn vector_constructor(dimension: usize) -> &'static str {
     match dimension {
         2 => "vec2",
@@ -3404,6 +3514,7 @@ fn vector_constructor(dimension: usize) -> &'static str {
     }
 }
 
+/// Performs `emit_axis_offset` behavior.
 fn emit_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: BinOp) -> ValueExpr {
     let ty = base.ty();
     let offset = match ty {
@@ -3469,6 +3580,7 @@ fn emit_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: BinOp)
     }
 }
 
+/// Performs `emit_divergence` behavior.
 fn emit_divergence(
     func: &FunctionExpr,
     epsilon: &ValueExpr,
@@ -3506,20 +3618,21 @@ fn emit_divergence(
     format!("({})", terms.join(" + "))
 }
 
+/// Performs `emit_object_expr` behavior.
 fn emit_object_expr(
     expr: &ObjectExpr,
     point_expr: &str,
     ambient_dimension: ShapeDimension,
     object_bindings: &BTreeMap<String, ObjectBinding>,
     helper_names: &HashMap<String, String>,
-    scene_input_names: &[String],
+    object_call_arg_names: &[String],
 ) -> String {
     match expr {
         ObjectExpr::Var(name) => object_bindings
             .get(name)
             .map(|binding| {
                 if binding.generated {
-                    emit_generated_object_call(name, point_expr, scene_input_names)
+                    emit_generated_object_call(name, point_expr, object_call_arg_names)
                 } else {
                     emit_object_expr(
                         &binding.expr,
@@ -3527,7 +3640,7 @@ fn emit_object_expr(
                         ambient_dimension,
                         object_bindings,
                         helper_names,
-                        scene_input_names,
+                        object_call_arg_names,
                     )
                 }
             })
@@ -3593,7 +3706,7 @@ fn emit_object_expr(
                 ambient_dimension,
                 object_bindings,
                 helper_names,
-                scene_input_names,
+                object_call_arg_names,
             )
         }
         ObjectExpr::IsometryTransform { object, transform } => {
@@ -3614,7 +3727,7 @@ fn emit_object_expr(
                 ambient_dimension,
                 object_bindings,
                 helper_names,
-                scene_input_names,
+                object_call_arg_names,
             )
         }
         ObjectExpr::RegisteredOp {
@@ -3632,7 +3745,7 @@ fn emit_object_expr(
                     ambient_dimension,
                     object_bindings,
                     helper_names,
-                    scene_input_names,
+                    object_call_arg_names,
                 );
             }
             if glsl_name == "_op_extrusion" {
@@ -3644,7 +3757,7 @@ fn emit_object_expr(
                     ambient_dimension,
                     object_bindings,
                     helper_names,
-                    scene_input_names,
+                    object_call_arg_names,
                 );
                 return format!(
                     "_op_extrusion({}, ({}).z, {})",
@@ -3665,7 +3778,7 @@ fn emit_object_expr(
                     ambient_dimension,
                     object_bindings,
                     helper_names,
-                    scene_input_names,
+                    object_call_arg_names,
                 );
             }
             if glsl_name == "_op_rot2D" {
@@ -3688,15 +3801,12 @@ fn emit_object_expr(
                     ambient_dimension,
                     object_bindings,
                     helper_names,
-                    scene_input_names,
+                    object_call_arg_names,
                 );
             }
             if matches!(
                 glsl_name.as_str(),
-                "_op_with_material"
-                    | "_op_with_bounds"
-                    | "_op_with_lipschitz"
-                    | "_op_with_blend"
+                "_op_with_material" | "_op_with_bounds" | "_op_with_lipschitz" | "_op_with_blend"
             ) {
                 return emit_object_expr(
                     &object_args[0],
@@ -3704,7 +3814,7 @@ fn emit_object_expr(
                     ambient_dimension,
                     object_bindings,
                     helper_names,
-                    scene_input_names,
+                    object_call_arg_names,
                 );
             }
             let mut args = object_args
@@ -3716,7 +3826,7 @@ fn emit_object_expr(
                         ambient_dimension,
                         object_bindings,
                         helper_names,
-                        scene_input_names,
+                        object_call_arg_names,
                     )
                 })
                 .collect::<Vec<_>>();
@@ -3730,16 +3840,18 @@ fn emit_object_expr(
     }
 }
 
+/// Performs `emit_generated_object_call` behavior.
 fn emit_generated_object_call(
     name: &str,
     point_expr: &str,
-    scene_input_names: &[String],
+    object_call_arg_names: &[String],
 ) -> String {
     let mut args = vec![point_expr.to_string()];
-    args.extend(scene_input_names.iter().cloned());
+    args.extend(object_call_arg_names.iter().cloned());
     format!("sdf_{}({})", name, args.join(", "))
 }
 
+/// Performs `ambient_vector_glsl_type` behavior.
 fn ambient_vector_glsl_type(dimension: ShapeDimension) -> &'static str {
     match dimension {
         ShapeDimension::D2 => "vec2",
@@ -3747,6 +3859,7 @@ fn ambient_vector_glsl_type(dimension: ShapeDimension) -> &'static str {
     }
 }
 
+/// Performs `primitive_2d_point_arg` behavior.
 fn primitive_2d_point_arg(point_expr: &str, ambient_dimension: ShapeDimension) -> String {
     match ambient_dimension {
         ShapeDimension::D2 => point_expr.to_string(),
@@ -3754,6 +3867,7 @@ fn primitive_2d_point_arg(point_expr: &str, ambient_dimension: ShapeDimension) -
     }
 }
 
+// Retrieves a primitive argument field value by name from a primitive declaration.
 fn primitive_value_field<'a>(
     fields: &'a [(String, PrimitiveArgExpr)],
     name: &str,
@@ -3767,6 +3881,7 @@ fn primitive_value_field<'a>(
         .unwrap()
 }
 
+/// Performs `emit_polygon_vertices` behavior.
 fn emit_polygon_vertices(vertices: &[ValueExpr], helper_names: &HashMap<String, String>) -> String {
     let mut rendered = vertices
         .iter()
@@ -3782,6 +3897,7 @@ fn emit_polygon_vertices(vertices: &[ValueExpr], helper_names: &HashMap<String, 
     format!("vec2[16]({})", rendered.join(", "))
 }
 
+/// Performs `emit_transformed_point` behavior.
 fn emit_transformed_point(
     point_expr: &str,
     translation: &ValueExpr,
@@ -3824,6 +3940,7 @@ fn emit_transformed_point(
     )
 }
 
+/// Performs `is_zero_vec2` behavior.
 fn is_zero_vec2(expr: &ValueExpr) -> bool {
     match expr {
         ValueExpr::Vec2(x, y) => is_float_literal(x, 0.0) && is_float_literal(y, 0.0),
@@ -3831,6 +3948,7 @@ fn is_zero_vec2(expr: &ValueExpr) -> bool {
     }
 }
 
+/// Performs `is_zero_vec3` behavior.
 fn is_zero_vec3(expr: &ValueExpr) -> bool {
     match expr {
         ValueExpr::Vec3(x, y, z) => {
@@ -3840,6 +3958,7 @@ fn is_zero_vec3(expr: &ValueExpr) -> bool {
     }
 }
 
+/// Performs `is_identity_mat2` behavior.
 fn is_identity_mat2(expr: &ValueExpr) -> bool {
     match expr {
         ValueExpr::Matrix { columns: 2, rows } if rows.len() == 2 => {
@@ -3849,6 +3968,7 @@ fn is_identity_mat2(expr: &ValueExpr) -> bool {
     }
 }
 
+/// Performs `is_identity_mat3` behavior.
 fn is_identity_mat3(expr: &ValueExpr) -> bool {
     match expr {
         ValueExpr::Matrix { columns: 3, rows } if rows.len() == 3 => {
@@ -3860,6 +3980,7 @@ fn is_identity_mat3(expr: &ValueExpr) -> bool {
     }
 }
 
+/// Performs `is_vec2_literal` behavior.
 fn is_vec2_literal(expr: &ValueExpr, expected: [f64; 2]) -> bool {
     match expr {
         ValueExpr::Vec2(x, y) => {
@@ -3869,6 +3990,7 @@ fn is_vec2_literal(expr: &ValueExpr, expected: [f64; 2]) -> bool {
     }
 }
 
+/// Performs `is_vec3_literal` behavior.
 fn is_vec3_literal(expr: &ValueExpr, expected: [f64; 3]) -> bool {
     match expr {
         ValueExpr::Vec3(x, y, z) => {
@@ -3880,10 +4002,12 @@ fn is_vec3_literal(expr: &ValueExpr, expected: [f64; 3]) -> bool {
     }
 }
 
+/// Performs `is_float_literal` behavior.
 fn is_float_literal(expr: &ValueExpr, expected: f64) -> bool {
     matches!(expr, ValueExpr::Float(value) if (*value - expected).abs() < f64::EPSILON)
 }
 
+/// Performs `emitted_function_name` behavior.
 fn emitted_function_name(name: &str, helper_names: &HashMap<String, String>) -> String {
     helper_names
         .get(name)
@@ -3891,6 +4015,7 @@ fn emitted_function_name(name: &str, helper_names: &HashMap<String, String>) -> 
         .unwrap_or_else(|| name.to_string())
 }
 
+/// Performs `collect_raw_glsl_placeholders` behavior.
 fn collect_raw_glsl_placeholders(body: &str, names: &mut BTreeSet<String>) {
     let mut index = 0;
     while let Some(relative_start) = body[index..].find("${") {
@@ -3907,6 +4032,7 @@ fn collect_raw_glsl_placeholders(body: &str, names: &mut BTreeSet<String>) {
     }
 }
 
+/// Performs `render_raw_glsl_function` behavior.
 fn render_raw_glsl_function(body: &str, func: &TypedFunc) -> String {
     let rendered_body = render_raw_glsl_placeholders(body, &func.name);
     let signature = raw_glsl_function_signature(func);
@@ -3916,6 +4042,7 @@ fn render_raw_glsl_function(body: &str, func: &TypedFunc) -> String {
     )
 }
 
+/// Performs `raw_glsl_function_signature` behavior.
 fn raw_glsl_function_signature(func: &TypedFunc) -> String {
     let output = if func.output == Type::Unit {
         "void".to_string()
@@ -3934,6 +4061,7 @@ fn raw_glsl_function_signature(func: &TypedFunc) -> String {
     )
 }
 
+/// Performs `emit_func_signature_params` behavior.
 fn emit_func_signature_params(input: &Type, locals: &EmitLocals) -> String {
     match input {
         Type::Unit => String::new(),
@@ -3947,6 +4075,7 @@ fn emit_func_signature_params(input: &Type, locals: &EmitLocals) -> String {
     }
 }
 
+/// Performs `emit_raw_glsl_signature_params` behavior.
 fn emit_raw_glsl_signature_params(input: &Type) -> String {
     match input {
         Type::Unit => String::new(),
@@ -3960,6 +4089,7 @@ fn emit_raw_glsl_signature_params(input: &Type) -> String {
     }
 }
 
+/// Performs `indent_raw_glsl_body` behavior.
 fn indent_raw_glsl_body(body: &str) -> String {
     body.trim()
         .lines()
@@ -3974,6 +4104,7 @@ fn indent_raw_glsl_body(body: &str) -> String {
         .join("\n")
 }
 
+/// Performs `render_raw_glsl_placeholders` behavior.
 fn render_raw_glsl_placeholders(body: &str, _function_name: &str) -> String {
     let mut out = String::with_capacity(body.len());
     let mut index = 0;
@@ -4000,6 +4131,7 @@ fn render_raw_glsl_placeholders(body: &str, _function_name: &str) -> String {
     out
 }
 
+/// Performs `raw_glsl_object_getter_placeholder` behavior.
 fn raw_glsl_object_getter_placeholder(name: &str) -> Option<String> {
     let (object, getter) = name.split_once('.')?;
     match getter {
@@ -4009,10 +4141,12 @@ fn raw_glsl_object_getter_placeholder(name: &str) -> Option<String> {
     }
 }
 
+/// Performs `helper_name` behavior.
 fn helper_name(name: &str) -> String {
     name.to_string()
 }
 
+/// Performs `unique_local_name` behavior.
 fn unique_local_name(base: &str, forbidden: &BTreeSet<String>) -> String {
     if !forbidden.contains(base) {
         return base.to_string();
@@ -4032,6 +4166,7 @@ fn unique_local_name(base: &str, forbidden: &BTreeSet<String>) -> String {
     }
 }
 
+/// Performs `stable_name_hash` behavior.
 fn stable_name_hash(base: &str, forbidden: &BTreeSet<String>, counter: u64) -> u64 {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in base.bytes() {
@@ -4051,6 +4186,7 @@ fn stable_name_hash(base: &str, forbidden: &BTreeSet<String>, counter: u64) -> u
     hash & 0x00ff_ffff
 }
 
+/// Performs `format_float` behavior.
 fn format_float(value: f64) -> String {
     if value.fract().abs() < f64::EPSILON {
         format!("{value:.1}")

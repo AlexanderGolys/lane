@@ -3,8 +3,7 @@ use std::collections::HashSet;
 use tower_lsp::lsp_types::{
     SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens, SemanticTokensLegend,
 };
-use tree_sitter::{Parser, Query, QueryCapture, QueryCursor, StreamingIterator};
-use tree_sitter_language::LanguageFn;
+use tree_sitter::{Query, QueryCapture, QueryCursor, StreamingIterator};
 
 const QUERY: &str = include_str!("../../../tree-sitter-lane/queries/semantic_tokens.scm");
 
@@ -27,18 +26,14 @@ const TOKEN_TYPE_CATEGORY: u32 = 14;
 const TOKEN_MODIFIER_DECLARATION: u32 = 1 << 0;
 const TOKEN_MODIFIER_DEFAULT_LIBRARY: u32 = 1 << 1;
 
-unsafe extern "C" {
-    fn tree_sitter_lane() -> *const ();
-}
-
-const LANGUAGE_LANE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_lane) };
-
+/// Token classification payload used while collecting semantic tokens.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TokenSpec {
     token_type: u32,
     token_modifiers_bitset: u32,
 }
 
+/// Fully positioned token in absolute document coordinates before delta encoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct AbsoluteToken {
     line: u32,
@@ -48,6 +43,7 @@ struct AbsoluteToken {
     token_modifiers_bitset: u32,
 }
 
+/// Returns the semantic token legend consumed by LSP clients.
 pub fn legend() -> SemanticTokensLegend {
     SemanticTokensLegend {
         token_types: vec![
@@ -74,25 +70,22 @@ pub fn legend() -> SemanticTokensLegend {
     }
 }
 
+/// Runs semantic-token queries over a source file and encodes token positions.
 pub fn tokens(source: &str) -> SemanticTokens {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&LANGUAGE_LANE.into())
-        .expect("lane tree-sitter parser should load");
-    let Some(tree) = parser.parse(source, None) else {
+    let Some(tree) = super::parse_lane_tree(source) else {
         return SemanticTokens {
             result_id: None,
             data: Vec::new(),
         };
     };
 
-    let query =
-        Query::new(&LANGUAGE_LANE.into(), QUERY).expect("lane semantic token query should compile");
+    let query = Query::new(&super::LANGUAGE_LANE.into(), QUERY)
+        .expect("lane semantic token query should compile");
     let capture_names = query.capture_names();
     let mut cursor = QueryCursor::new();
     let mut absolute_tokens = Vec::new();
     let mut seen = HashSet::new();
-    let line_start_bytes = line_start_bytes(source);
+    let line_start_bytes = super::line_start_bytes(source);
 
     let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
     while let Some(query_match) = matches.next() {
@@ -151,6 +144,7 @@ pub fn tokens(source: &str) -> SemanticTokens {
     }
 }
 
+/// Maps a Tree-sitter capture to token type + modifiers, or skips unsupported captures.
 fn token_spec(capture_name: &str, capture: QueryCapture<'_>, source: &str) -> Option<TokenSpec> {
     let text = &source[capture.node.byte_range()];
     let mut token_modifiers_bitset = 0;
@@ -165,7 +159,7 @@ fn token_spec(capture_name: &str, capture: QueryCapture<'_>, source: &str) -> Op
         "namespace" => TOKEN_TYPE_NAMESPACE,
         "functor" => TOKEN_TYPE_FUNCTOR,
         "category" => TOKEN_TYPE_CATEGORY,
-        "type" if is_category_token_text(text) => TOKEN_TYPE_CATEGORY,
+        "type" if is_known_category_name(text) => TOKEN_TYPE_CATEGORY,
         "type" => TOKEN_TYPE_TYPE,
         "type.declaration" => {
             token_modifiers_bitset |= TOKEN_MODIFIER_DECLARATION;
@@ -201,30 +195,13 @@ fn token_spec(capture_name: &str, capture: QueryCapture<'_>, source: &str) -> Op
     })
 }
 
+/// Checks whether a token name resolves to known built-ins for default-library styling.
 fn is_default_library(token_type: u32, text: &str) -> bool {
     match token_type {
         TOKEN_TYPE_NAMESPACE => matches!(text, "std" | "raytracing"),
         TOKEN_TYPE_FUNCTOR => matches!(text, "Hom" | "Func"),
-        TOKEN_TYPE_TYPE => {
-            lane::known_type_names()
-                .into_iter()
-                .any(|name| name == text)
-                || lane::known_builtin_object(text)
-                    .is_some_and(|detail| matches!(detail.kind, lane::KnownBuiltinObjectKind::Type))
-                || matches!(
-                    text,
-                    lane::CATEGORY_METATYPE_NAME | lane::TYPE_METATYPE_NAME
-                )
-        }
-        TOKEN_TYPE_CATEGORY => {
-            lane::known_category_names()
-                .into_iter()
-                .any(|name| name == text)
-                || lane::known_builtin_object(text).is_some_and(|detail| {
-                    matches!(detail.kind, lane::KnownBuiltinObjectKind::Category)
-                })
-                || text == lane::CATEGORY_METATYPE_NAME
-        }
+        TOKEN_TYPE_TYPE => is_known_type_name(text),
+        TOKEN_TYPE_CATEGORY => is_known_category_name(text),
         TOKEN_TYPE_FUNCTION => {
             lane::known_primitive(text).is_some()
                 || lane::known_builtin_object(text).is_some_and(|detail| {
@@ -235,15 +212,30 @@ fn is_default_library(token_type: u32, text: &str) -> bool {
     }
 }
 
-fn is_category_token_text(text: &str) -> bool {
+/// Checks if `name` belongs to the built-in category surface.
+fn is_known_category_name(name: &str) -> bool {
     lane::known_category_names()
         .into_iter()
-        .any(|name| name == text)
-        || lane::known_builtin_object(text)
+        .any(|text| text == name)
+        || lane::known_builtin_object(name)
             .is_some_and(|detail| matches!(detail.kind, lane::KnownBuiltinObjectKind::Category))
-        || text == lane::CATEGORY_METATYPE_NAME
+        || name == lane::CATEGORY_METATYPE_NAME
 }
 
+/// Checks if `name` is a known built-in or intrinsic type name.
+fn is_known_type_name(name: &str) -> bool {
+    lane::known_type_names()
+        .into_iter()
+        .any(|text| text == name)
+        || lane::known_builtin_object(name)
+            .is_some_and(|detail| matches!(detail.kind, lane::KnownBuiltinObjectKind::Type))
+        || matches!(
+            name,
+            lane::CATEGORY_METATYPE_NAME | lane::TYPE_METATYPE_NAME
+        )
+}
+
+/// Splits multi-line captures into per-line token segments for stable LSP deltas.
 fn push_token_segments(
     tokens: &mut Vec<AbsoluteToken>,
     source: &str,
@@ -287,197 +279,11 @@ fn push_token_segments(
     }
 }
 
-fn line_start_bytes(source: &str) -> Vec<usize> {
-    let mut starts = vec![0];
-    for (index, ch) in source.char_indices() {
-        if ch == '\n' {
-            starts.push(index + ch.len_utf8());
-        }
-    }
-    starts
-}
-
+/// Counts UTF-16 code units for LSP-safe column/length calculations.
 fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn decoded_tokens(source: &str) -> Vec<(u32, u32, u32, u32, u32)> {
-        let mut line = 0;
-        let mut start = 0;
-        tokens(source)
-            .data
-            .into_iter()
-            .map(|token| {
-                line += token.delta_line;
-                start = if token.delta_line == 0 {
-                    start + token.delta_start
-                } else {
-                    token.delta_start
-                };
-                (
-                    line,
-                    start,
-                    token.length,
-                    token.token_type,
-                    token.token_modifiers_bitset,
-                )
-            })
-            .collect()
-    }
-
-    #[test]
-    fn legend_includes_lane_custom_types() {
-        let legend = legend();
-
-        assert_eq!(
-            legend.token_types[TOKEN_TYPE_DIRECTIVE as usize],
-            SemanticTokenType::new("directive")
-        );
-        assert_eq!(
-            legend.token_types[TOKEN_TYPE_FUNCTOR as usize],
-            SemanticTokenType::new("functor")
-        );
-        assert_eq!(
-            legend.token_types[TOKEN_TYPE_CATEGORY as usize],
-            SemanticTokenType::new("category")
-        );
-    }
-
-    #[test]
-    fn emits_lane_semantic_tokens_for_directives_and_functors() {
-        let source =
-            "#import std\nprovided Hom({n}, R) fold = x |-> x\nconst R shader = \"return ${x};\"\n";
-        let tokens = decoded_tokens(source);
-
-        assert!(tokens.iter().any(|token| token.3 == TOKEN_TYPE_DIRECTIVE));
-        assert!(tokens.iter().any(|token| {
-            token.3 == TOKEN_TYPE_NAMESPACE && token.4 & TOKEN_MODIFIER_DEFAULT_LIBRARY != 0
-        }));
-        assert!(tokens.iter().any(|token| {
-            token.3 == TOKEN_TYPE_FUNCTOR && token.4 & TOKEN_MODIFIER_DEFAULT_LIBRARY != 0
-        }));
-        assert!(tokens
-            .iter()
-            .any(|token| token.3 == TOKEN_TYPE_TYPE_PARAMETER));
-        assert!(tokens.iter().any(|token| token.3 == TOKEN_TYPE_STRING));
-    }
-
-    #[test]
-    fn emits_distinct_tokens_for_categories_and_types() {
-        let source = "provided Grp G\nprovided G g\nconst Type t = Type\n";
-        let tokens = decoded_tokens(source);
-
-        let lines = source.lines().collect::<Vec<_>>();
-        let grp_start = lines[0].find("Grp").unwrap() as u32;
-        let custom_type_start = lines[1].find("G").unwrap() as u32;
-        let type_start = lines[2].find("Type").unwrap() as u32;
-
-        assert!(tokens.iter().any(|token| {
-            token.0 == 0
-                && token.1 == grp_start
-                && token.2 == "Grp".len() as u32
-                && token.3 == TOKEN_TYPE_CATEGORY
-                && token.4 & TOKEN_MODIFIER_DEFAULT_LIBRARY != 0
-        }));
-        assert!(tokens.iter().any(|token| {
-            token.0 == 1
-                && token.1 == custom_type_start
-                && token.2 == "G".len() as u32
-                && token.3 == TOKEN_TYPE_TYPE
-        }));
-        assert!(tokens.iter().any(|token| {
-            token.0 == 2
-                && token.1 == type_start
-                && token.2 == "Type".len() as u32
-                && token.3 == TOKEN_TYPE_TYPE
-        }));
-    }
-
-    #[test]
-    fn classifies_provided_function_arrow_as_functor() {
-        let source = "provided f: X -> Y\nconst Hom(R, R) g = x |-> x\n";
-        let tokens = decoded_tokens(source);
-
-        let arrow_start = source.lines().next().unwrap().find("->").unwrap() as u32;
-        assert!(tokens.iter().any(|token| {
-            token.0 == 0
-                && token.1 == arrow_start
-                && token.2 == "->".len() as u32
-                && token.3 == TOKEN_TYPE_FUNCTOR
-        }));
-        assert!(!tokens.iter().any(|token| {
-            token.0 == 0
-                && token.1 == arrow_start
-                && token.2 == "->".len() as u32
-                && token.3 == TOKEN_TYPE_OPERATOR
-        }));
-    }
-
-    #[test]
-    fn classifies_provided_names_as_variables_not_parameters() {
-        let source = "provided R time\nconst Hom(R, R) g = x |-> time + x\n";
-        let tokens = decoded_tokens(source);
-
-        let provided_start = source.lines().next().unwrap().find("time").unwrap() as u32;
-        let closure_line = source.lines().nth(1).unwrap();
-        let closure_parameter_start = closure_line.find("x |->").unwrap() as u32;
-
-        assert!(tokens.iter().any(|token| {
-            token.0 == 0
-                && token.1 == provided_start
-                && token.2 == "time".len() as u32
-                && token.3 == TOKEN_TYPE_VARIABLE
-                && token.4 & TOKEN_MODIFIER_DECLARATION != 0
-        }));
-        assert!(!tokens.iter().any(|token| {
-            token.0 == 0
-                && token.1 == provided_start
-                && token.2 == "time".len() as u32
-                && token.3 == TOKEN_TYPE_PARAMETER
-        }));
-        assert!(tokens.iter().any(|token| {
-            token.0 == 1
-                && token.1 == closure_parameter_start
-                && token.2 == "x".len() as u32
-                && token.3 == TOKEN_TYPE_PARAMETER
-                && token.4 & TOKEN_MODIFIER_DECLARATION != 0
-        }));
-    }
-
-    #[test]
-    fn classifies_function_product_x_as_operator() {
-        let source = "Hom(R x R, R x R) h = f x g\n";
-        let tokens = decoded_tokens(source);
-        let product_start = source.lines().next().unwrap().rfind("x").unwrap() as u32;
-
-        assert!(tokens.iter().any(|token| {
-            token.0 == 0
-                && token.1 == product_start
-                && token.2 == "x".len() as u32
-                && token.3 == TOKEN_TYPE_OPERATOR
-        }));
-    }
-
-    #[test]
-    fn preserves_utf16_columns_for_non_ascii_tokens() {
-        let source = "R2 uv = p × q\n";
-        let tokens = decoded_tokens(source);
-        let operator_start = "R2 uv = p ".encode_utf16().count() as u32;
-        let operator = tokens
-            .into_iter()
-            .find(|token| {
-                token.1 == operator_start
-                    && token.3 == TOKEN_TYPE_OPERATOR
-                    && token.2 == "×".encode_utf16().count() as u32
-            })
-            .expect("operator token should exist");
-
-        assert_eq!(operator.0, 0);
-        assert_eq!(operator.1, operator_start);
-        assert_eq!(operator.2, "×".encode_utf16().count() as u32);
-    }
-}
+#[path = "../tests/unit/semantic_tokens.rs"]
+mod tests;

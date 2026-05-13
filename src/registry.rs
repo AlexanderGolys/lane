@@ -1,6 +1,7 @@
 use super::*;
 
 impl Default for Registry {
+    /// Builds the built-in registry with primitives, operations, and functions as defaults.
     fn default() -> Self {
         let primitives = HashMap::from([
             (
@@ -753,6 +754,7 @@ impl Default for Registry {
 }
 
 impl Registry {
+    /// Collects all known built-in primitives into LSP-friendly metadata.
     pub(super) fn known_primitives(&self) -> Vec<KnownPrimitive> {
         let mut names: Vec<_> = self.primitives.keys().copied().collect();
         names.sort_unstable();
@@ -776,12 +778,14 @@ impl Registry {
             .collect()
     }
 
+    /// Looks up a primitive by name and returns its public descriptor.
     pub(super) fn known_primitive(&self, name: &str) -> Option<KnownPrimitive> {
         self.known_primitives()
             .into_iter()
             .find(|primitive| primitive.name == name)
     }
 
+    /// Enumerates built-in objects including categories, types, and functions.
     pub(super) fn known_builtin_objects(&self) -> Vec<KnownBuiltinObject> {
         let mut objects = Vec::new();
 
@@ -846,6 +850,7 @@ impl Registry {
         objects
     }
 
+    /// Returns object detail (source signature + optional body) for a known built-in name.
     pub(super) fn known_builtin_object(&self, name: &str) -> Option<KnownBuiltinObjectDetail> {
         if category_by_name(name).is_some() {
             return Some(KnownBuiltinObjectDetail {
@@ -902,6 +907,7 @@ impl Registry {
         })
     }
 
+    /// Returns all preregistered types/functions emitted in generated GLSL form.
     pub(super) fn preregistered_objects(&self) -> Vec<PreregisteredObject> {
         let mut objects = Vec::new();
         let mut primitive_names: Vec<_> = self.primitives.keys().copied().collect();
@@ -956,6 +962,7 @@ impl Registry {
         objects
     }
 
+    /// Resolves one preregistered object by name from the full preregistered catalog.
     pub(super) fn preregistered_object(&self, name: &str) -> Option<PreregisteredObject> {
         self.preregistered_objects()
             .into_iter()
@@ -963,6 +970,7 @@ impl Registry {
     }
 }
 
+/// Infers whether a built-in name is 2D or 3D from its suffix.
 pub(crate) fn shape_dimension(name: &str) -> ShapeDimension {
     if name.ends_with("2D") {
         return ShapeDimension::D2;
@@ -974,6 +982,7 @@ pub(crate) fn shape_dimension(name: &str) -> ShapeDimension {
 }
 
 impl PrimitiveDef {
+    /// Returns the GLSL type used for this primitive's parameter struct or polygon field summary.
     fn parameter_space(&self) -> String {
         match &self.kind {
             PrimitiveKind::ParamStruct(param_type) => (*param_type).to_string(),
@@ -981,6 +990,7 @@ impl PrimitiveDef {
         }
     }
 
+    /// Extracts and returns the type declaration body for this primitive, if any.
     fn type_body(&self) -> Option<String> {
         match &self.kind {
             PrimitiveKind::ParamStruct(_) => self
@@ -991,6 +1001,7 @@ impl PrimitiveDef {
         }
     }
 
+    /// Extracts and returns the callable GLSL function body for this primitive.
     fn function_body(&self, name: &str) -> String {
         match &self.kind {
             PrimitiveKind::ParamStruct(_) => self
@@ -1002,6 +1013,7 @@ impl PrimitiveDef {
         }
     }
 
+    /// Formats primitive field declarations into a short field summary string.
     fn field_summary(&self) -> String {
         self.fields
             .iter()
@@ -1011,6 +1023,7 @@ impl PrimitiveDef {
             .join(", ")
     }
 
+    /// Emits preregistered entries (GLSL type and constructor/function) for a primitive.
     fn preregistered_objects(&self, name: &str) -> Vec<PreregisteredObject> {
         let mut objects = Vec::new();
         match &self.kind {
@@ -1041,6 +1054,7 @@ impl PrimitiveDef {
 }
 
 impl KnownPrimitiveField {
+    /// Builds a public `KnownPrimitiveField` from internal field definition metadata.
     fn from_def(field: &PrimitiveFieldDef) -> Self {
         Self {
             name: field.name.to_string(),

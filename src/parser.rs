@@ -35,10 +35,12 @@ pub(super) struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    /// Performs `new` behavior.
     pub(super) fn new(source: &'a str) -> Self {
         Self { source }
     }
 
+    /// Performs `parse_program` behavior.
     pub(super) fn parse_program(&self) -> Result<Program, Error> {
         let mut custom_types: HashMap<String, AlgebraicCategory> = HashMap::new();
         let mut product_types = Vec::new();
@@ -161,7 +163,6 @@ impl<'a> Parser<'a> {
                     line_number,
                     &custom_types,
                     ambient_dimension,
-                    !is_module,
                     is_module,
                 )
                 .map_err(|err| err.with_line(line_number))?
@@ -292,13 +293,13 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Performs `parse_decl_with_custom_types` behavior.
     fn parse_decl_with_custom_types(
         &self,
         line: &str,
         line_number: usize,
         custom_types: &HashMap<String, AlgebraicCategory>,
         ambient_dimension: ShapeDimension,
-        _allow_final_output: bool,
         allow_raw_glsl: bool,
     ) -> Result<Decl, Error> {
         if line.trim_start().starts_with("generate ") {
@@ -441,6 +442,7 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// Performs `collect_raw_glsl_closure` behavior.
 fn collect_raw_glsl_closure(
     mut params: Vec<String>,
     body: Expr,
@@ -461,6 +463,7 @@ fn collect_raw_glsl_closure(
     }
 }
 
+/// Performs `ensure_public_decl_name` behavior.
 fn ensure_public_decl_name(name: &str, kind: &str, line: usize) -> Result<(), Error> {
     if name.starts_with('_') {
         Err(Error::new(format!("{kind} names cannot start with '_'")).with_line(line))
@@ -469,6 +472,7 @@ fn ensure_public_decl_name(name: &str, kind: &str, line: usize) -> Result<(), Er
     }
 }
 
+/// Performs `logical_source_lines` behavior.
 fn logical_source_lines(source: &str) -> Result<Vec<(usize, String)>, Error> {
     let mut lines = Vec::new();
     let mut pending = String::new();
@@ -496,14 +500,17 @@ fn logical_source_lines(source: &str) -> Result<Vec<(usize, String)>, Error> {
     Ok(lines)
 }
 
+/// Performs `is_continuation_line` behavior.
 fn is_continuation_line(line: &str) -> bool {
     !line.trim().is_empty() && line.starts_with(char::is_whitespace)
 }
 
+/// Performs `quote_count` behavior.
 fn quote_count(line: &str) -> usize {
     line.chars().filter(|ch| *ch == '"').count()
 }
 
+/// Performs `strip_line_comment` behavior.
 fn strip_line_comment(line: &str) -> &str {
     let mut in_string = false;
     let mut chars = line.char_indices().peekable();
@@ -518,6 +525,7 @@ fn strip_line_comment(line: &str) -> &str {
     line
 }
 
+/// Performs `parse_directive` behavior.
 fn parse_directive(
     line: &str,
     ambient_dimension: &mut ShapeDimension,
@@ -564,6 +572,7 @@ fn parse_directive(
     Err(Error::new(format!("unsupported directive '{}'", line)))
 }
 
+/// Performs `parse_product_type_decl` behavior.
 fn parse_product_type_decl(
     line: &str,
     line_number: usize,
@@ -643,6 +652,7 @@ fn parse_product_type_decl(
     }))
 }
 
+/// Performs `parse_category_type_decl` behavior.
 fn parse_category_type_decl(
     line: &str,
     line_number: usize,
@@ -678,6 +688,7 @@ fn parse_category_type_decl(
     }))
 }
 
+/// Performs `split_category_type_ops` behavior.
 fn split_category_type_ops(source: &str) -> Option<(&str, &str)> {
     let source = source.strip_suffix('}')?;
     let (base, ops) = source.rsplit_once('{')?;
@@ -687,6 +698,7 @@ fn split_category_type_ops(source: &str) -> Option<(&str, &str)> {
     Some((base.trim(), ops.trim()))
 }
 
+/// Performs `parse_category_type_ops` behavior.
 fn parse_category_type_ops(type_name: &str, source: &str) -> Result<CategoryTypeOps, Error> {
     let mut ops = CategoryTypeOps::default();
     for item in source.split(',') {
@@ -734,6 +746,7 @@ fn parse_category_type_ops(type_name: &str, source: &str) -> Result<CategoryType
     Ok(ops)
 }
 
+/// Performs `parse_multi_input_decls` behavior.
 fn parse_multi_input_decls(
     line: &str,
     line_number: usize,
@@ -777,6 +790,7 @@ fn parse_multi_input_decls(
     Ok(Some(inputs))
 }
 
+/// Performs `parse_multi_provided_type_decls` behavior.
 fn parse_multi_provided_type_decls(line: &str) -> Result<Option<Vec<ProvidedTypeDecl>>, Error> {
     let Some(rest) = line.strip_prefix("provided ") else {
         return Ok(None);
@@ -813,6 +827,7 @@ fn parse_multi_provided_type_decls(line: &str) -> Result<Option<Vec<ProvidedType
     Ok(Some(types))
 }
 
+/// Performs `parse_provided_arrow_decls` behavior.
 fn parse_provided_arrow_decls(
     source: &str,
     line_number: usize,
@@ -856,6 +871,7 @@ fn parse_provided_arrow_decls(
     Ok(Some(inputs))
 }
 
+/// Performs `split_product_type_fields` behavior.
 fn split_product_type_fields(source: &str) -> Result<(&str, Option<Vec<String>>), Error> {
     let Some(stripped) = source.strip_suffix('>') else {
         return Ok((source, None));
@@ -872,6 +888,7 @@ fn split_product_type_fields(source: &str) -> Result<(&str, Option<Vec<String>>)
     Ok((stripped[..open_index].trim(), Some(fields)))
 }
 
+/// Performs `validate_product_field_names` behavior.
 fn validate_product_field_names(type_name: &str, field_names: &[String]) -> Result<(), Error> {
     let mut seen = std::collections::HashSet::new();
     for field in field_names {
@@ -903,6 +920,7 @@ fn validate_product_field_names(type_name: &str, field_names: &[String]) -> Resu
     Ok(())
 }
 
+/// Performs `is_identifier` behavior.
 fn is_identifier(source: &str) -> bool {
     let mut chars = source.chars();
     let Some(first) = chars.next() else {
@@ -912,6 +930,7 @@ fn is_identifier(source: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+/// Performs `is_reserved_glsl_field_name` behavior.
 fn is_reserved_glsl_field_name(name: &str) -> bool {
     matches!(
         name,
@@ -953,6 +972,7 @@ fn is_reserved_glsl_field_name(name: &str) -> bool {
     )
 }
 
+/// Performs `default_product_field_names` behavior.
 fn default_product_field_names(count: usize) -> Vec<String> {
     (0..count).map(|index| format!("x{index}")).collect()
 }
@@ -963,6 +983,7 @@ struct ExprParser {
 }
 
 impl ExprParser {
+    /// Performs `new` behavior.
     pub(super) fn new(source: &str) -> Result<Self, Error> {
         Ok(Self {
             tokens: tokenize(source)?,
@@ -970,6 +991,7 @@ impl ExprParser {
         })
     }
 
+    /// Performs `parse` behavior.
     fn parse(mut self) -> Result<Expr, Error> {
         let expr = self.parse_closure()?;
         if self.peek().is_some() {
@@ -981,13 +1003,14 @@ impl ExprParser {
         Ok(expr)
     }
 
+    /// Performs `parse_closure` behavior.
     fn parse_closure(&mut self) -> Result<Expr, Error> {
         if let Some(params) = self.parse_closure_params()? {
             for param in &params {
                 if param.starts_with('_') {
-                    return Err(Error::new(format!(
-                        "closure parameter names cannot start with '_'"
-                    )));
+                    return Err(Error::new(
+                        "closure parameter names cannot start with '_'".to_string(),
+                    ));
                 }
             }
             let body = self.parse_closure()?;
@@ -999,6 +1022,7 @@ impl ExprParser {
         self.parse_compare()
     }
 
+    /// Performs `parse_closure_params` behavior.
     fn parse_closure_params(&mut self) -> Result<Option<Vec<String>>, Error> {
         if let (Some(Token::Ident(param)), Some(Token::Arrow)) =
             (self.tokens.get(self.index), self.tokens.get(self.index + 1))
@@ -1040,6 +1064,7 @@ impl ExprParser {
         Ok(Some(params))
     }
 
+    /// Performs `parse_compare` behavior.
     fn parse_compare(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_add_sub()?;
         loop {
@@ -1063,6 +1088,7 @@ impl ExprParser {
         Ok(expr)
     }
 
+    /// Performs `parse_add_sub` behavior.
     fn parse_add_sub(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_function_product()?;
         loop {
@@ -1082,6 +1108,7 @@ impl ExprParser {
         Ok(expr)
     }
 
+    /// Performs `parse_function_product` behavior.
     fn parse_function_product(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_mul_div()?;
         loop {
@@ -1102,6 +1129,7 @@ impl ExprParser {
         Ok(expr)
     }
 
+    /// Performs `parse_mul_div` behavior.
     fn parse_mul_div(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_compose()?;
         loop {
@@ -1121,6 +1149,7 @@ impl ExprParser {
         Ok(expr)
     }
 
+    /// Performs `parse_compose` behavior.
     fn parse_compose(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_postfix()?;
         while matches!(self.peek(), Some(Token::At)) {
@@ -1135,6 +1164,7 @@ impl ExprParser {
         Ok(expr)
     }
 
+    /// Performs `parse_postfix` behavior.
     fn parse_postfix(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_unary()?;
         loop {
@@ -1171,6 +1201,7 @@ impl ExprParser {
         Ok(expr)
     }
 
+    /// Performs `parse_unary` behavior.
     fn parse_unary(&mut self) -> Result<Expr, Error> {
         if matches!(self.peek(), Some(Token::Minus)) {
             self.index += 1;
@@ -1192,6 +1223,7 @@ impl ExprParser {
         self.parse_primary()
     }
 
+    /// Performs `parse_primary` behavior.
     fn parse_primary(&mut self) -> Result<Expr, Error> {
         match self.next() {
             Some(Token::Number(value)) => Ok(Expr::Number(value.parse::<f64>().unwrap())),
@@ -1237,6 +1269,7 @@ impl ExprParser {
         }
     }
 
+    /// Performs `parse_operator_ref` behavior.
     fn parse_operator_ref(&mut self) -> Result<BinOp, Error> {
         match self.next() {
             Some(Token::Plus) => Ok(BinOp::Add),
@@ -1253,6 +1286,7 @@ impl ExprParser {
         }
     }
 
+    /// Performs `parse_paren_or_tuple` behavior.
     fn parse_paren_or_tuple(&mut self) -> Result<Expr, Error> {
         let first = self.parse_compare()?;
         if !matches!(self.peek(), Some(Token::Comma)) {
@@ -1269,6 +1303,7 @@ impl ExprParser {
         Ok(Expr::Tuple(items))
     }
 
+    /// Performs `parse_array_literal` behavior.
     fn parse_array_literal(&mut self) -> Result<Expr, Error> {
         if matches!(self.peek(), Some(Token::RBracket)) {
             self.index += 1;
@@ -1290,6 +1325,7 @@ impl ExprParser {
         Ok(Expr::Array(items))
     }
 
+    /// Performs `parse_positional_args` behavior.
     fn parse_positional_args(&mut self) -> Result<Vec<Expr>, Error> {
         self.expect(Token::LParen)?;
         if matches!(self.peek(), Some(Token::RParen)) {
@@ -1311,6 +1347,7 @@ impl ExprParser {
         Ok(args)
     }
 
+    /// Performs `parse_mixed_args` behavior.
     fn parse_mixed_args(&mut self) -> Result<ConstructorArgs, Error> {
         self.expect(Token::LParen)?;
         if matches!(self.peek(), Some(Token::RParen)) {
@@ -1347,6 +1384,7 @@ impl ExprParser {
         Ok(ConstructorArgs::Named(named))
     }
 
+    /// Performs `expect` behavior.
     fn expect(&mut self, expected: Token) -> Result<(), Error> {
         let token = self
             .next()
@@ -1361,12 +1399,14 @@ impl ExprParser {
         )))
     }
 
+    /// Performs `describe_current_token` behavior.
     fn describe_current_token(&self) -> String {
         self.peek()
             .map(Self::describe_token)
             .unwrap_or_else(|| "<end of input>".to_string())
     }
 
+    /// Performs `describe_previous_token` behavior.
     fn describe_previous_token(&self) -> String {
         self.index
             .checked_sub(1)
@@ -1375,6 +1415,7 @@ impl ExprParser {
             .unwrap_or_else(|| "<start of input>".to_string())
     }
 
+    /// Performs `describe_token` behavior.
     fn describe_token(token: &Token) -> String {
         match token {
             Token::Ident(name) => format!("identifier '{}'", name),
@@ -1405,6 +1446,7 @@ impl ExprParser {
         }
     }
 
+    /// Performs `next` behavior.
     fn next(&mut self) -> Option<Token> {
         let token = self.tokens.get(self.index).cloned();
         if token.is_some() {
@@ -1413,15 +1455,18 @@ impl ExprParser {
         token
     }
 
+    /// Performs `peek` behavior.
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.index)
     }
 
+    /// Performs `peek_n` behavior.
     fn peek_n(&self, offset: usize) -> Option<&Token> {
         self.tokens.get(self.index + offset)
     }
 }
 
+/// Performs `tokenize` behavior.
 fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = source.chars().collect();
@@ -1552,6 +1597,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
     Ok(tokens)
 }
 
+/// Performs `parse_type_with_custom_types` behavior.
 fn parse_type_with_custom_types(
     source: &str,
     custom_types: &HashMap<String, AlgebraicCategory>,
@@ -1625,6 +1671,7 @@ fn parse_type_with_custom_types(
     }
 }
 
+/// Performs `parse_type_with_custom_types_for_ambient` behavior.
 fn parse_type_with_custom_types_for_ambient(
     source: &str,
     custom_types: &HashMap<String, AlgebraicCategory>,
@@ -1676,6 +1723,7 @@ fn parse_type_with_custom_types_for_ambient(
     parse_type_with_custom_types(source, custom_types)
 }
 
+// Pulls out the parenthesized payload for tagged type constructors like `Func(...)`.
 fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {
     source
         .strip_prefix(head)
@@ -1683,6 +1731,7 @@ fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {
         .and_then(|rest| rest.strip_suffix(')'))
 }
 
+/// Performs `split_top_level_comma` behavior.
 fn split_top_level_comma(source: &str) -> Result<(&str, &str), Error> {
     let Some(index) = find_top_level_comma(source) else {
         return Err(Error::new("expected ',' in function type"));
@@ -1690,6 +1739,7 @@ fn split_top_level_comma(source: &str) -> Result<(&str, &str), Error> {
     Ok((source[..index].trim(), source[index + 1..].trim()))
 }
 
+/// Performs `find_top_level_comma` behavior.
 fn find_top_level_comma(source: &str) -> Option<usize> {
     let mut depth = 0;
     for (index, ch) in source.char_indices() {
@@ -1705,6 +1755,7 @@ fn find_top_level_comma(source: &str) -> Option<usize> {
     None
 }
 
+/// Performs `find_top_level_colon` behavior.
 fn find_top_level_colon(source: &str) -> Option<usize> {
     let mut depth = 0;
     for (index, ch) in source.char_indices() {
@@ -1720,6 +1771,7 @@ fn find_top_level_colon(source: &str) -> Option<usize> {
     None
 }
 
+/// Performs `find_top_level_arrow` behavior.
 fn find_top_level_arrow(source: &str) -> Option<usize> {
     let mut depth = 0;
     let bytes = source.as_bytes();
@@ -1737,6 +1789,7 @@ fn find_top_level_arrow(source: &str) -> Option<usize> {
     None
 }
 
+/// Performs `split_top_level_product` behavior.
 fn split_top_level_product(source: &str) -> Option<Vec<&str>> {
     let mut depth = 0;
     let mut parts = Vec::new();
@@ -1773,6 +1826,7 @@ fn split_top_level_product(source: &str) -> Option<Vec<&str>> {
     Some(parts)
 }
 
+/// Performs `split_top_level_power` behavior.
 fn split_top_level_power(source: &str) -> Option<(&str, &str)> {
     let mut depth = 0;
     for (index, ch) in source.char_indices().rev() {
@@ -1788,6 +1842,7 @@ fn split_top_level_power(source: &str) -> Option<(&str, &str)> {
     None
 }
 
+/// Performs `parse_type_power_exponent` behavior.
 fn parse_type_power_exponent(source: &str) -> Result<GenericDim, Error> {
     let source = source
         .strip_prefix('{')
@@ -1806,10 +1861,12 @@ fn parse_type_power_exponent(source: &str) -> Result<GenericDim, Error> {
     Ok(dim)
 }
 
+/// Performs `power_type` behavior.
 fn power_type(base: Type, dim: GenericDim) -> Type {
     power_type_for_generic_dim(base, dim)
 }
 
+/// Performs `split_type_name` behavior.
 fn split_type_name(source: &str) -> Result<(&str, &str), Error> {
     let index = source
         .rfind(' ')
@@ -1817,9 +1874,9 @@ fn split_type_name(source: &str) -> Result<(&str, &str), Error> {
     Ok((&source[..index], source[index + 1..].trim()))
 }
 
+/// Performs `split_once_required` behavior.
 fn split_once_required(source: &str, ch: char) -> Result<(&str, &str), Error> {
     source
         .split_once(ch)
-        .map(|(left, right)| (left, right))
         .ok_or_else(|| Error::new(format!("expected '{}'", ch)))
 }
