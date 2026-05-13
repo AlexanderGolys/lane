@@ -289,7 +289,7 @@ fn lists_preregistered_functions_and_types() {
     assert!(objects.iter().any(|object| {
         object.kind == PreregisteredObjectKind::Function && object.name == "pow2"
     }));
-    assert!(objects.iter().any(|object| {
+    assert!(!objects.iter().any(|object| {
         object.kind == PreregisteredObjectKind::Function && object.name == "exp"
     }));
     assert!(!objects.iter().any(|object| {
@@ -336,7 +336,6 @@ fn lists_builtin_lane_objects() {
             && object
                 .ty
                 .starts_with("Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)")
-            && object.ty.contains("Hom(C × C, C)")
     }));
     assert!(objects
         .iter()
@@ -385,7 +384,7 @@ fn lists_builtin_lane_objects() {
     assert!(!objects.iter().any(|object| object.name == "divergence"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "sin" && object.ty == "Hom(Rn, Rn) | Hom(C, C)"));
+        .any(|object| object.name == "sin" && object.ty == "Hom(Rn, Rn)"));
     assert!(objects
         .iter()
         .any(|object| object.name == "clamp" && object.ty.contains("Hom(Rn × R × R, Rn)")));
@@ -418,17 +417,16 @@ fn looks_up_builtin_object_detail() {
     assert!(pow2.body.contains("float pow2(float x)"));
     let pow = known_builtin_object("pow").unwrap();
     assert!(pow.ty.starts_with("Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)"));
-    assert!(pow.ty.contains("Hom(C × C, C)"));
     assert_eq!(bool_ty.ty, "DivRing");
     assert_eq!(bool_ty.body, "");
     assert_eq!(bool_xor.ty, "Hom(Bool × Bool, Bool)");
     assert!(bool_xor.body.contains("bool xor(bool a, bool b)"));
     assert_eq!(complex.ty, "RDivAlg");
     assert!(complex.body.contains("#define Complex vec2"));
-    assert!(complex.body.contains("vec2 mult_C(vec2 a, vec2 b)"));
+    assert!(!complex.body.contains("mult_C"));
     assert_eq!(quat.ty, "RDivAlg");
     assert!(quat.body.contains("#define H vec4"));
-    assert!(quat.body.contains("vec4 mult_H(vec4 a, vec4 b)"));
+    assert!(!quat.body.contains("mult_H"));
     let e2 = known_builtin_object("Isom2").unwrap();
     assert_eq!(e2.ty, "Grp");
     assert!(e2.body.contains("struct Isom2"));
@@ -885,10 +883,10 @@ fn supports_default_gradient_operator_for_scalar_fields() {
 
 #[test]
 fn emits_support_for_custom_complex_functions() {
-    let source = "Complex seed = (1, 0)\nconst Func(Float, C) orbit = exp(seed)\nconst Object output = Ball3D(r=1)\n";
+    let source = "#import std\nComplex seed = (1, 0)\nconst Func(Float, C) orbit = exp(seed)\nconst Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 exp(vec2 z) {"));
+    assert!(glsl.contains("vec2 exp(vec2 _t) {"));
     assert!(glsl.contains("vec2 seed = vec2(1.0, 0.0);"));
     assert!(glsl.contains("return exp(seed);"));
 }
@@ -1401,12 +1399,12 @@ fn provided_product_type_is_declared_but_not_emitted() {
 
 #[test]
 fn supports_pointwise_function_arithmetic_support_dependencies() {
-    let source = "provided Hom(R, C) f\nprovided Hom(R, C) g\nHom(R, C) h = f * g\nconst Object output = Ball3D(r=length(h(1)))\n";
+    let source = "#import std\nprovided Hom(R, C) f\nprovided Hom(R, C) g\nHom(R, C) h = f * g\nconst Object output = Ball3D(r=length(h(1)))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
+    assert!(glsl.contains("vec2 __mult(vec2 _t0, vec2 _t1)"));
     assert!(glsl.contains("vec2 h(float _t)"));
-    assert!(glsl.contains("return mult_C(f(_t), g(_t));"));
+    assert!(glsl.contains("return __mult(f(_t), g(_t));"));
 }
 
 #[test]
@@ -1420,14 +1418,13 @@ fn lowers_pointwise_custom_operator_functions_to_core_calls() {
 
 #[test]
 fn supports_complex_pow_overload() {
-    let source = "provided C z\nprovided C w\nconst C y = pow(z, w)\n";
+    let source = "#import std\nprovided C z\nprovided C w\nconst C y = pow(z, w)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert!(glsl.contains("vec2 exp(vec2 z)"));
-    assert!(glsl.contains("vec2 log(vec2 z)"));
-    assert!(glsl.contains("vec2 pow(vec2 z, vec2 w)"));
-    assert!(glsl.contains("return exp(mult_C(w, log(z)));"));
+    assert!(glsl.contains("vec2 exp(vec2 _t)"));
+    assert!(glsl.contains("vec2 log(vec2 _t)"));
+    assert!(glsl.contains("vec2 pow(vec2 _t0, vec2 _t1)"));
+    assert!(glsl.contains("return exp(__mult(_w, log(_z)));"));
 }
 
 #[test]
@@ -1488,20 +1485,24 @@ fn emits_scalar_first_min_max_as_valid_glsl_vector_calls() {
 
 #[test]
 fn lowers_complex_ring_operations_through_category_helpers() {
-    let source = "provided C z\nC product = z * z\nC shifted = 1 - (z / z)\nconst Object output = Ball3D(r=1)\n";
+    let source = "#import std\nprovided C z\nC product = z * z\nC inv_z = ~z\nR radius = length(product) + length(inv_z)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 mult_C(vec2 a, vec2 b)"));
-    assert!(glsl.contains("vec2 div_C(vec2 a, vec2 b)"));
+    assert!(glsl.contains("vec2 __mult(vec2 _t0, vec2 _t1)"));
+    assert!(!glsl.contains("vec2 __div(vec2 _t0, vec2 _t1)"));
+    assert!(glsl.contains("vec2 product = __mult(z, z);"));
+    assert!(glsl.contains("vec2 inv_z = __inv(z);"));
 }
 
 #[test]
 fn lowers_quaternion_field_operations_through_category_helpers() {
-    let source = "provided H p\nprovided H q\nH product = p * q\nH ratio = 1 / q\nH literal = (1, 0, 0, 0)\nconst Object output = Ball3D(r=1)\n";
+    let source = "#import std\nprovided H p\nprovided H q\nH product = p * q\nH inv_q = ~q\nH literal = (1, 0, 0, 0)\nR radius = length(product) + length(inv_q)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec4 mult_H(vec4 a, vec4 b)"));
-    assert!(glsl.contains("vec4 div_H(vec4 a, vec4 b)"));
+    assert!(glsl.contains("vec4 __mult(vec4 _t0, vec4 _t1)"));
+    assert!(!glsl.contains("vec4 __div(vec4 _t0, vec4 _t1)"));
+    assert!(glsl.contains("vec4 product = __mult(p, q);"));
+    assert!(glsl.contains("vec4 inv_q = __inv(q);"));
 }
 
 #[test]

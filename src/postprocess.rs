@@ -250,22 +250,20 @@ fn postprocess_value_expr(expr: &mut ValueExpr) {
 }
 
 fn core_binary_operator_call_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
-    match (op, left, right) {
-        (BinOp::Add, Type::Custom { .. }, Type::Custom { .. }) if left == right => {
-            Some("__add".to_string())
-        }
-        (BinOp::Sub, Type::Custom { .. }, Type::Custom { .. }) if left == right => {
-            Some("__sub".to_string())
-        }
-        (BinOp::Mul, Type::Custom { .. }, Type::Custom { .. }) if left == right => {
-            Some("__mult".to_string())
-        }
-        (BinOp::Div, Type::Custom { .. }, Type::Custom { .. }) if left == right => {
-            Some("__div".to_string())
-        }
-        (BinOp::Mul, Type::Custom { .. }, Type::Float) => Some("__scale".to_string()),
-        _ => None,
+    if left == right && uses_core_algebra_helpers(left) {
+        return match op {
+            BinOp::Add => Some("__add".to_string()),
+            BinOp::Sub => Some("__sub".to_string()),
+            BinOp::Mul => Some("__mult".to_string()),
+            _ => None,
+        };
     }
+
+    if op == BinOp::Mul && matches!(right, Type::Float) && uses_core_algebra_helpers(left) {
+        return Some("__scale".to_string());
+    }
+
+    None
 }
 
 fn core_field_access_call_name(field: &str) -> String {
@@ -274,7 +272,30 @@ fn core_field_access_call_name(field: &str) -> String {
 
 fn core_unary_operator_call_name(op: UnaryOp, ty: &Type) -> Option<String> {
     match (op, ty) {
-        (UnaryOp::Inv, Type::Custom { .. }) => Some("__inv".to_string()),
+        (UnaryOp::Inv, ty) if uses_core_algebra_helpers(ty) => Some("__inv".to_string()),
         _ => None,
     }
+}
+
+fn uses_core_algebra_helpers(ty: &Type) -> bool {
+    !matches!(
+        ty,
+        Type::Bool
+            | Type::Int
+            | Type::Float
+            | Type::Vec2
+            | Type::Vec3
+            | Type::Vec4
+            | Type::Isom2
+            | Type::Isom3
+            | Type::Mat(_, _)
+            | Type::Array(_)
+            | Type::Func(_, _)
+    ) && (has_category(ty, Category::Ring)
+        || has_category(ty, Category::DivRing)
+        || has_category(ty, Category::RAlg)
+        || has_category(ty, Category::RDivAlg)
+        || has_category(ty, Category::Mon)
+        || has_category(ty, Category::Grp)
+        || has_category(ty, Category::Ab))
 }

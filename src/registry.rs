@@ -566,106 +566,6 @@ impl Default for Registry {
                     listed: true,
                 },
             ),
-            (
-                "cinv",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 cinv(vec2 z) {\n    return vec2(z.x, -z.y) / dot(z, z);\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "cexp",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 cexp(vec2 z) {\n    float scale = exp(z.x);\n    return scale * vec2(cos(z.y), sin(z.y));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "clog",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 clog(vec2 z) {\n    return vec2(log(length(z)), atan(z.y, z.x));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "csqrt",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 csqrt(vec2 z) {\n    float r = length(z);\n    float a = sqrt(max((r + z.x) * 0.5, 0.0));\n    float b = sqrt(max((r - z.x) * 0.5, 0.0));\n    return vec2(a, sign(z.y) * b);\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "csin",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 csin(vec2 z) {\n    return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "ccos",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 ccos(vec2 z) {\n    return vec2(cos(z.x) * cosh(z.y), -sin(z.x) * sinh(z.y));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "ctan",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 ctan(vec2 z) {\n    float d = cos(2.0 * z.x) + cosh(2.0 * z.y);\n    return vec2(sin(2.0 * z.x), sinh(2.0 * z.y)) / d;\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "csinh",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 csinh(vec2 z) {\n    return vec2(sinh(z.x) * cos(z.y), cosh(z.x) * sin(z.y));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "ccosh",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 ccosh(vec2 z) {\n    return vec2(cosh(z.x) * cos(z.y), sinh(z.x) * sin(z.y));\n}",
-                    ),
-                    listed: false,
-                },
-            ),
-            (
-                "ctanh",
-                ValueFuncDef {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    support_glsl: Some(
-                        "vec2 ctanh(vec2 z) {\n    float d = cosh(2.0 * z.x) + cos(2.0 * z.y);\n    return vec2(sinh(2.0 * z.x), sin(2.0 * z.y)) / d;\n}",
-                    ),
-                    listed: false,
-                },
-            ),
         ]);
 
         Self {
@@ -837,7 +737,6 @@ impl Registry {
                 .into_iter()
                 .map(|(name, _)| name),
         );
-        value_func_names.extend(COMPLEX_OVERLOAD_NAMES);
         value_func_names.sort_unstable();
         value_func_names.dedup();
         for name in value_func_names {
@@ -955,7 +854,6 @@ impl Registry {
             .value_funcs
             .iter()
             .filter_map(|(name, func)| func.support_glsl.map(|_| *name))
-            .filter(|name| complex_overload_name(name).is_none())
             .collect();
         value_func_names.sort_unstable();
         for name in value_func_names {
@@ -977,22 +875,7 @@ impl Registry {
             });
         }
 
-        for name in COMPLEX_OVERLOAD_NAMES {
-            if let Some(body) = complex_overload_support_glsl(name) {
-                objects.push(PreregisteredObject {
-                    name: name.to_string(),
-                    kind: PreregisteredObjectKind::Function,
-                    body: suffix_glsl_float_literals(body),
-                });
-            } else {
-                debug_assert!(
-                    false,
-                    "preregistered_objects expected complex overload support for '{name}'"
-                );
-            }
-        }
-
-        for name in ["C", "H", "Isom2", "Isom3"] {
+        for name in ["Isom2", "Isom3"] {
             if let Some(body) = builtin_type_support_glsl(name) {
                 objects.push(PreregisteredObject {
                     name: name.to_string(),

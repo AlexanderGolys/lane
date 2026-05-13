@@ -183,7 +183,6 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("Isom2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(stdout.contains("pow: Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)"));
-    assert!(stdout.contains("Hom(C × C, C)"));
     assert!(stdout.contains("not: Hom(Bool, Bool)"));
     assert!(stdout.contains("and: Hom(Bool × Bool, Bool)"));
     assert!(stdout.contains("or: Hom(Bool × Bool, Bool)"));
@@ -203,8 +202,8 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(!stdout.contains("dfdz: Hom(Hom(R3, R), Hom(R3, R))"));
     assert!(!stdout.contains("dfdw: Hom(Hom(R4, R), Hom(R4, R))"));
     assert!(!stdout.contains("divergence: Hom(Hom(R3, R3), Hom(R3, R))"));
-    assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
-    assert!(stdout.contains("inv: Hom(C, C)"));
+    assert!(stdout.contains("sin: Hom(Rn, Rn)"));
+    assert!(!stdout.contains("inv: Hom(C, C)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("reflect: Hom(Rn × Rn, Rn)"));
     assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
@@ -245,7 +244,7 @@ fn lists_all_builtin_items_from_command() {
     assert!(stdout.contains("DivRing: Cat"));
     assert!(stdout.contains("Bool: DivRing"));
     assert!(stdout.contains("C: RDivAlg"));
-    assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
+    assert!(stdout.contains("sin: Hom(Rn, Rn)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("min: Hom(Rn × Rn, Rn) | Hom(Rn × R, Rn) | Hom(R × Rn, Rn)"));
     assert!(stdout.contains("transpose: Hom(Mat{n}x{m}, Mat{m}x{n})"));
@@ -267,7 +266,7 @@ fn lists_all_builtin_items_from_flag() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Ball3D: {r: R}"));
-    assert!(stdout.contains("sin: Hom(Rn, Rn) | Hom(C, C)"));
+    assert!(stdout.contains("sin: Hom(Rn, Rn)"));
 }
 
 #[test]
@@ -311,7 +310,7 @@ fn shows_builtin_type_detail_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("H: RDivAlg"));
     assert!(stdout.contains("#define H vec4"));
-    assert!(stdout.contains("vec4 mult_H(vec4 a, vec4 b)"));
+    assert!(!stdout.contains("mult_H"));
 }
 
 #[test]

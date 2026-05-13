@@ -42,6 +42,7 @@
 - When resolving adjacent numeric generic placeholders in a name, insert `_` if either resolved number has more than one digit: `E{1}{2}` may become `E12`, but `E{12}{3}` becomes `E12_3`.
 - Add focused tests for each new DSL feature.
 - Only write the lane code using raw GLSL constructors when the fuinction is impossible to implement in pure lane, e.g. has a for loop
+- If a std/helper definition can be expressed as ordinary Lane expressions, write it in Lane; do not use raw GLSL as a shortcut for formulas that Lane can model.
 - Avoid using lambdas, when its possible use a function composition without their arguments mentioned.
 - Avoid hardcoding in compiler syntax reserved for specific objects, try to make it as general as possible
 - Avoid hardcoding in compiler specific objects

@@ -454,18 +454,6 @@ impl<'a> Env<'a> {
                 }
             }
         }
-        for name in COMPLEX_OVERLOAD_NAMES {
-            funcs
-                .entry(name.to_string())
-                .or_default()
-                .push(FunctionInfo {
-                    ty: Type::func(Type::Complex, Type::Complex),
-                    builtin: true,
-                    glsl_ref: Some(name.to_string()),
-                    raw_glsl_template: None,
-                    lane_closure_template: None,
-                });
-        }
         for op in registry.object_ops.values() {
             funcs
                 .entry(op.name.to_string())
@@ -1075,30 +1063,6 @@ fn infer_rot_builtin(
         func: "rot".to_string(),
         args: vec![binormal, anchor, angle],
         ty: Type::Isom3,
-    }))
-}
-
-/// Type-checks helper logic for infer_complex_overload_call.
-fn infer_complex_overload_call(
-    name: &str,
-    args: &[Expr],
-    env: &Env<'_>,
-    lift_param: Option<&str>,
-) -> Result<Option<ValueExpr>, Error> {
-    let Some(func) = complex_overload_name(name) else {
-        return Ok(None);
-    };
-    if args.len() != 1 {
-        return Ok(None);
-    }
-    let arg = infer_value_expr(&args[0], env, lift_param)?;
-    if arg.ty() != Type::Complex {
-        return Ok(None);
-    }
-    Ok(Some(ValueExpr::Call {
-        func: func.to_string(),
-        args: vec![arg],
-        ty: Type::Complex,
     }))
 }
 

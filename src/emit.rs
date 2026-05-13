@@ -508,12 +508,6 @@ impl TypedProgram {
                 }
                 continue;
             }
-            if let Some(func) = name.strip_prefix("complex:") {
-                if let Some(support_glsl) = complex_overload_support_glsl(func) {
-                    blocks.push(support_glsl.to_string());
-                }
-                continue;
-            }
             if let Some(type_name) = name.strip_prefix("monoid-pow:") {
                 if let Some(ty) = self.monoid_pow_type_by_name(type_name) {
                     emit_monoid_pow_support(
@@ -1254,12 +1248,6 @@ fn emit_component_op_dependency(
     blocks: &mut Vec<String>,
 ) {
     match ty {
-        Type::Complex if matches!(op, ProductOp::Mult | ProductOp::Inv) => {
-            emit_builtin_support_once("C", emitted_builtin_support, blocks);
-        }
-        Type::Quat if matches!(op, ProductOp::Mult | ProductOp::Inv) => {
-            emit_builtin_support_once("H", emitted_builtin_support, blocks);
-        }
         Type::Isom2 | Type::Isom3 => {
             emit_builtin_support_once(&ty.type_name(), emitted_builtin_support, blocks)
         }
@@ -1443,11 +1431,9 @@ fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> S
         (ProductOp::Mult, Type::Bool) => format!("({} && {})", left, right),
         (ProductOp::Add, Type::Custom { .. }) => format!("__add({}, {})", left, right),
         (ProductOp::Sub, Type::Custom { .. }) => format!("__sub({}, {})", left, right),
-        (ProductOp::Mult, Type::Complex) => format!("mult_C({}, {})", left, right),
-        (ProductOp::Mult, Type::Quat) => format!("mult_H({}, {})", left, right),
         (ProductOp::Mult, Type::Isom2) => format!("mult_Isom2({}, {})", left, right),
         (ProductOp::Mult, Type::Isom3) => format!("mult_Isom3({}, {})", left, right),
-        (ProductOp::Mult, Type::Custom { .. }) => {
+        (ProductOp::Mult, ty) if uses_core_algebra_helpers(ty) => {
             format!("__mult({}, {})", left, right)
         }
         (ProductOp::Add | ProductOp::Sub | ProductOp::Mult, _) => {
@@ -1469,11 +1455,9 @@ fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
         (ProductOp::Inv, Type::Bool) => value.to_string(),
         (ProductOp::Inv, Type::Float) => format!("(1.0 / {value})"),
         (ProductOp::Inv, Type::Int) => format!("(1 / {value})"),
-        (ProductOp::Inv, Type::Complex) => format!("div_C(vec2(1.0, 0.0), {value})"),
-        (ProductOp::Inv, Type::Quat) => format!("inv_H({value})"),
         (ProductOp::Inv, Type::Isom2) => format!("inv_Isom2({value})"),
         (ProductOp::Inv, Type::Isom3) => format!("inv_Isom3({value})"),
-        (ProductOp::Inv, Type::Custom { .. }) => format!("__inv({value})"),
+        (ProductOp::Inv, ty) if uses_core_algebra_helpers(ty) => format!("__inv({value})"),
         _ => panic!("unsupported component-unary operation {op:?} for type {ty:?}"),
     }
 }
@@ -1484,6 +1468,29 @@ fn emit_component_scale(ty: &Type, value: &str, scalar: &str) -> String {
         Type::Custom { .. } => format!("__scale({value}, {scalar})"),
         _ => format!("({value} * {scalar})"),
     }
+}
+
+fn uses_core_algebra_helpers(ty: &Type) -> bool {
+    !matches!(
+        ty,
+        Type::Bool
+            | Type::Int
+            | Type::Float
+            | Type::Vec2
+            | Type::Vec3
+            | Type::Vec4
+            | Type::Isom2
+            | Type::Isom3
+            | Type::Mat(_, _)
+            | Type::Array(_)
+            | Type::Func(_, _)
+    ) && (has_category(ty, Category::Ring)
+        || has_category(ty, Category::DivRing)
+        || has_category(ty, Category::RAlg)
+        || has_category(ty, Category::RDivAlg)
+        || has_category(ty, Category::Mon)
+        || has_category(ty, Category::Grp)
+        || has_category(ty, Category::Ab))
 }
 
 /// Performs `product_binary_symbol` behavior.
@@ -2404,14 +2411,6 @@ fn collect_value_support(expr: &ValueExpr, names: &mut BTreeSet<String>) {
         }
         ValueExpr::Call { func, args, ty } => {
             collect_type_support(ty, names);
-            if ty == &Type::Complex && complex_overload_support_glsl(func).is_some() {
-                names.insert(format!("complex:{func}"));
-                if func == "pow" {
-                    names.insert("C".to_string());
-                    names.insert("complex:exp".to_string());
-                    names.insert("complex:log".to_string());
-                }
-            }
             if let Some(name) = core_operator_call_support_name(func, args) {
                 names.insert(name);
             }
@@ -2995,10 +2994,6 @@ fn emit_binary_expr(
         (BinOp::Add | BinOp::Sub, Type::Bool, Type::Bool) => format!("({} != {})", left, right),
         (BinOp::Mul, Type::Bool, Type::Bool) => format!("({} && {})", left, right),
         (BinOp::Div, Type::Bool, Type::Bool) => left,
-        (BinOp::Mul, Type::Complex, Type::Complex) => format!("mult_C({}, {})", left, right),
-        (BinOp::Div, Type::Complex, Type::Complex) => format!("div_C({}, {})", left, right),
-        (BinOp::Mul, Type::Quat, Type::Quat) => format!("mult_H({}, {})", left, right),
-        (BinOp::Div, Type::Quat, Type::Quat) => format!("div_H({}, {})", left, right),
         (BinOp::Mul, Type::Isom2, Type::Isom2) => format!("mult_Isom2({}, {})", left, right),
         (BinOp::Mul, Type::Isom2, Type::Vec2) => format!("act_Isom2({}, {})", left, right),
         (BinOp::Mul, Type::Isom3, Type::Isom3) => format!("mult_Isom3({}, {})", left, right),
@@ -3013,28 +3008,6 @@ fn emit_binary_expr(
         }
         (BinOp::Mul, Type::Float, Type::Custom { .. }) => {
             emit_custom_scale_expr(op, &right_ty, &right, &left)
-        }
-        (BinOp::Div, Type::Float, Type::Complex) => {
-            format!("div_C({}, {})", scalar_to_algebra(&right_ty, &left), right)
-        }
-        (BinOp::Div, Type::Float, Type::Quat) => {
-            format!("div_H({}, {})", scalar_to_algebra(&right_ty, &left), right)
-        }
-        (BinOp::Add | BinOp::Sub, Type::Complex | Type::Quat, Type::Float) => {
-            format!(
-                "({} {} {})",
-                left,
-                op.symbol(),
-                scalar_to_algebra(&left_ty, &right)
-            )
-        }
-        (BinOp::Add | BinOp::Sub, Type::Float, Type::Complex | Type::Quat) => {
-            format!(
-                "({} {} {})",
-                scalar_to_algebra(&right_ty, &left),
-                op.symbol(),
-                right
-            )
         }
         _ => format!("({} {} {})", left, op.symbol(), right),
     }
@@ -3128,15 +3101,6 @@ fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> St
     }
 }
 
-/// Performs `scalar_to_algebra` behavior.
-fn scalar_to_algebra(ty: &Type, value: &str) -> String {
-    match ty {
-        Type::Complex => format!("vec2({}, 0.0)", value),
-        Type::Quat => format!("vec4({}, 0.0, 0.0, 0.0)", value),
-        _ => value.to_string(),
-    }
-}
-
 /// Performs `emit_neutral_value` behavior.
 fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
     match (kind, ty) {
@@ -3180,10 +3144,6 @@ fn matrix_zero_expr(rows: usize, columns: usize) -> String {
 /// Performs `binary_support_name` behavior.
 fn binary_support_name(op: BinOp, left: &Type, right: &Type) -> Option<String> {
     match (op, left, right) {
-        (BinOp::Mul | BinOp::Div, Type::Complex, Type::Complex)
-        | (BinOp::Div, Type::Float, Type::Complex) => Some("C".to_string()),
-        (BinOp::Mul | BinOp::Div, Type::Quat, Type::Quat)
-        | (BinOp::Div, Type::Float, Type::Quat) => Some("H".to_string()),
         (BinOp::Mul, Type::Isom2, Type::Isom2) | (BinOp::Mul, Type::Isom2, Type::Vec2) => {
             Some("Isom2".to_string())
         }
@@ -3236,8 +3196,6 @@ fn operator_function_ref_name_for_unary(op: UnaryOp, ty: &Type) -> Option<String
 /// Performs `unary_support_name` behavior.
 fn unary_support_name(op: UnaryOp, ty: &Type) -> Option<String> {
     match (op, ty) {
-        (UnaryOp::Inv, Type::Complex) => Some("C".to_string()),
-        (UnaryOp::Inv, Type::Quat) => Some("H".to_string()),
         (UnaryOp::Inv, Type::Isom2) => Some("Isom2".to_string()),
         (UnaryOp::Inv, Type::Isom3) => Some("Isom3".to_string()),
         (UnaryOp::Inv, Type::Custom { name, .. }) => {

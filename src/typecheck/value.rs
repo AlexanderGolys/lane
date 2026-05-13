@@ -57,9 +57,6 @@ fn infer_value_expr(
             if let Some(result) = infer_type_constructor_call(name, args, env, lift_param)? {
                 return Ok(result);
             }
-            if let Some(result) = infer_complex_overload_call(name, args, env, lift_param)? {
-                return Ok(result);
-            }
             if let Some(result) = infer_monoid_pow_call(name, args, env, lift_param)? {
                 return Ok(result);
             }

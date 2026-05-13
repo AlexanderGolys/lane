@@ -291,60 +291,7 @@ const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
     ("H", "#define H vec4"),
 ];
 
-const COMPLEX_FIELD_SUPPORT_GLSL: &str = "vec2 mult_C(vec2 a, vec2 b) {\n    return vec2((a.x * b.x) - (a.y * b.y), (a.x * b.y) + (a.y * b.x));\n}\n\nvec2 div_C(vec2 a, vec2 b) {\n    return mult_C(a, vec2(b.x, -b.y) / dot(b, b));\n}";
-
-const COMPLEX_OVERLOAD_NAMES: [&str; 10] = [
-    "inv", "exp", "log", "sqrt", "sin", "cos", "tan", "sinh", "cosh", "tanh",
-];
-
-/// Performs `complex_overload_name` behavior.
-fn complex_overload_name(name: &str) -> Option<&'static str> {
-    match name {
-        "cinv" => Some("inv"),
-        "cexp" => Some("exp"),
-        "clog" => Some("log"),
-        "csqrt" => Some("sqrt"),
-        "csin" => Some("sin"),
-        "ccos" => Some("cos"),
-        "ctan" => Some("tan"),
-        "csinh" => Some("sinh"),
-        "ccosh" => Some("cosh"),
-        "ctanh" => Some("tanh"),
-        "inv" => Some("inv"),
-        "exp" => Some("exp"),
-        "log" => Some("log"),
-        "sqrt" => Some("sqrt"),
-        "sin" => Some("sin"),
-        "cos" => Some("cos"),
-        "tan" => Some("tan"),
-        "sinh" => Some("sinh"),
-        "cosh" => Some("cosh"),
-        "tanh" => Some("tanh"),
-        _ => None,
-    }
-}
-
-/// Performs `complex_overload_support_glsl` behavior.
-fn complex_overload_support_glsl(name: &str) -> Option<&'static str> {
-    match name {
-        "inv" => Some("vec2 inv(vec2 z) {\n    return vec2(z.x, -z.y) / dot(z, z);\n}"),
-        "exp" => Some("vec2 exp(vec2 z) {\n    float scale = exp(z.x);\n    return scale * vec2(cos(z.y), sin(z.y));\n}"),
-        "log" => Some("vec2 log(vec2 z) {\n    return vec2(log(length(z)), atan(z.y, z.x));\n}"),
-        "pow" => Some("vec2 pow(vec2 z, vec2 w) {\n    return exp(mult_C(w, log(z)));\n}"),
-        "sqrt" => Some("vec2 sqrt(vec2 z) {\n    float r = length(z);\n    float a = sqrt(max((r + z.x) * 0.5, 0.0));\n    float b = sqrt(max((r - z.x) * 0.5, 0.0));\n    return vec2(a, sign(z.y) * b);\n}"),
-        "sin" => Some("vec2 sin(vec2 z) {\n    return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y));\n}"),
-        "cos" => Some("vec2 cos(vec2 z) {\n    return vec2(cos(z.x) * cosh(z.y), -sin(z.x) * sinh(z.y));\n}"),
-        "tan" => Some("vec2 tan(vec2 z) {\n    float d = cos(2.0 * z.x) + cosh(2.0 * z.y);\n    return vec2(sin(2.0 * z.x), sinh(2.0 * z.y)) / d;\n}"),
-        "sinh" => Some("vec2 sinh(vec2 z) {\n    return vec2(sinh(z.x) * cos(z.y), cosh(z.x) * sin(z.y));\n}"),
-        "cosh" => Some("vec2 cosh(vec2 z) {\n    return vec2(cosh(z.x) * cos(z.y), sinh(z.x) * sin(z.y));\n}"),
-        "tanh" => Some("vec2 tanh(vec2 z) {\n    float d = cosh(2.0 * z.x) + cos(2.0 * z.y);\n    return vec2(sinh(2.0 * z.x), sin(2.0 * z.y)) / d;\n}"),
-        _ => None,
-    }
-}
-
 const ISOM2_GROUP_SUPPORT_GLSL: &str = "struct Isom2 {\n    mat2 A;\n    vec2 t;\n};\n\nvec2 act_Isom2(Isom2 g, vec2 p) {\n    return (g.A * p) + g.t;\n}\n\nIsom2 mult_Isom2(Isom2 a, Isom2 b) {\n    return Isom2(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nIsom2 inv_Isom2(Isom2 g) {\n    mat2 inverse_linear = transpose(g.A);\n    return Isom2(inverse_linear, -(inverse_linear * g.t));\n}";
-
-const QUAT_FIELD_SUPPORT_GLSL: &str = "vec4 mult_H(vec4 a, vec4 b) {\n    return vec4(\n        a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,\n        a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,\n        a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,\n        a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x\n    );\n}\n\nvec4 inv_H(vec4 q) {\n    return vec4(q.x, -q.y, -q.z, -q.w) / dot(q, q);\n}\n\nvec4 div_H(vec4 a, vec4 b) {\n    return mult_H(a, inv_H(b));\n}";
 
 const ISOM3_GROUP_SUPPORT_GLSL: &str = "struct Isom3 {\n    mat3 A;\n    vec3 t;\n};\n\nvec3 act_Isom3(Isom3 g, vec3 p) {\n    return (g.A * p) + g.t;\n}\n\nIsom3 mult_Isom3(Isom3 a, Isom3 b) {\n    return Isom3(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nIsom3 inv_Isom3(Isom3 g) {\n    mat3 inverse_linear = transpose(g.A);\n    return Isom3(inverse_linear, -(inverse_linear * g.t));\n}\n\nmat3 rot_Isom3_matrix(vec3 binormal, float angle) {\n    vec3 axis = normalize(binormal);\n    float c = cos(angle);\n    float s = sin(angle);\n    float oc = 1.0 - c;\n    return mat3(\n        vec3((axis.x * axis.x * oc) + c, (axis.y * axis.x * oc) + (axis.z * s), (axis.z * axis.x * oc) - (axis.y * s)),\n        vec3((axis.x * axis.y * oc) - (axis.z * s), (axis.y * axis.y * oc) + c, (axis.z * axis.y * oc) + (axis.x * s)),\n        vec3((axis.x * axis.z * oc) + (axis.y * s), (axis.y * axis.z * oc) - (axis.x * s), (axis.z * axis.z * oc) + c)\n    );\n}\n\nIsom3 rot(vec3 binormal, vec3 anchor, float angle) {\n    mat3 A = rot_Isom3_matrix(binormal, angle);\n    return Isom3(A, anchor - (A * anchor));\n}";
 
@@ -510,7 +457,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         ty: Type::Complex,
         aliases: &["Complex", "C"],
         display_name: "C",
-        support_glsl: Some(COMPLEX_FIELD_SUPPORT_GLSL),
+        support_glsl: None,
         categories: &[Category::Grp, Category::RDivAlg, Category::RVect],
     },
     BuiltinTypeDef {
@@ -538,7 +485,7 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         ty: Type::Quat,
         aliases: &["H"],
         display_name: "H",
-        support_glsl: Some(QUAT_FIELD_SUPPORT_GLSL),
+        support_glsl: None,
         categories: &[Category::Grp, Category::RDivAlg, Category::RVect],
     },
     BuiltinTypeDef {
@@ -2186,11 +2133,7 @@ fn flatten_call(expr: &Expr) -> Result<(String, Vec<&Expr>), Error> {
 
 /// Performs `listed_builtin_value_func_overload_types` behavior.
 fn listed_builtin_value_func_overload_types(name: &str) -> Option<Vec<Type>> {
-    let mut overloads = glsl_builtin_value_func_overload_types(name).unwrap_or_default();
-    if COMPLEX_OVERLOAD_NAMES.contains(&name) {
-        overloads.push(Type::func(Type::Complex, Type::Complex));
-    }
-    (!overloads.is_empty()).then_some(overloads)
+    glsl_builtin_value_func_overload_types(name)
 }
 
 /// Performs `listed_builtin_value_func_overloads` behavior.
@@ -2259,10 +2202,6 @@ fn glsl_builtin_value_func_overloads() -> Vec<(&'static str, Vec<Type>)> {
         ("atan", same_type_float_gen_overloads(2)),
         ("atan", unary_float_gen_type_overloads()),
         ("pow", same_type_float_gen_overloads(2)),
-        (
-            "pow",
-            vec![func_type(vec![Type::Complex, Type::Complex], Type::Complex)],
-        ),
         ("mod", same_or_scalar_float_gen_overloads(2)),
         ("min", same_or_scalar_symmetric_float_gen_overloads()),
         ("max", same_or_scalar_symmetric_float_gen_overloads()),
