@@ -283,13 +283,7 @@ pub fn is_known_category_name(name: &str) -> bool {
     category_by_name(name).is_some()
 }
 
-const BUILTIN_TYPE_DETAILS: [(&str, &str); 5] = [
-    ("Bool", ""),
-    ("C", "#define Complex vec2"),
-    ("Isom2", ""),
-    ("Isom3", ""),
-    ("H", "#define H vec4"),
-];
+const BUILTIN_TYPE_DETAILS: [(&str, &str); 3] = [("Bool", ""), ("Isom2", ""), ("Isom3", "")];
 
 const ISOM2_GROUP_SUPPORT_GLSL: &str = "struct Isom2 {\n    mat2 A;\n    vec2 t;\n};\n\nvec2 act_Isom2(Isom2 g, vec2 p) {\n    return (g.A * p) + g.t;\n}\n\nIsom2 mult_Isom2(Isom2 a, Isom2 b) {\n    return Isom2(a.A * b.A, (a.A * b.t) + a.t);\n}\n\nIsom2 inv_Isom2(Isom2 g) {\n    mat2 inverse_linear = transpose(g.A);\n    return Isom2(inverse_linear, -(inverse_linear * g.t));\n}";
 
@@ -431,7 +425,7 @@ const MATRIX_TYPE_NAMES: [&str; 9] = [
     "Mat2", "Mat2x3", "Mat2x4", "Mat3x2", "Mat3", "Mat3x4", "Mat4x2", "Mat4x3", "Mat4",
 ];
 
-const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
+const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 10] = [
     BuiltinTypeDef {
         ty: Type::Bool,
         aliases: &["Bool"],
@@ -454,13 +448,6 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         categories: &[Category::Ring],
     },
     BuiltinTypeDef {
-        ty: Type::Complex,
-        aliases: &["Complex", "C"],
-        display_name: "C",
-        support_glsl: None,
-        categories: &[Category::Grp, Category::RDivAlg, Category::RVect],
-    },
-    BuiltinTypeDef {
         ty: Type::Vec2,
         aliases: &["Vec2", "R2"],
         display_name: "R2",
@@ -480,13 +467,6 @@ const BUILTIN_TYPE_DEFS: [BuiltinTypeDef; 12] = [
         display_name: "R4",
         support_glsl: None,
         categories: &[Category::RVect],
-    },
-    BuiltinTypeDef {
-        ty: Type::Quat,
-        aliases: &["H"],
-        display_name: "H",
-        support_glsl: None,
-        categories: &[Category::Grp, Category::RDivAlg, Category::RVect],
     },
     BuiltinTypeDef {
         ty: Type::Object,
@@ -551,8 +531,6 @@ enum Type {
     Bool,
     Float,
     Int,
-    Complex,
-    Quat,
     Isom2,
     Isom3,
     Custom {
@@ -587,8 +565,6 @@ impl Type {
             Self::Bool => "bool".to_string(),
             Self::Float => "float".to_string(),
             Self::Int => "int".to_string(),
-            Self::Complex => "vec2".to_string(),
-            Self::Quat => "vec4".to_string(),
             Self::Isom2 => "Isom2".to_string(),
             Self::Isom3 => "Isom3".to_string(),
             Self::Custom { name, .. } => name.clone(),
@@ -1319,15 +1295,13 @@ fn apply_projection_function(
                 ty: output.clone(),
             },
         },
-        Type::Vec2 | Type::Vec3 | Type::Vec4 | Type::Complex | Type::Quat | Type::Custom { .. } => {
-            ValueExpr::FieldAccess {
-                value: Box::new(arg),
-                field: field
-                    .unwrap_or_else(|| vector_field_name(index))
-                    .to_string(),
-                ty: output.clone(),
-            }
-        }
+        Type::Vec2 | Type::Vec3 | Type::Vec4 | Type::Custom { .. } => ValueExpr::FieldAccess {
+            value: Box::new(arg),
+            field: field
+                .unwrap_or_else(|| vector_field_name(index))
+                .to_string(),
+            ty: output.clone(),
+        },
         _ => unreachable!("projection function expects a product-like input"),
     }
 }
@@ -1627,15 +1601,6 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
     }
     if matches!(
         (actual, expected),
-        (Type::Vec2, Type::Complex)
-            | (Type::Complex, Type::Vec2)
-            | (Type::Vec4, Type::Quat)
-            | (Type::Quat, Type::Vec4)
-    ) {
-        return Ok(());
-    }
-    if matches!(
-        (actual, expected),
         (Type::Custom { name: actual, .. }, Type::Custom { name: expected, .. })
             if actual == expected
     ) {
@@ -1652,13 +1617,6 @@ fn ensure_type(actual: &Type, expected: &Type, context: &str) -> Result<(), Erro
 /// Performs `types_compatible_for_expected` behavior.
 fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
     types_match(actual, expected)
-        || matches!(
-            (actual, expected),
-            (Type::Vec2, Type::Complex)
-                | (Type::Complex, Type::Vec2)
-                | (Type::Vec4, Type::Quat)
-                | (Type::Quat, Type::Vec4)
-        )
         || matches!(
             (actual, expected),
             (Type::Custom { name: actual, .. }, Type::Custom { name: expected, .. })

@@ -189,8 +189,6 @@ impl TypedProgram {
                     | Type::Bool
                     | Type::Float
                     | Type::Int
-                    | Type::Complex
-                    | Type::Quat
                     | Type::Isom2
                     | Type::Isom3
                     | Type::Custom { .. }
@@ -769,12 +767,19 @@ fn validate_inferred_category_type_decl(
                 &["zero", "one", "add", "sub", "mult", "scale"],
             )?;
         }
-        Category::DivRing | Category::RDivAlg => {
-            return Err(Error::new(format!(
-                "category type '{}' does not support category {} yet",
-                decl.name,
-                category_name(decl.category)
-            )));
+        Category::DivRing => {
+            validate_inferred_required_ops(
+                decl,
+                env,
+                &ty,
+                &["zero", "one", "add", "sub", "mult", "inv"],
+            )?;
+        }
+        Category::RDivAlg => {
+            if !has_category(&decl.base, Category::Ab) {
+                validate_inferred_required_ops(decl, env, &ty, &["zero", "add", "sub"])?;
+            }
+            validate_inferred_required_ops(decl, env, &ty, &["one", "mult", "inv", "scale"])?;
         }
         Category::Set => unreachable!(),
     }
@@ -981,8 +986,6 @@ fn infer_identifier_value(
         | Type::Bool
         | Type::Float
         | Type::Int
-        | Type::Complex
-        | Type::Quat
         | Type::Isom2
         | Type::Isom3
         | Type::Custom { .. }

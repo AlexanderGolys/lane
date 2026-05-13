@@ -204,10 +204,9 @@ impl<'a> Parser<'a> {
                     ensure_user_decl_name(&category_type.name, "category type", line_number)?;
                     let existing =
                         custom_types.insert(category_type.name.clone(), category_type.category);
-                    if existing.is_some_and(|category| {
-                        category != Category::Set
-                            || category_type.name != category_type.base.type_name()
-                    }) {
+                    if existing
+                        .is_some_and(|_| category_type.name != category_type.base.type_name())
+                    {
                         return Err(Error::new(format!(
                             "duplicate provided type '{}'",
                             category_type.name
@@ -639,7 +638,8 @@ fn parse_category_type_decl(
     let Some((left, right)) = line.split_once('=') else {
         return Ok(None);
     };
-    let Ok((category_source, name)) = split_type_name(left.trim()) else {
+    let left = left.trim().strip_prefix("const ").unwrap_or(left.trim());
+    let Ok((category_source, name)) = split_type_name(left) else {
         return Ok(None);
     };
     if name.contains('<') {

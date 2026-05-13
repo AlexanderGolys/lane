@@ -22,7 +22,7 @@ pub(super) fn preprocess_program(mut program: Program) -> Result<Program, Error>
 }
 
 fn preprocess_input_decl(input: &mut InputDecl) -> Result<(), Error> {
-    if let Some(name) = operator_decl_helper_name(&input.name) {
+    if let Some(name) = operator_decl_helper_name(&input.name, &input.ty) {
         if !matches!(input.ty, Type::Func(_, _)) {
             return Err(Error::new(format!(
                 "operator declaration '{}' must have a function type",
@@ -40,7 +40,7 @@ fn preprocess_input_decl(input: &mut InputDecl) -> Result<(), Error> {
 }
 
 fn preprocess_func_decl(func: &mut FuncDecl) -> Result<(), Error> {
-    if let Some(name) = operator_decl_helper_name(&func.name) {
+    if let Some(name) = operator_decl_helper_name(&func.name, &func.ty) {
         if !matches!(func.ty, Type::Func(_, _)) {
             return Err(Error::new(format!(
                 "operator declaration '{}' must have a function type",
@@ -61,7 +61,8 @@ fn preprocess_value_binding_decl(binding: &mut ValueBindingDecl) -> Result<(), E
 }
 
 fn preprocess_inferred_binding_decl(binding: &mut InferredBindingDecl) {
-    if let Some(name) = operator_decl_helper_name(&binding.name) {
+    if let Some(name) = normalized_operator_decl_name(&binding.name).and_then(operator_helper_name)
+    {
         binding.name = name;
     }
 }
@@ -176,8 +177,15 @@ pub(super) fn is_compiler_helper_name(name: &str) -> bool {
 
 /// Returns the internal helper name for an operator-reference declaration such as
 /// `Hom(A × A, A) &+ = add`.
-fn operator_decl_helper_name(name: &str) -> Option<String> {
+fn operator_decl_helper_name(name: &str, ty: &Type) -> Option<String> {
     let op_name = normalized_operator_decl_name(name)?;
+    if op_name == "*" && is_scale_operator_decl_type(ty) {
+        return Some("__scale".to_string());
+    }
+    operator_helper_name(op_name)
+}
+
+fn operator_helper_name(op_name: &str) -> Option<String> {
     match op_name {
         "+" => Some("__add".to_string()),
         "*" => Some("__mult".to_string()),
@@ -186,6 +194,19 @@ fn operator_decl_helper_name(name: &str) -> Option<String> {
         "-" => Some("__sub".to_string()),
         _ => None,
     }
+}
+
+fn is_scale_operator_decl_type(ty: &Type) -> bool {
+    let Type::Func(input, output) = ty else {
+        return false;
+    };
+    let Type::Product(parts) = input.as_ref() else {
+        return false;
+    };
+    let [value, scalar] = parts.as_slice() else {
+        return false;
+    };
+    scalar == &Type::Float && value == output.as_ref()
 }
 
 /// Normalizes operator-reference declaration names, accepting both `&+` and `&(+)`.

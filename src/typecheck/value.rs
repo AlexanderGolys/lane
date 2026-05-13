@@ -202,11 +202,11 @@ fn infer_value_field_access(
 /// Type-checks helper logic for field_access.
 fn field_access(ty: &Type, field: &str, env: &Env<'_>) -> Option<(Type, String)> {
     match ty {
-        Type::Vec2 | Type::Complex => {
+        Type::Vec2 => {
             vector_field_access(2, field).map(|field| (Type::Float, field))
         }
         Type::Vec3 => vector_field_access(3, field).map(|field| (Type::Float, field)),
-        Type::Vec4 | Type::Quat => vector_field_access(4, field).map(|field| (Type::Float, field)),
+        Type::Vec4 => vector_field_access(4, field).map(|field| (Type::Float, field)),
         Type::Custom { name, .. } => {
             let product_type = env.product_type(name)?;
             product_field_access(product_type, field)
@@ -1281,13 +1281,6 @@ fn types_compatible_for_expected(actual: &Type, expected: &Type) -> bool {
     types_match(actual, expected)
         || matches!(
             (actual, expected),
-            (Type::Vec2, Type::Complex)
-                | (Type::Complex, Type::Vec2)
-                | (Type::Vec4, Type::Quat)
-                | (Type::Quat, Type::Vec4)
-        )
-        || matches!(
-            (actual, expected),
             (Type::Custom { name: actual, .. }, Type::Custom { name: expected, .. })
                 if actual == expected
         )
@@ -1310,8 +1303,6 @@ fn is_value_type(ty: &Type) -> bool {
             | Type::Bool
             | Type::Float
             | Type::Int
-            | Type::Complex
-            | Type::Quat
             | Type::Isom2
             | Type::Isom3
             | Type::Custom { .. }
@@ -1657,8 +1648,6 @@ fn is_array_element_type(ty: &Type) -> bool {
         Type::Bool
             | Type::Float
             | Type::Int
-            | Type::Complex
-            | Type::Quat
             | Type::Isom2
             | Type::Isom3
             | Type::Custom { .. }

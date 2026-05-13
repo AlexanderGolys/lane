@@ -279,8 +279,9 @@ Imports a Lane module from the local `modules/` directory or the installed Lane
 module directory. Imported modules must start with `#module`, may define Lane
 helpers and raw GLSL functions, and cannot contain `provided` declarations. The
 `#module` directive is only valid in files loaded through `#import`; scene or
-entrypoint files must omit it. The shipped modules include `std` and
-`raytracing`.
+entrypoint files must omit it. The shipped modules include `std`, `complex`,
+`quat`, and `raytracing`. `std` imports the algebra-focused `complex` and
+`quat` modules.
 
 ```lane
 #import std
@@ -525,8 +526,6 @@ Lane type names are nominal and case-sensitive.
 | `Bool` | | `bool` |
 | `Float` | `R` | `float` |
 | `Int` | `Z` | `int` |
-| `Complex` | `C` | `vec2` |
-| `H` | | `vec4` |
 | `Vec2` | `R2` | `vec2` |
 | `Vec3` | `R3` | `vec3` |
 | `Vec4` | `R4` | `vec4` |
@@ -993,8 +992,8 @@ Registered GLSL functions include:
 - Angle and trigonometry: `radians`, `degrees`, `sin`, `cos`, `tan`, `asin`,
   `acos`, `atan`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`.
 - Exponential: `pow`, `exp`, `log`, `exp2`, `log2`, `sqrt`, `inversesqrt`.
-  Besides GLSL-style `pow(Rn, Rn)`, `pow` has category overloads
-  `pow(Z, Mon)` for repeated monoid multiplication and `pow(C, C)` for complex
+  Besides GLSL-style `pow(Rn, Rn)`, `pow` has `pow(Z, Mon)` for repeated
+  monoid multiplication. `#import complex` adds `pow(C, C)` for complex
   exponentiation.
 - Common math: `abs`, `sign`, `floor`, `trunc`, `round`, `roundEven`, `ceil`,
   `fract`, `mod`, `min`, `max`, `clamp`, `mix`, `step`, `smoothstep`, `fma`.
@@ -1003,8 +1002,9 @@ Registered GLSL functions include:
   `faceforward`, `reflect`, `refract`.
 - Matrix functions: `matrixCompMult`, `transpose`, `determinant`, `inverse`.
 - Fragment derivative functions: `dFdx`, `dFdy`, `fwidth`.
-- Complex overloads: `inv`, `exp`, `log`, `sqrt`, `sin`, `cos`, `tan`, `sinh`,
-  `cosh`, `tanh` on `C`.
+- Complex overloads from `#import complex`: `inv`, `exp`, `log`, `sqrt`, `sin`,
+  `cos`, `tan`, `sinh`, `cosh`, `tanh` on `C`.
+- Quaternion overloads from `#import quat`: inverse and multiplication on `H`.
 - Bool helpers: `not`, `and`, `or`, `xor`.
 
 Sampler, image, atomic, packing, and out-parameter GLSL builtins are not
@@ -1018,9 +1018,11 @@ R squared = pow2(y)
 ```
 
 Complex overloads are available for functions such as `exp`, `log`, `pow`, and
-`sin` on `C` inputs. Their GLSL overloads are emitted only when used.
+`sin` on `C` inputs after `#import complex`. Their GLSL overloads are emitted
+only when used.
 
 ```lane
+#import complex
 C seed = [1, 0]
 C z = exp(seed)
 ```

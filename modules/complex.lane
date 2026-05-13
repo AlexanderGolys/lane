@@ -1,3 +1,33 @@
 #module
 
+const Ab C<x, y> = R x R
 
+const C 1 = C(1, 0)
+
+const Hom(C x R, C) &* = (z, r) |-> C(z.x * r, z.y * r)
+
+const Hom(C x C, C) &* = (z, w) |-> C((z.x * w.x) - (z.y * w.y), (z.x * w.y) + (z.y * w.x))
+
+const Hom(C, C) &~ = z |-> C(z.x / ((z.x * z.x) + (z.y * z.y)), (0 - z.y) / ((z.x * z.x) + (z.y * z.y)))
+
+const RDivAlg C = C
+
+const Hom(C, C) exp = z |-> C(exp(z.x) * cos(z.y), exp(z.x) * sin(z.y))
+
+const Hom(C, C) log = z |-> C(log(sqrt((z.x * z.x) + (z.y * z.y))), atan(z.y, z.x))
+
+const Hom(C x C, C) pow = (z, w) |-> exp(w * log(z))
+
+const Hom(C, C) sqrt = z |-> C(sqrt(max((sqrt((z.x * z.x) + (z.y * z.y)) + z.x) * 0.5, 0)), sign(z.y) * sqrt(max((sqrt((z.x * z.x) + (z.y * z.y)) - z.x) * 0.5, 0)))
+
+const Hom(C, C) sin = z |-> C(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y))
+
+const Hom(C, C) cos = z |-> C(cos(z.x) * cosh(z.y), -sin(z.x) * sinh(z.y))
+
+const Hom(C, C) tan = z |-> sin(z) * ~cos(z)
+
+const Hom(C, C) sinh = z |-> C(sinh(z.x) * cos(z.y), cosh(z.x) * sin(z.y))
+
+const Hom(C, C) cosh = z |-> C(cosh(z.x) * cos(z.y), sinh(z.x) * sin(z.y))
+
+const Hom(C, C) tanh = z |-> sinh(z) * ~cosh(z)

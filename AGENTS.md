@@ -43,7 +43,8 @@
 - Add focused tests for each new DSL feature.
 - Only write the lane code using raw GLSL constructors when the fuinction is impossible to implement in pure lane, e.g. has a for loop
 - If a std/helper definition can be expressed as ordinary Lane expressions, write it in Lane; do not use raw GLSL as a shortcut for formulas that Lane can model.
-- Avoid using lambdas, when its possible use a function composition without their arguments mentioned.
+- In modules, declare named reusable values, functions, and type/category declarations as `const`; non-const module declarations may receive generated private names and should not be used for public helpers.
+- Avoid lambdas when the helper can be written as a pure function composition without naming arguments; prefer point-free composition especially in public module helpers.
 - Avoid hardcoding in compiler syntax reserved for specific objects, try to make it as general as possible
 - Avoid hardcoding in compiler specific objects
 - Try to hardcode in Rust as little GLSL raw code as possible 

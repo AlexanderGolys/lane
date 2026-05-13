@@ -160,9 +160,9 @@ fn infer_projection_function_for_input(
 fn projection_component(ty: &Type, index: usize, env: &Env<'_>) -> Option<(Type, Option<String>)> {
     match ty {
         Type::Product(parts) => parts.get(index).cloned().map(|ty| (ty, None)),
-        Type::Vec2 | Type::Complex => vector_projection_component(2, index),
+        Type::Vec2 => vector_projection_component(2, index),
         Type::Vec3 => vector_projection_component(3, index),
-        Type::Vec4 | Type::Quat => vector_projection_component(4, index),
+        Type::Vec4 => vector_projection_component(4, index),
         Type::Custom { name, .. } => {
             let product_type = env.product_type(name)?;
             product_field_access(product_type, &format!("x{index}"))
@@ -284,8 +284,6 @@ fn infer_function_expr_candidates(expr: &Expr, env: &Env<'_>) -> Result<Vec<Func
                 | Type::Bool
                 | Type::Float
                 | Type::Int
-                | Type::Complex
-                | Type::Quat
                 | Type::Isom2
                 | Type::Isom3
                 | Type::Custom { .. }
@@ -521,8 +519,6 @@ fn operator_candidate_types() -> Vec<Type> {
     types.extend([
         Type::Int,
         Type::Bool,
-        Type::Complex,
-        Type::Quat,
         Type::Isom2,
         Type::Isom3,
     ]);

@@ -396,8 +396,6 @@ fn collect_unbound_generic_dims(
         Type::Bool
         | Type::Float
         | Type::Int
-        | Type::Complex
-        | Type::Quat
         | Type::Isom2
         | Type::Isom3
         | Type::Custom { .. }
@@ -719,7 +717,7 @@ fn reject_duplicate_product_types(program: &Program) -> Result<(), Error> {
         }
     }
     for decl in &program.category_types {
-        if !names.insert(decl.name.clone()) {
+        if !category_type_is_promotion(decl) && !names.insert(decl.name.clone()) {
             return Err(
                 Error::new(format!("duplicate category type '{}'", decl.name)).with_line(decl.line),
             );

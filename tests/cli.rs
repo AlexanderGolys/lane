@@ -178,8 +178,6 @@ fn lists_known_builtin_objects_from_cli() {
     assert!(stdout.contains("RVect: Cat"));
     assert!(stdout.contains("RDivAlg: Cat"));
     assert!(stdout.contains("Bool: DivRing"));
-    assert!(stdout.contains("C: RDivAlg"));
-    assert!(stdout.contains("H: RDivAlg"));
     assert!(stdout.contains("Isom2: Grp"));
     assert!(stdout.contains("pow2: Hom(R, R)"));
     assert!(stdout.contains("pow: Hom(Z × Mon, Mon) | Hom(Rn × Rn, Rn)"));
@@ -243,7 +241,6 @@ fn lists_all_builtin_items_from_command() {
     assert!(stdout.contains("Polygon2D: { points: R2 list }"));
     assert!(stdout.contains("DivRing: Cat"));
     assert!(stdout.contains("Bool: DivRing"));
-    assert!(stdout.contains("C: RDivAlg"));
     assert!(stdout.contains("sin: Hom(Rn, Rn)"));
     assert!(stdout.contains("clamp: Hom(Rn × Rn × Rn, Rn) | Hom(Rn × R × R, Rn)"));
     assert!(stdout.contains("min: Hom(Rn × Rn, Rn) | Hom(Rn × R, Rn) | Hom(R × Rn, Rn)"));
@@ -301,16 +298,15 @@ fn shows_known_builtin_object_detail_from_cli() {
 #[test]
 fn shows_builtin_type_detail_from_cli() {
     let output = Command::new(env!("CARGO_BIN_EXE_lane"))
-        .args(["list", "H"])
+        .args(["list", "Isom2"])
         .output()
         .unwrap();
 
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("H: RDivAlg"));
-    assert!(stdout.contains("#define H vec4"));
-    assert!(!stdout.contains("mult_H"));
+    assert!(stdout.contains("struct Isom2"));
+    assert!(stdout.contains("mult_Isom2"));
 }
 
 #[test]
@@ -351,9 +347,8 @@ fn prints_bash_completion_from_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("complete -F _lane lane"));
     assert!(stdout.contains("Ab Mon Grp Ring DivRing RVect RAlg RDivAlg"));
-    assert!(stdout.contains("C Isom2 Isom3"));
+    assert!(stdout.contains("Isom2 Isom3"));
     assert!(stdout.contains("diff"));
-    assert!(!stdout.contains("Complex diff Isom2"));
     assert!(stdout.contains("--print-completion"));
     assert!(stdout.contains("-pc"));
     assert!(stdout.contains("preview repl list"));

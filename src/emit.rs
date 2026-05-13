@@ -404,8 +404,6 @@ impl TypedProgram {
                 | Type::Bool
                 | Type::Float
                 | Type::Int
-                | Type::Complex
-                | Type::Quat
                 | Type::Isom2
                 | Type::Isom3
                 | Type::Custom { .. }
@@ -875,8 +873,6 @@ fn collect_type_support(ty: &Type, names: &mut BTreeSet<String>) {
         | Type::Bool
         | Type::Float
         | Type::Int
-        | Type::Complex
-        | Type::Quat
         | Type::Vec2
         | Type::Vec3
         | Type::Vec4
@@ -1411,8 +1407,6 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
             Type::Bool => "true".to_string(),
             Type::Float => "1.0".to_string(),
             Type::Int => "1".to_string(),
-            Type::Complex => "vec2(1.0, 0.0)".to_string(),
-            Type::Quat => "vec4(1.0, 0.0, 0.0, 0.0)".to_string(),
             Type::Isom2 => "Isom2(mat2(1.0), vec2(0.0))".to_string(),
             Type::Isom3 => "Isom3(mat3(1.0), vec3(0.0))".to_string(),
             Type::Custom { name, .. } => format!("__e_{name}"),
@@ -2826,8 +2820,6 @@ fn glsl_native_binary_operator_types(op: BinOp, left: &Type, right: &Type) -> bo
                     Type::Bool
                         | Type::Float
                         | Type::Int
-                        | Type::Complex
-                        | Type::Quat
                         | Type::Vec2
                         | Type::Vec3
                         | Type::Vec4
@@ -3110,10 +3102,6 @@ fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
         (NeutralKind::One, Type::Float) => "1.0".to_string(),
         (NeutralKind::Zero, Type::Int) => "0".to_string(),
         (NeutralKind::One, Type::Int) => "1".to_string(),
-        (NeutralKind::Zero, Type::Complex) => "vec2(0.0, 0.0)".to_string(),
-        (NeutralKind::One, Type::Complex) => "vec2(1.0, 0.0)".to_string(),
-        (NeutralKind::Zero, Type::Quat) => "vec4(0.0, 0.0, 0.0, 0.0)".to_string(),
-        (NeutralKind::One, Type::Quat) => "vec4(1.0, 0.0, 0.0, 0.0)".to_string(),
         (NeutralKind::Zero, Type::Vec2) => "vec2(0.0)".to_string(),
         (NeutralKind::Zero, Type::Vec3) => "vec3(0.0)".to_string(),
         (NeutralKind::Zero, Type::Vec4) => "vec4(0.0)".to_string(),

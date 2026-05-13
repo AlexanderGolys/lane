@@ -646,14 +646,14 @@ impl Registry {
 
 fn rust_defined_type_role(ty: &BuiltinTypeDef) -> RustDefinedObjectRole {
     match &ty.ty {
-        Type::Complex | Type::Quat | Type::Isom2 | Type::Isom3 => RustDefinedObjectRole::StdMovable,
+        Type::Isom2 | Type::Isom3 => RustDefinedObjectRole::StdMovable,
         _ => RustDefinedObjectRole::CoreSyntax,
     }
 }
 
 fn rust_defined_type_reason(ty: &BuiltinTypeDef) -> &'static str {
     match &ty.ty {
-        Type::Complex | Type::Quat | Type::Isom2 | Type::Isom3 => {
+        Type::Isom2 | Type::Isom3 => {
             "concrete algebraic type with Rust GLSL/category support; should become std Lane code"
         }
         Type::Object | Type::Object2D => {

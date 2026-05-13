@@ -1,0 +1,18 @@
+#module
+
+const Ab H<x, y, z, w> = R x R x R x R
+
+const H 1 = H(1, 0, 0, 0)
+
+const Hom(H x R, H) &* = (q, r) |-> H(q.x * r, q.y * r, q.z * r, q.w * r)
+
+const Hom(H x H, H) &* = (a, b) |-> (
+    H(a.x * b.x - a.y * b.y - a.z * b.z - a.w * b.w,
+    a.x * b.y + a.y * b.x + a.z * b.w - a.w * b.z,
+    a.x * b.z - a.y * b.w + a.z * b.x + a.w * b.y,
+    a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x)
+    )
+
+const Hom(H, H) &~ = q |-> H(q.x / ((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w)), (0 - q.y) / ((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w)), (0 - q.z) / ((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w)), (0 - q.w) / ((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w)))
+
+const RDivAlg H = H

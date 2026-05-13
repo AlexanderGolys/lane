@@ -318,12 +318,6 @@ fn lists_builtin_lane_objects() {
         .any(|object| object.name == "RDivAlg" && object.ty == "Cat"));
     assert!(objects
         .iter()
-        .any(|object| object.name == "C" && object.ty == "RDivAlg"));
-    assert!(objects
-        .iter()
-        .any(|object| object.name == "H" && object.ty == "RDivAlg"));
-    assert!(objects
-        .iter()
         .any(|object| object.name == "Isom2" && object.ty == "Grp"));
     assert!(objects
         .iter()
@@ -402,8 +396,6 @@ fn looks_up_builtin_object_detail() {
     let pow2 = known_builtin_object("pow2").unwrap();
     let bool_ty = known_builtin_object("Bool").unwrap();
     let bool_xor = known_builtin_object("xor").unwrap();
-    let complex = known_builtin_object("C").unwrap();
-    let quat = known_builtin_object("H").unwrap();
     let field = known_builtin_object("DivRing").unwrap();
 
     assert_eq!(revolution.ty, "Hom(R, Hom(Object2D, Object))");
@@ -421,12 +413,6 @@ fn looks_up_builtin_object_detail() {
     assert_eq!(bool_ty.body, "");
     assert_eq!(bool_xor.ty, "Hom(Bool × Bool, Bool)");
     assert!(bool_xor.body.contains("bool xor(bool a, bool b)"));
-    assert_eq!(complex.ty, "RDivAlg");
-    assert!(complex.body.contains("#define Complex vec2"));
-    assert!(!complex.body.contains("mult_C"));
-    assert_eq!(quat.ty, "RDivAlg");
-    assert!(quat.body.contains("#define H vec4"));
-    assert!(!quat.body.contains("mult_H"));
     let e2 = known_builtin_object("Isom2").unwrap();
     assert_eq!(e2.ty, "Grp");
     assert!(e2.body.contains("struct Isom2"));
@@ -461,10 +447,6 @@ fn classifies_rust_defined_objects_by_core_vs_std_movable_role() {
         .iter()
         .find(|object| object.name == "R" && object.kind == RustDefinedObjectKind::Type)
         .unwrap();
-    let complex = objects
-        .iter()
-        .find(|object| object.name == "C" && object.kind == RustDefinedObjectKind::Type)
-        .unwrap();
     let ball = objects
         .iter()
         .find(|object| object.name == "Ball3D" && object.kind == RustDefinedObjectKind::Primitive)
@@ -476,13 +458,12 @@ fn classifies_rust_defined_objects_by_core_vs_std_movable_role() {
 
     assert_eq!(real.role, RustDefinedObjectRole::CoreSyntax);
     assert_eq!(category.role, RustDefinedObjectRole::CoreSyntax);
-    assert_eq!(complex.role, RustDefinedObjectRole::StdMovable);
     assert_eq!(ball.role, RustDefinedObjectRole::StdMovable);
 }
 
 #[test]
 fn supports_new_type_syntax_aliases() {
-    let source = "provided R time\nprovided C z\nprovided Hom(R3, R) density\nprovided End(R) loop\nconst Object output = Ball3D(r=1)\n";
+    let source = "#import complex\nprovided R time\nprovided C z\nprovided Hom(R3, R) density\nprovided End(R) loop\nconst Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float sdf_output(vec3 p) {"));
@@ -614,10 +595,10 @@ fn supports_generic_projection_and_diagonal_value_calls() {
 
 #[test]
 fn supports_power_tuple_construction_for_non_float_components() {
-    let source = "C^5 x = ((0,1), (0,1), (0,1), 0, 1)\nR radius = p{3}(x).x\nconst Object output = Ball3D(r=radius)\n";
+    let source = "#import complex\nC^5 x = (C(0,1), C(0,1), C(0,1), 0, 1)\nR radius = p{3}(x).x\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("const vec2 __lane_product_x_3 = vec2(0.0, 0.0);"));
+    assert!(glsl.contains("C __lane_product_x_3 = __zero_C;"));
     assert!(glsl.contains("float radius = (__lane_product_x_3).x;"));
 }
 
@@ -883,11 +864,11 @@ fn supports_default_gradient_operator_for_scalar_fields() {
 
 #[test]
 fn emits_support_for_custom_complex_functions() {
-    let source = "#import std\nComplex seed = (1, 0)\nconst Func(Float, C) orbit = exp(seed)\nconst Object output = Ball3D(r=1)\n";
+    let source = "#import complex\nC seed = C(1, 0)\nconst Func(Float, C) orbit = exp(seed)\nconst Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 exp(vec2 _t) {"));
-    assert!(glsl.contains("vec2 seed = vec2(1.0, 0.0);"));
+    assert!(glsl.contains("C exp(C _t) {"));
+    assert!(glsl.contains("C seed = C(1.0, 0.0);"));
     assert!(glsl.contains("return exp(seed);"));
 }
 
@@ -1399,11 +1380,11 @@ fn provided_product_type_is_declared_but_not_emitted() {
 
 #[test]
 fn supports_pointwise_function_arithmetic_support_dependencies() {
-    let source = "#import std\nprovided Hom(R, C) f\nprovided Hom(R, C) g\nHom(R, C) h = f * g\nconst Object output = Ball3D(r=length(h(1)))\n";
+    let source = "#import std\nprovided Hom(R, C) f\nprovided Hom(R, C) g\nprovided Hom(C, R) norm\nHom(R, C) h = f * g\nconst Object output = Ball3D(r=norm(h(1)))\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 __mult(vec2 _t0, vec2 _t1)"));
-    assert!(glsl.contains("vec2 h(float _t)"));
+    assert!(glsl.contains("C __mult(C _t0, C _t1)"));
+    assert!(glsl.contains("C h(float _t)"));
     assert!(glsl.contains("return __mult(f(_t), g(_t));"));
 }
 
@@ -1418,12 +1399,12 @@ fn lowers_pointwise_custom_operator_functions_to_core_calls() {
 
 #[test]
 fn supports_complex_pow_overload() {
-    let source = "#import std\nprovided C z\nprovided C w\nconst C y = pow(z, w)\n";
+    let source = "#import complex\nprovided C z\nprovided C w\nconst C y = pow(z, w)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 exp(vec2 _t)"));
-    assert!(glsl.contains("vec2 log(vec2 _t)"));
-    assert!(glsl.contains("vec2 pow(vec2 _t0, vec2 _t1)"));
+    assert!(glsl.contains("C exp(C _t)"));
+    assert!(glsl.contains("C log(C _t)"));
+    assert!(glsl.contains("C pow(C _t0, C _t1)"));
     assert!(glsl.contains("return exp(__mult(_w, log(_z)));"));
 }
 
@@ -1485,24 +1466,24 @@ fn emits_scalar_first_min_max_as_valid_glsl_vector_calls() {
 
 #[test]
 fn lowers_complex_ring_operations_through_category_helpers() {
-    let source = "#import std\nprovided C z\nC product = z * z\nC inv_z = ~z\nR radius = length(product) + length(inv_z)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "#import complex\nprovided C z\nprovided Hom(C, R) norm\nC product = z * z\nC inv_z = ~z\nR radius = norm(product) + norm(inv_z)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec2 __mult(vec2 _t0, vec2 _t1)"));
-    assert!(!glsl.contains("vec2 __div(vec2 _t0, vec2 _t1)"));
-    assert!(glsl.contains("vec2 product = __mult(z, z);"));
-    assert!(glsl.contains("vec2 inv_z = __inv(z);"));
+    assert!(glsl.contains("C __mult(C _t0, C _t1)"));
+    assert!(!glsl.contains("C __div(C _t0, C _t1)"));
+    assert!(glsl.contains("C product = __mult(z, z);"));
+    assert!(glsl.contains("C inv_z = __inv(z);"));
 }
 
 #[test]
 fn lowers_quaternion_field_operations_through_category_helpers() {
-    let source = "#import std\nprovided H p\nprovided H q\nH product = p * q\nH inv_q = ~q\nH literal = (1, 0, 0, 0)\nR radius = length(product) + length(inv_q)\nconst Object output = Ball3D(r=radius)\n";
+    let source = "#import quat\nprovided H p\nprovided H q\nprovided Hom(H, R) norm\nH product = p * q\nH inv_q = ~q\nH literal = H(1, 0, 0, 0)\nR radius = norm(product) + norm(inv_q)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("vec4 __mult(vec4 _t0, vec4 _t1)"));
-    assert!(!glsl.contains("vec4 __div(vec4 _t0, vec4 _t1)"));
-    assert!(glsl.contains("vec4 product = __mult(p, q);"));
-    assert!(glsl.contains("vec4 inv_q = __inv(q);"));
+    assert!(glsl.contains("H __mult(H _t0, H _t1)"));
+    assert!(!glsl.contains("H __div(H _t0, H _t1)"));
+    assert!(glsl.contains("H product = __mult(p, q);"));
+    assert!(glsl.contains("H inv_q = __inv(q);"));
 }
 
 #[test]
@@ -1617,12 +1598,14 @@ fn supports_product_value_constructors_with_default_fields() {
 
 #[test]
 fn supports_positional_field_aliases_for_default_product_fields() {
-    let source = "Set Four = R x R x R x R\nSet Five = C x R x R x R x R\nFour a = Four(1, 2, 3, 4)\nFive b = Five((5, 6), 7, 8, 9, 10)\nR radius = a.x0 + a.x + a.x3 + a.w + b.x.x + b.x0.x + b.y + b.x1 + b.w + b.x3\nconst Object output = Ball3D(r=radius)\n";
+    let source = "#import complex\nSet Four = R x R x R x R\nSet Five = C x R x R x R x R\nFour a = Four(1, 2, 3, 4)\nFive b = Five(C(5, 6), 7, 8, 9, 10)\nR radius = a.x0 + a.x + a.x3 + a.w + b.x.x + b.x0.x + b.y + b.x1 + b.w + b.x3\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl
         .contains("struct Four {\n    float x0;\n    float x1;\n    float x2;\n    float x3;\n};"));
-    assert!(glsl.contains("struct Five {\n    vec2 x0;\n    float x1;\n    float x2;\n    float x3;\n    float x4;\n};"));
+    assert!(glsl.contains(
+        "struct Five {\n    C x0;\n    float x1;\n    float x2;\n    float x3;\n    float x4;\n};"
+    ));
     assert!(glsl.contains("float radius = ((((((((((a).x0 + (a).x0) + (a).x3) + (a).x3) + ((b).x0).x) + ((b).x0).x) + (b).x1) + (b).x1) + (b).x3) + (b).x3);"));
 }
 
@@ -1688,7 +1671,8 @@ fn rejects_reserved_glsl_product_field_names() {
 
 #[test]
 fn rejects_product_field_types() {
-    let source = "DivRing G = C x H\nconst Object output = Ball3D(r=1)\n";
+    let source =
+        "#import complex\n#import quat\nDivRing G = C x H\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' cannot be declared as DivRing"));
@@ -1696,7 +1680,8 @@ fn rejects_product_field_types() {
 
 #[test]
 fn rejects_real_division_algebra_product_types() {
-    let source = "RDivAlg G = C x H\nconst Object output = Ball3D(r=1)\n";
+    let source =
+        "#import complex\n#import quat\nRDivAlg G = C x H\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("product type 'G' does not support category RDivAlg"));
@@ -1889,25 +1874,25 @@ fn casts_neutral_literals_to_provided_category_constants() {
 
 #[test]
 fn resolves_overloaded_calls_with_exact_numeric_match_before_neutral_casts() {
-    let source = "provided Hom(C, C) f\nprovided Hom(C, R) norm\nR radius = sin(0)\nC z = f(0)\nconst Object output = Ball3D(r=radius + norm(z))\n";
+    let source = "#import complex\nprovided Hom(C, C) f\nprovided Hom(C, R) norm\nR radius = sin(0)\nC z = f(0)\nconst Object output = Ball3D(r=radius + norm(z))\n";
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("float radius = sin(0.0);"));
-    assert!(glsl.contains("vec2 z = f(vec2(0.0, 0.0));"));
+    assert!(glsl.contains("C z = f(__zero_C);"));
 }
 
 #[test]
 fn resolves_neutral_cast_overload_ties_lexicographically() {
     let source =
-        "provided Hom(C, R) f\nprovided Hom(H, R) f\nR radius = f(0)\nconst Object output = Ball3D(r=radius)\n";
+        "#import complex\n#import quat\nprovided Hom(C, R) f\nprovided Hom(H, R) f\nR radius = f(0)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float radius = f(vec2(0.0, 0.0));"));
+    assert!(glsl.contains("float radius = f(__zero_C);"));
 }
 
 #[test]
 fn rejects_duplicate_overloads_with_same_domain() {
-    let source = "provided Hom(C, C) f\nprovided Hom(C, R) f\nconst Object output = Ball3D(r=1)\n";
+    let source = "#import complex\nprovided Hom(C, C) f\nprovided Hom(C, R) f\nconst Object output = Ball3D(r=1)\n";
     let err = compile_program(source).unwrap_err().to_string();
 
     assert!(err.contains("duplicate overload for 'f' with domain C"));
