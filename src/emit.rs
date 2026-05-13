@@ -39,21 +39,6 @@ impl TypedProgram {
             lines.push(String::new());
         }
 
-        let signature = self.scene_signature(&locals.point);
-        if self.output.is_some()
-            && self
-                .funcs
-                .iter()
-                .any(|func| matches!(func.body, TypedFuncBody::RawGlsl(_)))
-        {
-            lines.push(format!("float scene_sdf({});", signature.join(", ")));
-            lines.push(format!(
-                "{} scene_grad({});",
-                ambient_vector_glsl_type(self.ambient_dimension),
-                signature.join(", ")
-            ));
-            lines.push(String::new());
-        }
         for prototype in self.object_getter_prototypes(&object_getter_bindings, &locals) {
             lines.push(prototype);
         }
@@ -98,58 +83,7 @@ impl TypedProgram {
             }
         }
 
-        if let Some(scene_output) = &self.output {
-            lines.push(format!("float scene_sdf({}) {{", signature.join(", ")));
-            let scene_value_names = self.needed_value_binding_names(
-                scene_output,
-                &object_bindings,
-                &global_value_names,
-            );
-            lines.extend(self.emit_value_binding_lines(
-                &helper_names,
-                &global_value_names,
-                &scene_value_names,
-            ));
-            let output = emit_object_expr(
-                scene_output,
-                &locals.point,
-                self.ambient_dimension,
-                &object_bindings,
-                &helper_names,
-                &scene_input_names,
-            );
-            lines.push(format!("    return {};", output));
-            lines.push("}".to_string());
-
-            lines.push(String::new());
-            lines.push(format!(
-                "{} scene_grad({}) {{",
-                ambient_vector_glsl_type(self.ambient_dimension),
-                signature.join(", ")
-            ));
-            lines.push(format!(
-                "    float {} = {};",
-                locals.eps,
-                format_float(self.gradient_epsilon)
-            ));
-            lines.push(format!(
-                "    return normalize({});",
-                emit_sdf_gradient_expr(
-                    "scene_sdf",
-                    &locals.point,
-                    &locals.eps,
-                    &scene_input_names,
-                    self.ambient_dimension
-                )
-            ));
-            lines.push("}".to_string());
-        }
-
         suffix_glsl_float_literals(&lines.join("\n"))
-    }
-
-    fn scene_signature(&self, point_name: &str) -> Vec<String> {
-        self.object_helper_signature(point_name, self.ambient_dimension)
     }
 
     fn object_helper_signature(&self, point_name: &str, dimension: ShapeDimension) -> Vec<String> {
@@ -242,14 +176,6 @@ impl TypedProgram {
                     &global_value_names,
                 ));
             }
-        }
-        if let Some(output) = &self.output {
-            collect_object_function_refs(output, &object_bindings, &mut names);
-            needed_value_names.extend(self.needed_value_binding_names(
-                output,
-                &object_bindings,
-                &global_value_names,
-            ));
         }
         for binding in &self.value_bindings {
             if needed_value_names.contains(&binding.name) {
@@ -528,9 +454,6 @@ impl TypedProgram {
         for binding in &self.bindings {
             collect_object_support(&binding.expr, &mut names);
         }
-        if let Some(output) = &self.output {
-            collect_object_support(output, &mut names);
-        }
         for product_type in &self.product_types {
             if product_type.eager_ops {
                 if !product_type.provided {
@@ -637,9 +560,6 @@ impl TypedProgram {
         for binding in &self.bindings {
             collect_object_getter_object_refs(&binding.expr, &mut names);
         }
-        if let Some(output) = &self.output {
-            collect_object_getter_object_refs(output, &mut names);
-        }
         names
     }
 
@@ -712,9 +632,6 @@ impl TypedProgram {
         for binding in &self.bindings {
             collect_object_concat_helpers(&binding.expr, &mut helpers);
         }
-        if let Some(output) = &self.output {
-            collect_object_concat_helpers(output, &mut helpers);
-        }
         helpers.into_values().collect()
     }
 
@@ -730,9 +647,6 @@ impl TypedProgram {
         }
         for binding in &self.bindings {
             collect_object_conditional_helpers(&binding.expr, &mut helpers);
-        }
-        if let Some(output) = &self.output {
-            collect_object_conditional_helpers(output, &mut helpers);
         }
         helpers.into_values().collect()
     }
@@ -4074,7 +3988,7 @@ fn render_raw_glsl_placeholders(body: &str, _function_name: &str) -> String {
         let end = name_start + relative_end;
         let name = &body[name_start..end];
         if let Some(getter) = raw_glsl_object_getter_placeholder(name) {
-            out.push_str(getter);
+            out.push_str(&getter);
         } else if is_placeholder_ident(name) {
             out.push_str(name);
         } else {
@@ -4086,11 +4000,11 @@ fn render_raw_glsl_placeholders(body: &str, _function_name: &str) -> String {
     out
 }
 
-fn raw_glsl_object_getter_placeholder(name: &str) -> Option<&'static str> {
-    let (_, getter) = name.split_once('.')?;
+fn raw_glsl_object_getter_placeholder(name: &str) -> Option<String> {
+    let (object, getter) = name.split_once('.')?;
     match getter {
-        "sdf" => Some("scene_sdf"),
-        "grad" => Some("scene_grad"),
+        "sdf" => Some(format!("sdf_{object}")),
+        "grad" => Some(format!("grad_sdf_{object}")),
         _ => None,
     }
 }

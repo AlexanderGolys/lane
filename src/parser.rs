@@ -49,7 +49,6 @@ impl<'a> Parser<'a> {
         let mut value_bindings = Vec::new();
         let mut bindings = Vec::new();
         let mut inferred_bindings = Vec::new();
-        let mut output = None;
         let mut ambient_dimension = ShapeDimension::D3;
         let mut derivative_epsilon = 0.01;
         let mut gradient_epsilon = 0.01;
@@ -268,34 +267,10 @@ impl<'a> Parser<'a> {
                 }
                 Decl::Binding(binding) => {
                     ensure_public_decl_name(&binding.name, "object", line_number)?;
-                    if binding.final_output {
-                        if output.is_some() {
-                            return Err(Error::new(
-                                "multiple const output declarations are not supported",
-                            ));
-                        }
-                        output = Some(OutputDecl {
-                            expr: binding.expr.clone(),
-                            line: binding.line,
-                        });
-                        continue;
-                    }
                     bindings.push(binding);
                 }
                 Decl::InferredBinding(binding) => {
                     ensure_public_decl_name(&binding.name, "binding", line_number)?;
-                    if binding.final_output {
-                        if output.is_some() {
-                            return Err(Error::new(
-                                "multiple const output declarations are not supported",
-                            ));
-                        }
-                        output = Some(OutputDecl {
-                            expr: binding.expr.clone(),
-                            line: binding.line,
-                        });
-                        continue;
-                    }
                     inferred_bindings.push(binding);
                 }
             }
@@ -314,7 +289,6 @@ impl<'a> Parser<'a> {
             value_bindings,
             bindings,
             inferred_bindings,
-            output,
         })
     }
 
@@ -324,7 +298,7 @@ impl<'a> Parser<'a> {
         line_number: usize,
         custom_types: &HashMap<String, AlgebraicCategory>,
         ambient_dimension: ShapeDimension,
-        allow_final_output: bool,
+        _allow_final_output: bool,
         allow_raw_glsl: bool,
     ) -> Result<Decl, Error> {
         if line.trim_start().starts_with("generate ") {
@@ -394,7 +368,6 @@ impl<'a> Parser<'a> {
                 expr,
                 generated,
                 construct: is_construct,
-                final_output: allow_final_output && is_const && left == "output",
                 line: line_number,
             }));
         }
@@ -463,7 +436,6 @@ impl<'a> Parser<'a> {
             ty,
             expr,
             generated,
-            final_output: allow_final_output && is_const && name == "output",
             line: line_number,
         }))
     }

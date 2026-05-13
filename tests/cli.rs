@@ -491,7 +491,7 @@ fn writes_compiled_output_to_target_path() {
     assert!(output.stdout.is_empty());
 
     let glsl = std::fs::read_to_string(&target_path).unwrap();
-    assert!(glsl.contains("float scene_sdf(vec3 p)"));
+    assert!(glsl.contains("float sdf_output(vec3 p)"));
     assert!(glsl.contains("sdf0_Ball3D(p, ParamBall3D(1.0f))"));
 
     std::fs::remove_dir_all(temp_dir).unwrap();
@@ -769,7 +769,7 @@ fn treats_fragment_shader_directive_as_a_comment() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(!stdout.starts_with("#version 330 core"));
     assert!(!stdout.contains("uniform vec2 resolution;"));
-    assert!(stdout.contains("float scene_sdf(vec3 p)"));
+    assert!(stdout.contains("float sdf_output(vec3 p)"));
 }
 
 #[test]

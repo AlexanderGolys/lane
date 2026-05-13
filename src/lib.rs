@@ -883,9 +883,6 @@ fn referenced_names(program: &Program) -> HashSet<String> {
     for binding in &program.inferred_bindings {
         collect_expr_names(&binding.expr, &mut names);
     }
-    if let Some(output) = &program.output {
-        collect_expr_names(&output.expr, &mut names);
-    }
     names
 }
 
@@ -1343,7 +1340,6 @@ fn empty_program_like(program: &Program) -> Program {
         value_bindings: Vec::new(),
         bindings: Vec::new(),
         inferred_bindings: Vec::new(),
-        output: None,
     }
 }
 
@@ -1356,9 +1352,6 @@ fn append_program(target: &mut Program, mut source: Program, line_offset: usize)
     target.value_bindings.extend(source.value_bindings);
     target.bindings.extend(source.bindings);
     target.inferred_bindings.extend(source.inferred_bindings);
-    if let Some(output) = source.output {
-        target.output = Some(output);
-    }
 }
 
 fn bump_program_lines(program: &mut Program, offset: usize) {
@@ -1382,9 +1375,6 @@ fn bump_program_lines(program: &mut Program, offset: usize) {
     }
     for item in &mut program.inferred_bindings {
         item.line += offset;
-    }
-    if let Some(output) = &mut program.output {
-        output.line += offset;
     }
 }
 
@@ -2596,7 +2586,6 @@ struct BindingDecl {
     ty: Type,
     expr: Expr,
     generated: bool,
-    final_output: bool,
     line: usize,
 }
 
@@ -2615,13 +2604,6 @@ struct InferredBindingDecl {
     expr: Expr,
     generated: bool,
     construct: bool,
-    final_output: bool,
-    line: usize,
-}
-
-#[derive(Clone, Debug)]
-struct OutputDecl {
-    expr: Expr,
     line: usize,
 }
 
@@ -2639,7 +2621,6 @@ struct Program {
     value_bindings: Vec<ValueBindingDecl>,
     bindings: Vec<BindingDecl>,
     inferred_bindings: Vec<InferredBindingDecl>,
-    output: Option<OutputDecl>,
 }
 
 #[derive(Clone, Debug)]
@@ -3268,7 +3249,6 @@ struct TypedProgram {
     funcs: Vec<TypedFunc>,
     value_bindings: Vec<TypedValueBinding>,
     bindings: Vec<TypedBinding>,
-    output: Option<ObjectExpr>,
 }
 
 #[derive(Clone, Debug)]

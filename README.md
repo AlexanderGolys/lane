@@ -201,8 +201,8 @@ to override the server command.
 Lane source is line-oriented. Each non-empty, non-comment line is one
 declaration. `const` emits a value, function, or object even if nothing later
 references it. For objects, `const` exports object helper functions.
-`const Object output` also keeps the legacy `scene_sdf` and `scene_grad`
-entrypoints, but a program does not need an explicit scene.
+`const Object output` is emitted under its Lane name as `sdf_output` and
+`grad_sdf_output`; `output` is not a special scene entrypoint.
 
 ```lane
 provided R time
@@ -1238,9 +1238,7 @@ Every compilation emits:
   functions, built-in algebraic types, and constructed product types;
 - user value functions emitted with their Lane name;
 - generated object helpers for `construct` or `const Object` bindings:
-  `sdf_name` and `grad_sdf_name` for 3D objects, and `sdf_name` for 2D objects;
-- legacy `float scene_sdf(vec3 p)` and `vec3 scene_grad(vec3 p)` entrypoints
-  only when `const Object output` is present.
+  `sdf_name` and `grad_sdf_name` for 3D objects, and `sdf_name` for 2D objects.
 
 Scene-invariant value bindings are emitted as global `const` values when
 possible. Generated local names are renamed if they would collide with user

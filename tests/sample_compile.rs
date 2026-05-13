@@ -79,15 +79,6 @@ float sdf_output(vec3 p) {
 vec3 grad_sdf_output(vec3 p) {
     float eps = 0.01;
     return normalize(vec3(((sdf_output(p + vec3(eps, 0.0, 0.0)) - sdf_output(p - vec3(eps, 0.0, 0.0))) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, eps, 0.0)) - sdf_output(p - vec3(0.0, eps, 0.0))) / (2.0 * eps)), ((sdf_output(p + vec3(0.0, 0.0, eps)) - sdf_output(p - vec3(0.0, 0.0, eps))) / (2.0 * eps))));
-}
-
-float scene_sdf(vec3 p) {
-    return _op_smooth_union(sdf0_Ball3D((p - centerA(time)), ParamBall3D(3.0)), sdf0_Ball3D((p - centerB(time)), ParamBall3D(rB(time))), hardness(time));
-}
-
-vec3 scene_grad(vec3 p) {
-    float eps = 0.01;
-    return normalize(vec3(((scene_sdf(p + vec3(eps, 0.0, 0.0)) - scene_sdf(p - vec3(eps, 0.0, 0.0))) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, eps, 0.0)) - scene_sdf(p - vec3(0.0, eps, 0.0))) / (2.0 * eps)), ((scene_sdf(p + vec3(0.0, 0.0, eps)) - scene_sdf(p - vec3(0.0, 0.0, eps))) / (2.0 * eps))));
 }"#;
 
     assert_eq!(glsl, expected);
@@ -101,8 +92,8 @@ fn compiles_showcase_program_to_glsl() {
     assert!(glsl.contains("float _op_union(float _a, float _b) {"));
     assert!(glsl.contains("float _op_smooth_xor(float _a, float _b, float _k) {"));
     assert!(glsl.contains("mat3 spin(float _t) {"));
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
-    assert!(glsl.contains("vec3 scene_grad(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
+    assert!(glsl.contains("vec3 grad_sdf_output(vec3 p) {"));
 }
 
 #[test]
@@ -114,7 +105,7 @@ fn compiles_example1_orbit_scene_to_glsl() {
     assert!(glsl.contains("Isom3 rot(vec3 binormal, vec3 anchor, float angle)"));
     assert!(glsl.contains("Isom3 r2 = rot(cross(c, p1), c, (time * v2));"));
     assert!(glsl.contains("vec3 p = act_Isom3(r2, p1);"));
-    assert!(glsl.contains("float scene_sdf(vec3 p_"));
+    assert!(glsl.contains("float sdf_output(vec3 p_"));
 }
 
 #[test]
@@ -123,11 +114,11 @@ fn compiles_all_features_samples_to_glsl() {
     let glsl = compile_program(&source).unwrap();
 
     assert!(glsl.contains("struct Motion"));
-    assert!(glsl.contains("float scene_sdf(vec3 p"));
+    assert!(glsl.contains("float sdf_output(vec3 p"));
 
     let source_2d = fs::read_to_string("examples/all_features_2d.lane").unwrap();
     let glsl_2d = compile_program(&source_2d).unwrap();
 
-    assert!(glsl_2d.contains("float scene_sdf(vec2"));
-    assert!(glsl_2d.contains("vec2 scene_grad(vec2"));
+    assert!(glsl_2d.contains("float sdf_output(vec2"));
+    assert!(!glsl_2d.contains("scene_grad("));
 }

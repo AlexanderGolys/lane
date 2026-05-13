@@ -477,7 +477,7 @@ fn supports_new_type_syntax_aliases() {
     let source = "provided R time\nprovided C z\nprovided Hom(R3, R) density\nprovided End(R) loop\nconst Object output = Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
 }
 
 #[test]
@@ -1485,7 +1485,7 @@ fn supports_provided_group_category_types() {
     let source = "provided Grp G\nprovided G a\nprovided G b\nprovided Hom(G, R) measure\nR radius = measure(a * b)\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("float radius = measure(mult_G(a, b));"));
 }
 
@@ -1685,7 +1685,7 @@ fn supports_provided_vector_space_category_types() {
     let source = "provided RVect V\nprovided V v\nprovided Hom(V, R) norm\nR radius = norm(2 * (v / 3))\nconst Object output = Ball3D(r=radius)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("float radius = norm(scale_V(scale_V(v, (1.0 / 3.0)), 2.0));"));
 }
 
@@ -1890,7 +1890,8 @@ fn supports_const_output_declaration() {
 
     assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("vec3 grad_sdf_output(vec3 p) {"));
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(!glsl.contains("float scene_sdf("));
+    assert!(!glsl.contains("scene_grad("));
 }
 
 #[test]
@@ -1979,10 +1980,10 @@ fn directive_2d_uses_object2d_ambient_space() {
     let source = "#2D\nObject shape = Box2D(a=2, b=1) + (1, 2)\nconst Object output = shape\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec2 p) {"));
-    assert!(glsl.contains("vec2 scene_grad(vec2 p) {"));
+    assert!(glsl.contains("float sdf_output(vec2 p) {"));
+    assert!(!glsl.contains("scene_sdf("));
+    assert!(!glsl.contains("scene_grad("));
     assert!(glsl.contains("sdf0_Box2D((p - vec2(1.0, 2.0)), ParamBox2D(2.0, 1.0))"));
-    assert!(!glsl.contains("scene_sdf(vec3 p)"));
 }
 
 #[test]
@@ -2021,7 +2022,7 @@ fn directive_2d_supports_2d_isometry_actions() {
     let glsl = compile_program(source).unwrap();
 
     assert!(glsl.contains("struct Isom2"));
-    assert!(glsl.contains("float scene_sdf(vec2 p) {"));
+    assert!(glsl.contains("float sdf_output(vec2 p) {"));
     assert!(glsl.contains("sdf0_Box2D(act_Isom2(inv_Isom2(g), p), ParamBox2D(2.0, 1.0))"));
 }
 
@@ -2047,7 +2048,7 @@ fn supports_full_line_comments() {
         "// input animation\nprovided Float time\n// object body\nconst Object output = Ball3D(r=1 + time)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("ParamBall3D((1.0 + time))"));
 }
 
@@ -2056,7 +2057,7 @@ fn supports_trailing_line_comments() {
     let source = "provided Float time // animation clock\nObject A = Ball3D(r=1) + (1, 0, 0) // translated sphere\nconst Object output = A // final object\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("sdf0_Ball3D((p - vec3(1.0, 0.0, 0.0)), ParamBall3D(1.0))"));
 }
 
@@ -2104,7 +2105,7 @@ fn object_sdf_getter_closure_uses_provided_inputs_as_globals() {
 }
 
 #[test]
-fn scene_sdf_reuses_generated_object_helpers() {
+fn const_output_reuses_generated_object_helpers() {
     let source = "construct Object a = Ball3D(r=1)\nconstruct Object b = Ball3D(r=2) + (1, 0, 0)\nconst Object output = union(a, b)\n";
     let glsl = compile_program(source).unwrap();
 
@@ -2124,7 +2125,7 @@ fn hoists_scene_invariant_value_bindings_to_global_consts() {
     assert!(glsl.contains("float sdf_b(vec3 p_"));
     assert!(glsl.contains("Isom3 r = rot(axis, (axis * 0.0), time);"));
     assert!(glsl.contains("vec3 p = act_Isom3(r, start);"));
-    assert!(glsl.contains("float scene_sdf(vec3 p_"));
+    assert!(glsl.contains("float sdf_output(vec3 p_"));
     assert!(glsl.contains("return sdf_b(p_"));
 }
 
@@ -2134,10 +2135,10 @@ fn renames_generated_locals_on_name_conflicts() {
         "provided Float p\nprovided Float eps\nconst Object output = Ball3D(r=eps) + (p, 0, 0)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p_r"));
+    assert!(glsl.contains("float sdf_output(vec3 p_r"));
     assert!(!glsl.contains(", float p, float eps)"));
     assert!(glsl.contains("float eps_r"));
-    assert!(glsl.contains("scene_sdf(p_r"));
+    assert!(glsl.contains("sdf_output(p_r"));
     assert!(glsl.contains("vec3(eps_r"));
 }
 
@@ -2213,7 +2214,8 @@ fn emits_only_used_support_code() {
     assert!(glsl.contains("struct ParamBall3D"));
     assert!(glsl.contains("float sdf0_Ball3D"));
     assert!(!glsl.contains("_op_smooth_union"));
-    assert!(glsl.contains("vec3 scene_grad(vec3 p) {"));
+    assert!(glsl.contains("vec3 grad_sdf_output(vec3 p) {"));
+    assert!(!glsl.contains("scene_grad("));
 }
 
 #[test]
@@ -2260,7 +2262,7 @@ fn emits_box_primitive() {
     assert!(glsl.contains("float b;"));
     assert!(glsl.contains("float sdf0_Box2D(vec2 p, ParamBox2D params)"));
     assert!(glsl.contains("vec2(params.a, params.b)"));
-    assert!(glsl.contains("sdf0_Box2D((p).xy, ParamBox2D(2.0, 1.0))"));
+    assert!(glsl.contains("sdf0_Box2D(p, ParamBox2D(2.0, 1.0))"));
 }
 
 #[test]
@@ -2308,7 +2310,7 @@ fn emits_primitive_with_positional_arguments() {
     let source = "Object shape = Box2D(2, 1)\nconst Object output = shape\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("sdf0_Box2D((p).xy, ParamBox2D(2.0, 1.0))"));
+    assert!(glsl.contains("sdf0_Box2D(p, ParamBox2D(2.0, 1.0))"));
 }
 
 #[test]
@@ -2403,7 +2405,7 @@ fn emits_segment_primitive() {
 
     assert!(glsl.contains("struct ParamSegment2D"));
     assert!(glsl.contains("float sdf0_Segment2D(vec2 p, ParamSegment2D params)"));
-    assert!(glsl.contains("sdf0_Segment2D((p).xy, ParamSegment2D(vec2(0.0, 0.0), vec2(2.0, 1.0)))"));
+    assert!(glsl.contains("sdf0_Segment2D(p, ParamSegment2D(vec2(0.0, 0.0), vec2(2.0, 1.0)))"));
 }
 
 #[test]
@@ -2411,7 +2413,7 @@ fn emits_segment2d_length_constructor() {
     let source = "Object shape = Segment2D(length=2)\nconst Object output = shape\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("sdf0_Segment2D((p).xy, ParamSegment2D(vec2((-1.0 * (0.5 * 2.0)), 0.0), vec2((0.5 * 2.0), 0.0)))"));
+    assert!(glsl.contains("sdf0_Segment2D(p, ParamSegment2D(vec2((-1.0 * (0.5 * 2.0)), 0.0), vec2((0.5 * 2.0), 0.0)))"));
 }
 
 #[test]
@@ -2443,7 +2445,7 @@ fn emits_triangle_primitive() {
     assert!(glsl.contains("struct ParamTriangle2D"));
     assert!(glsl.contains("float sdf0_Triangle2D(vec2 p, ParamTriangle2D params)"));
     assert!(glsl.contains(
-        "sdf0_Triangle2D((p).xy, ParamTriangle2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)))"
+        "sdf0_Triangle2D(p, ParamTriangle2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)))"
     ));
 }
 
@@ -2456,7 +2458,7 @@ fn emits_quad2d_primitive() {
     assert!(glsl.contains("struct ParamQuad2D"));
     assert!(glsl.contains("float sdf0_Quad2D(vec2 p, ParamQuad2D params)"));
     assert!(glsl.contains(
-        "sdf0_Quad2D((p).xy, ParamQuad2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(0.0, 1.0)))"
+        "sdf0_Quad2D(p, ParamQuad2D(vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(0.0, 1.0)))"
     ));
 }
 
@@ -2484,7 +2486,7 @@ fn emits_polygon_primitive() {
         "float sdf0_Polygon2D(vec2 p, vec2 vertices[POLYGON2D_MAX_VERTICES], int count)"
     ));
     assert!(glsl.contains(
-        "sdf0_Polygon2D(p.xy, vec2[16](vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(0.0, 1.0)"
+        "sdf0_Polygon2D(p, vec2[16](vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(0.0, 1.0)"
     ));
 }
 
@@ -2495,7 +2497,7 @@ fn emits_point_primitive() {
 
     assert!(glsl.contains("struct ParamPoint2D"));
     assert!(glsl.contains("float sdf0_Point2D(vec2 p, ParamPoint2D params)"));
-    assert!(glsl.contains("sdf0_Point2D((p).xy, ParamPoint2D(vec2(3.0, 4.0)))"));
+    assert!(glsl.contains("sdf0_Point2D(p, ParamPoint2D(vec2(3.0, 4.0)))"));
 }
 
 #[test]
@@ -2540,7 +2542,7 @@ fn emits_rotation_action_from_mat3_input() {
     let source = "provided Mat3 R\nconst Object output = R * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("sdf0_Ball3D((transpose(R) * p), ParamBall3D(1.0))"));
 }
 
@@ -2595,7 +2597,7 @@ fn emits_builtin_2d_rotation_operator() {
     assert!(glsl.contains("mat2 _op_rot2D_matrix(float _angle)"));
     assert!(glsl.contains("vec3 _op_rot2D_inverse_point(vec3 _p, vec2 _anchor, float _angle)"));
     assert!(glsl.contains(
-        "sdf0_Box2D((_op_rot2D_inverse_point(p, vec2(1.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
+        "sdf0_Box2D((vec2(1.0, 0.0) + (transpose(_op_rot2D_matrix(0.5)) * (p - vec2(1.0, 0.0)))), ParamBox2D(1.0, 0.5))"
     ));
 }
 
@@ -2607,10 +2609,10 @@ fn emits_builtin_2d_rotation_operator_defaults() {
         compile_program("const Object output = rot2D()(Box2D(a=2, b=1))\n").unwrap();
 
     assert!(angle_glsl.contains(
-        "sdf0_Box2D((_op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.5)).xy, ParamBox2D(1.0, 0.5))"
+        "sdf0_Box2D((vec2(0.0, 0.0) + (transpose(_op_rot2D_matrix(0.5)) * (p - vec2(0.0, 0.0)))), ParamBox2D(1.0, 0.5))"
     ));
     assert!(zero_arg_glsl.contains(
-        "sdf0_Box2D((_op_rot2D_inverse_point(p, vec2(0.0, 0.0), 0.0)).xy, ParamBox2D(2.0, 1.0))"
+        "sdf0_Box2D((vec2(0.0, 0.0) + (transpose(_op_rot2D_matrix(0.0)) * (p - vec2(0.0, 0.0)))), ParamBox2D(2.0, 1.0))"
     ));
 }
 
@@ -2654,7 +2656,7 @@ fn treats_square_matrices_as_rings_by_shape() {
         "provided Mat3 a\nprovided Mat3 b\nMat3 c = (a * b) + a\nconst Object output = c * Ball3D(r=1)\n";
     let glsl = compile_program(source).unwrap();
 
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("mat3 c = ((a * b) + a);"));
 }
 
@@ -2812,7 +2814,7 @@ fn emits_array_types_for_inputs_and_function_returns() {
 
     assert!(glsl.contains("float[] pair(float _t) {"));
     assert!(glsl.contains("return float[2](sin(_t), cos(_t));"));
-    assert!(glsl.contains("float scene_sdf(vec3 p) {"));
+    assert!(glsl.contains("float sdf_output(vec3 p) {"));
     assert!(glsl.contains("float radius = (weights[0] + pair(0.0)[1]);"));
 }
 

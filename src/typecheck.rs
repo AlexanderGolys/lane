@@ -1247,37 +1247,6 @@ impl TypedProgram {
             });
         }
 
-        let output = program
-            .output
-            .as_ref()
-            .map(|output| {
-                let expr = infer_object_expr(&output.expr, &env)
-                    .map_err(|err| err.with_line(output.line))?;
-                if program.ambient_dimension == ShapeDimension::D2
-                    && object_dimension(&expr, &env) != Some(ShapeDimension::D2)
-                {
-                    return Err(
-                        Error::new("const output expected Object2D in 2D ambient space")
-                            .with_line(output.line),
-                    );
-                }
-                Ok(expr)
-            })
-            .transpose()?;
-        if let Some(output) = &output {
-            typed_bindings.push(TypedBinding {
-                name: "output".to_string(),
-                expr: output.clone(),
-                generated: true,
-                dimension: object_dimension(output, &env),
-                line: program
-                    .output
-                    .as_ref()
-                    .map(|output| output.line)
-                    .unwrap_or(usize::MAX),
-            });
-        }
-
         Ok(Self {
             ambient_dimension: program.ambient_dimension,
             gradient_epsilon: program.gradient_epsilon,
@@ -1287,7 +1256,6 @@ impl TypedProgram {
             funcs: typed_funcs,
             value_bindings: typed_value_bindings,
             bindings: typed_bindings,
-            output,
         })
     }
 }
@@ -1887,7 +1855,7 @@ fn object_dimension(expr: &ObjectExpr, env: &Env<'_>) -> Option<ShapeDimension> 
             object_args,
             ..
         } => match glsl_name.as_str() {
-            "op_revolution" | "op_extrusion" => Some(ShapeDimension::D3),
+            "_op_revolution" | "_op_extrusion" => Some(ShapeDimension::D3),
             _ => object_args
                 .first()
                 .and_then(|object| object_dimension(object, env)),
@@ -2034,7 +2002,7 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
 /// Type-checks helper logic for object_op_output_dimension.
 fn object_op_output_dimension(op: &ObjectOpDef) -> ShapeDimension {
     match op.glsl_name {
-        "op_revolution" | "op_extrusion" | "op_rot" => ShapeDimension::D3,
+        "_op_revolution" | "_op_extrusion" | "_op_rot" => ShapeDimension::D3,
         _ => ShapeDimension::D2,
     }
 }
