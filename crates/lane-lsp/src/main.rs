@@ -313,9 +313,9 @@ fn completion_kind(kind: lane::LaneCompletionKind) -> CompletionItemKind {
 /// Parses Lane source into a Tree-sitter tree when possible.
 fn parse_lane_tree(source: &str) -> Option<tree_sitter::Tree> {
     let mut parser = Parser::new();
-    parser
-        .set_language(&LANGUAGE_LANE.into())
-        .expect("lane tree-sitter parser should load");
+    parser.set_language(&LANGUAGE_LANE.into()).unwrap_or_else(|error| {
+        panic!("lane tree-sitter parser must load for LSP startup: {error}")
+    });
     parser.parse(source, None)
 }
 

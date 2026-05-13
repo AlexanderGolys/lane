@@ -81,16 +81,8 @@ impl ModuleLoader {
     fn load_import(&self, import_path: &str, stack: &mut Vec<PathBuf>) -> Result<Program, Error> {
         let path = self.resolve_import(import_path)?;
         let canonical = path.canonicalize().unwrap_or(path.clone());
-        if let Some(index) = stack.iter().position(|entry| entry == &canonical) {
-            let mut cycle = stack[index..]
-                .iter()
-                .map(|path| path.display().to_string())
-                .collect::<Vec<_>>();
-            cycle.push(canonical.display().to_string());
-            return Err(Error::new(format!(
-                "module import cycle: {}",
-                cycle.join(" -> ")
-            )));
+        if let Some(cycle) = import_cycle_error(stack, &canonical) {
+            return Err(cycle);
         }
 
         stack.push(canonical);
@@ -735,53 +727,10 @@ fn reject_duplicate_product_types(program: &Program) -> Result<(), Error> {
 
 /// Performs `mangle_private_module_names` behavior.
 fn mangle_private_module_names(program: &mut Program, module_key: &str) {
-    let mut renames = HashMap::new();
-    for decl in &program.product_types {
-        if !decl.eager_ops && !decl.provided {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.funcs {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.value_bindings {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.bindings {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-    for decl in &program.inferred_bindings {
-        if !decl.generated {
-            renames.insert(
-                decl.name.clone(),
-                private_module_name(module_key, &decl.name),
-            );
-        }
-    }
-
+    let renames = private_module_renames(program, module_key);
     for decl in &mut program.product_types {
         rename_type_refs(&mut decl.components, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
+        rename_decl_name(&mut decl.name, &renames);
     }
     for decl in &mut program.inputs {
         rename_type(&mut decl.ty, &renames);
@@ -789,30 +738,90 @@ fn mangle_private_module_names(program: &mut Program, module_key: &str) {
     for decl in &mut program.funcs {
         rename_type(&mut decl.ty, &renames);
         rename_func_body(&mut decl.body, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
+        rename_decl_name(&mut decl.name, &renames);
     }
     for decl in &mut program.value_bindings {
         rename_type(&mut decl.ty, &renames);
         rename_expr(&mut decl.expr, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
+        rename_decl_name(&mut decl.name, &renames);
     }
     for decl in &mut program.bindings {
         rename_type(&mut decl.ty, &renames);
         rename_expr(&mut decl.expr, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
+        rename_decl_name(&mut decl.name, &renames);
     }
     for decl in &mut program.inferred_bindings {
         rename_expr(&mut decl.expr, &renames);
-        if let Some(name) = renames.get(&decl.name) {
-            decl.name = name.clone();
-        }
+        rename_decl_name(&mut decl.name, &renames);
     }
+}
+
+/// Renames one declaration name when a private-module mapping exists.
+fn rename_decl_name(name: &mut String, renames: &HashMap<String, String>) {
+    if let Some(replacement) = renames.get(name.as_str()) {
+        *name = replacement.clone();
+    }
+}
+
+/// Builds private rename mappings for module-local declarations.
+fn private_module_renames(program: &Program, module_key: &str) -> HashMap<String, String> {
+    let mut renames = HashMap::new();
+    for decl in &program.product_types {
+        add_private_module_rename_if(
+            &mut renames,
+            &decl.name,
+            !decl.eager_ops && !decl.provided,
+            module_key,
+        );
+    }
+    for decl in &program.funcs {
+        add_private_module_rename_if(&mut renames, &decl.name, !decl.generated, module_key);
+    }
+    for decl in &program.value_bindings {
+        add_private_module_rename_if(&mut renames, &decl.name, !decl.generated, module_key);
+    }
+    for decl in &program.bindings {
+        add_private_module_rename_if(&mut renames, &decl.name, !decl.generated, module_key);
+    }
+    for decl in &program.inferred_bindings {
+        add_private_module_rename_if(&mut renames, &decl.name, !decl.generated, module_key);
+    }
+    renames
+}
+
+/// Adds a rename entry only when the declaration should be privatized.
+fn add_private_module_rename_if(
+    renames: &mut HashMap<String, String>,
+    original: &str,
+    should_add: bool,
+    module_key: &str,
+) {
+    if should_add {
+        add_private_module_rename(renames, original, module_key);
+    }
+}
+
+/// Adds one private module rename entry, if needed.
+fn add_private_module_rename(
+    renames: &mut HashMap<String, String>,
+    original: &str,
+    module_key: &str,
+) {
+    renames.insert(original.to_string(), private_module_name(module_key, original));
+}
+
+/// Reports a module import cycle if one is present.
+fn import_cycle_error(stack: &[PathBuf], canonical: &PathBuf) -> Option<Error> {
+    let index = stack.iter().position(|entry| entry == canonical)?;
+    let mut cycle = stack[index..]
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+    cycle.push(canonical.display().to_string());
+    Some(Error::new(format!(
+        "module import cycle: {}",
+        cycle.join(" -> ")
+    )))
 }
 
 /// Performs `private_module_name` behavior.

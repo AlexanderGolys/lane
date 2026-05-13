@@ -441,9 +441,7 @@ fn infer_value_expr_for_type(
             Ok(value)
         }
         (_, Expr::Ident(name)) if lift_param.is_some() && env.get_value(name).is_none() => {
-            let param_name = lift_param
-                .expect("validated lift parameter presence")
-                .to_string();
+            let param_name = lift_param_name(lift_param, name)?;
             let func = infer_function_expr_for_type(expr, env, &Type::Float, expected_ty)?;
             Ok(apply_function_expr(
                 &func,
@@ -460,9 +458,12 @@ fn infer_value_expr_for_type(
                 op: BinOp::Compose, ..
             },
         ) if lift_param.is_some() => {
-            let param_name = lift_param
-                .expect("validated lift parameter presence")
-                .to_string();
+            let Some(param_name) = lift_param else {
+                return Err(Error::new(
+                    "anonymous composed expression requires a lift parameter".to_string(),
+                ));
+            };
+            let param_name = param_name.to_string();
             let func = infer_function_expr_for_type(expr, env, &Type::Float, expected_ty)?;
             Ok(apply_function_expr(
                 &func,
@@ -479,9 +480,12 @@ fn infer_value_expr_for_type(
                 op: BinOp::Product, ..
             },
         ) if lift_param.is_some() => {
-            let param_name = lift_param
-                .expect("validated lift parameter presence")
-                .to_string();
+            let Some(param_name) = lift_param else {
+                return Err(Error::new(
+                    "vector product lift requires a lift parameter".to_string(),
+                ));
+            };
+            let param_name = param_name.to_string();
             let func = infer_function_expr(expr, env)?;
             ensure_type(&func.output, expected_ty, "function product")?;
             Ok(apply_function_expr(

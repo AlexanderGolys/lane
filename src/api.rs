@@ -5,17 +5,12 @@ use super::*;
 
 /// Compiles source text as Lane using the current working directory as import base.
 pub fn compile_program(source: &str) -> Result<String, Error> {
-    compile_program_with_base_dir(
-        source,
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    )
+    compile_program_with_base_dir(source, current_directory())
 }
 
 /// Reads a source file path from disk and compiles the contained Lane source.
 pub fn compile_program_from_path(path: impl AsRef<Path>) -> Result<String, Error> {
-    let path = path.as_ref();
-    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let (source, base_dir) = load_source_file(path.as_ref())?;
     compile_program_with_base_dir(&source, base_dir)
 }
 
@@ -27,6 +22,16 @@ pub fn compile_program_with_base_dir(
     compile_program_with_base(source, base_dir.as_ref())
 }
 
+fn current_directory() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn load_source_file(path: &Path) -> Result<(String, PathBuf), Error> {
+    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
+    Ok((source, base_dir))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProgramInfo {
     pub loaded_modules: Vec<String>,
@@ -36,10 +41,7 @@ pub struct ProgramInfo {
 
 /// Collects module and directive metadata for a source snippet.
 pub fn program_info(source: &str) -> Result<ProgramInfo, Error> {
-    program_info_with_base_dir(
-        source,
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    )
+    program_info_with_base_dir(source, current_directory())
 }
 
 /// Collects metadata for a source snippet using an explicit base path.
@@ -359,26 +361,22 @@ fn format_type_product_separators(source: &str) -> String {
 
 /// Performs `find_top_level_equal` behavior.
 fn find_top_level_equal(source: &str) -> Option<usize> {
-    let mut depth = 0usize;
-    for (index, ch) in source.char_indices() {
-        match ch {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth = depth.saturating_sub(1),
-            '=' if depth == 0 => return Some(index),
-            _ => {}
-        }
-    }
-    None
+    find_top_level_delimiter(source, '=')
 }
 
 /// Performs `find_top_level_colon` behavior.
 fn find_top_level_colon(source: &str) -> Option<usize> {
+    find_top_level_delimiter(source, ':')
+}
+
+/// Finds a top-level delimiter outside of parenthesized/bracketed groups.
+fn find_top_level_delimiter(source: &str, delimiter: char) -> Option<usize> {
     let mut depth = 0usize;
     for (index, ch) in source.char_indices() {
         match ch {
             '(' | '[' => depth += 1,
             ')' | ']' => depth = depth.saturating_sub(1),
-            ':' if depth == 0 => return Some(index),
+            ch if ch == delimiter && depth == 0 => return Some(index),
             _ => {}
         }
     }
@@ -418,23 +416,19 @@ pub fn compile_preview_fragment_from_path(
     path: impl AsRef<Path>,
     version: &str,
 ) -> Result<String, Error> {
-    let path = path.as_ref();
-    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    compile_preview_fragment(&source, base_dir, version, PreviewShaderTarget::OpenGl)
+    let (source, base_dir) = load_source_file(path.as_ref())?;
+    compile_preview_fragment(&source, &base_dir, version, PreviewShaderTarget::OpenGl)
 }
 
 /// Loads a file and compiles the Vulkan preview fragment shader.
 pub fn compile_vulkan_preview_fragment_from_path(path: impl AsRef<Path>) -> Result<String, Error> {
-    let path = path.as_ref();
-    let source = fs::read_to_string(path).map_err(|err| Error::new(err.to_string()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    compile_preview_fragment(&source, base_dir, "450", PreviewShaderTarget::Vulkan)
+    let (source, base_dir) = load_source_file(path.as_ref())?;
+    compile_preview_fragment(&source, &base_dir, "450", PreviewShaderTarget::Vulkan)
 }
 
 /// Compiles source as a Vulkan preview fragment shader using default version 450.
 pub fn compile_vulkan_preview_fragment(source: &str) -> Result<String, Error> {
-    let base_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let base_dir = current_directory();
     compile_preview_fragment(source, &base_dir, "450", PreviewShaderTarget::Vulkan)
 }
 
@@ -709,29 +703,38 @@ fn reject_preview_provided_functions(program: &Program) -> Result<(), Error> {
 
 /// Produces preview uniform declarations for OpenGL or Vulkan emission.
 fn preview_uniforms(program: &Program, target: PreviewShaderTarget) -> String {
-    let uniforms = program
-        .inputs
-        .iter()
-        .filter(|input| !matches!(input.ty, Type::Object | Type::Object2D))
-        .map(|input| format!("    {} {};", input.ty.glsl_name(), input.name))
-        .collect::<Vec<_>>();
+    let uniform_names = preview_uniform_names(program);
     match target {
-        PreviewShaderTarget::OpenGl => uniforms
-            .into_iter()
-            .map(|uniform| format!("uniform {};", uniform.trim_end_matches(';').trim()))
+        PreviewShaderTarget::OpenGl => uniform_names
+            .iter()
+            .map(|uniform| format!("uniform {};", uniform))
             .collect::<Vec<_>>()
             .join("\n"),
         PreviewShaderTarget::Vulkan => {
-            if uniforms.is_empty() {
+            if uniform_names.is_empty() {
                 String::new()
             } else {
                 format!(
                     "layout(std140, push_constant) uniform PreviewUniforms {{\n{}\n}};",
-                    uniforms.join("\n")
+                    uniform_names
+                        .iter()
+                        .map(|uniform| format!("    {uniform};"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 )
             }
         }
     }
+}
+
+/// Collects uniform declarations (without trailing semicolon).
+fn preview_uniform_names(program: &Program) -> Vec<String> {
+    program
+        .inputs
+        .iter()
+        .filter(|input| !matches!(input.ty, Type::Object | Type::Object2D))
+        .map(|input| format!("{} {}", input.ty.glsl_name(), input.name))
+        .collect()
 }
 
 /// Emits a GLSL version directive normalized for ES vs non-ES forms.

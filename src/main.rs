@@ -594,31 +594,29 @@ fn highlight_builtin_object_name(name: &str, kind: lane::KnownBuiltinObjectKind)
 /// Highlights lane type signatures for display in terminal output.
 fn highlight_lane_signature(source: &str) -> String {
     let mut out = String::new();
-    let bytes = source.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        let ch = source[i..].chars().next().unwrap();
+    let mut chars = source.char_indices().peekable();
+
+    while let Some((start, ch)) = chars.next() {
         if ch.is_ascii_alphabetic() {
-            let start = i;
-            i += 1;
-            while i < bytes.len() {
-                let next = bytes[i] as char;
+            let mut end = start + ch.len_utf8();
+            while let Some((next_start, next)) = chars.peek().copied() {
                 if next.is_ascii_alphanumeric() {
-                    i += 1;
+                    chars.next();
+                    end = next_start + next.len_utf8();
                 } else {
                     break;
                 }
             }
-            out.push_str(&highlight_lane_ident(&source[start..i]));
+            out.push_str(&highlight_lane_ident(&source[start..end]));
             continue;
         }
+
+        let end = start + ch.len_utf8();
         match ch {
-            '(' | ')' => out.push_str(&color("97", &source[i..i + 1])),
-            ',' => out.push_str(&color("97", &source[i..i + 1])),
+            '(' | ')' | ',' => out.push_str(&color("97", &source[start..end])),
             '×' => out.push_str(&color("35", "×")),
             _ => out.push(ch),
         }
-        i += ch.len_utf8();
     }
     out
 }

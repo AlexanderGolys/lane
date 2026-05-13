@@ -328,12 +328,12 @@ fn infer_object_call(expr: &Expr, env: &Env<'_>) -> Result<ObjectExpr, Error> {
             &object_args,
         ))
     } else {
-        Ok(ObjectExpr::RegisteredOp {
-            name: op.name.to_string(),
-            glsl_name: op.glsl_name.to_string(),
+        Ok(registered_object_expr(
+            op.name,
+            op.glsl_name,
             value_args,
             object_args,
-        })
+        ))
     }
 }
 
@@ -371,12 +371,21 @@ fn infer_rotation_object_call(
         .collect::<Result<Vec<_>, _>>()?;
     ensure_object_op_arg_dimensions(op, &object_args, env)?;
 
-    Ok(ObjectExpr::RegisteredOp {
-        name: op.name.to_string(),
-        glsl_name: op.glsl_name.to_string(),
+    Ok(registered_object_expr(op.name, op.glsl_name, value_args, object_args))
+}
+
+fn registered_object_expr(
+    name: &str,
+    glsl_name: &str,
+    value_args: Vec<ValueExpr>,
+    object_args: Vec<ObjectExpr>,
+) -> ObjectExpr {
+    ObjectExpr::RegisteredOp {
+        name: name.to_string(),
+        glsl_name: glsl_name.to_string(),
         value_args,
         object_args,
-    })
+    }
 }
 
 /// Type-checks helper logic for ensure_object_op_arg_dimensions.
@@ -473,30 +482,30 @@ fn fold_associative_registered_op(
 ) -> ObjectExpr {
     debug_assert!(object_args.len() >= 2);
     if object_args.len() == 2 {
-        return ObjectExpr::RegisteredOp {
-            name: name.to_string(),
-            glsl_name: glsl_name.to_string(),
-            value_args: value_args.to_vec(),
-            object_args: object_args.to_vec(),
-        };
+        return registered_object_expr(
+            name,
+            glsl_name,
+            value_args.to_vec(),
+            object_args.to_vec(),
+        );
     }
     if object_args.len() == 3 {
         let right = fold_associative_registered_op(name, glsl_name, value_args, &object_args[1..]);
-        return ObjectExpr::RegisteredOp {
-            name: name.to_string(),
-            glsl_name: glsl_name.to_string(),
-            value_args: value_args.to_vec(),
-            object_args: vec![object_args[0].clone(), right],
-        };
+        return registered_object_expr(
+            name,
+            glsl_name,
+            value_args.to_vec(),
+            vec![object_args[0].clone(), right],
+        );
     }
 
     let split = object_args.len() / 2;
     let left = fold_associative_registered_op(name, glsl_name, value_args, &object_args[..split]);
     let right = fold_associative_registered_op(name, glsl_name, value_args, &object_args[split..]);
-    ObjectExpr::RegisteredOp {
-        name: name.to_string(),
-        glsl_name: glsl_name.to_string(),
-        value_args: value_args.to_vec(),
-        object_args: vec![left, right],
-    }
+    registered_object_expr(
+        name,
+        glsl_name,
+        value_args.to_vec(),
+        vec![left, right],
+    )
 }

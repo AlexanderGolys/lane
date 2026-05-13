@@ -819,10 +819,12 @@ impl Registry {
         value_func_names.sort_unstable();
         value_func_names.dedup();
         for name in value_func_names {
-            let ty = if let Some(func) = self.value_funcs.get(name).filter(|func| func.listed) {
-                format_object_type(&func.ty)
-            } else {
-                listed_builtin_value_func_overloads(name).unwrap()
+            let Some(ty) = listed_builtin_function_signature(name, &self.value_funcs) else {
+                debug_assert!(
+                    false,
+                    "known_builtin_objects expected function signature for '{name}'"
+                );
+                continue;
             };
             objects.push(KnownBuiltinObject {
                 name: name.to_string(),
@@ -889,7 +891,7 @@ impl Registry {
             }
         }
 
-        if let Some(overloads) = listed_builtin_value_func_overloads(name) {
+        if let Some(overloads) = listed_builtin_function_signature(name, &self.value_funcs) {
             return Some(KnownBuiltinObjectDetail {
                 name: name.to_string(),
                 ty: overloads,
@@ -935,27 +937,48 @@ impl Registry {
             .collect();
         value_func_names.sort_unstable();
         for name in value_func_names {
+            let Some(body) = self.value_funcs.get(name).and_then(|func| func.support_glsl) else {
+                debug_assert!(
+                    false,
+                    "preregistered_objects expected GLSL support for value function '{name}'"
+                );
+                continue;
+            };
             objects.push(PreregisteredObject {
                 name: name.to_string(),
                 kind: PreregisteredObjectKind::Function,
-                body: suffix_glsl_float_literals(self.value_funcs[name].support_glsl.unwrap()),
+                body: suffix_glsl_float_literals(body),
             });
         }
 
         for name in COMPLEX_OVERLOAD_NAMES {
-            objects.push(PreregisteredObject {
-                name: name.to_string(),
-                kind: PreregisteredObjectKind::Function,
-                body: suffix_glsl_float_literals(complex_overload_support_glsl(name).unwrap()),
-            });
+            if let Some(body) = complex_overload_support_glsl(name) {
+                objects.push(PreregisteredObject {
+                    name: name.to_string(),
+                    kind: PreregisteredObjectKind::Function,
+                    body: suffix_glsl_float_literals(body),
+                });
+            } else {
+                debug_assert!(
+                    false,
+                    "preregistered_objects expected complex overload support for '{name}'"
+                );
+            }
         }
 
         for name in ["C", "H", "Isom2", "Isom3"] {
-            objects.push(PreregisteredObject {
-                name: name.to_string(),
-                kind: PreregisteredObjectKind::Type,
-                body: suffix_glsl_float_literals(builtin_type_support_glsl(name).unwrap()),
-            });
+            if let Some(body) = builtin_type_support_glsl(name) {
+                objects.push(PreregisteredObject {
+                    name: name.to_string(),
+                    kind: PreregisteredObjectKind::Type,
+                    body: suffix_glsl_float_literals(body),
+                });
+            } else {
+                debug_assert!(
+                    false,
+                    "preregistered_objects expected builtin type support for '{name}'"
+                );
+            }
         }
 
         objects.sort_by(|left, right| left.kind.cmp(&right.kind).then(left.name.cmp(&right.name)));
@@ -968,6 +991,16 @@ impl Registry {
             .into_iter()
             .find(|object| object.name == name)
     }
+}
+
+fn listed_builtin_function_signature(
+    name: &str,
+    value_funcs: &HashMap<&'static str, ValueFuncDef>,
+) -> Option<String> {
+    if let Some(func) = value_funcs.get(name).filter(|func| func.listed) {
+        return Some(format_object_type(&func.ty));
+    }
+    listed_builtin_value_func_overloads(name)
 }
 
 /// Infers whether a built-in name is 2D or 3D from its suffix.

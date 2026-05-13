@@ -59,7 +59,7 @@ impl TypedProgram {
                         .funcs
                         .iter()
                         .find(|func| func.name == name)
-                        .expect("ordered emitted function exists");
+                        .unwrap_or_else(|| panic!("ordered emitted function '{name}' was not collected"));
                     lines.extend(self.emit_func(func, &helper_names, &locals));
                 }
                 EmitItem::Object(name) => {
@@ -67,7 +67,9 @@ impl TypedProgram {
                         .bindings
                         .iter()
                         .find(|binding| binding.name == name)
-                        .expect("ordered emitted object exists");
+                        .unwrap_or_else(|| {
+                            panic!("ordered emitted object binding '{name}' was not collected")
+                        });
                     lines.extend(self.emit_generated_binding(
                         binding,
                         &object_bindings,
@@ -285,8 +287,12 @@ impl TypedProgram {
                 ));
                 lines.join("\n")
             }
-            TypedFuncBody::RawGlsl(_) => unreachable!(),
-            TypedFuncBody::RawGlslTemplate => unreachable!(),
+            TypedFuncBody::RawGlsl(_) => {
+                panic!("plain GLSL function bodies are emitted separately from typed function emission")
+            }
+            TypedFuncBody::RawGlslTemplate => {
+                panic!("raw GLSL templates are emitted separately from typed function emission")
+            }
         };
         vec![
             format!(
@@ -1597,7 +1603,7 @@ fn emit_component_neutral(op: ProductOp, ty: &Type) -> String {
             _ => emit_neutral_value(NeutralKind::Identity, ty),
         },
         ProductOp::Add | ProductOp::Sub | ProductOp::Mult | ProductOp::Inv | ProductOp::Scale => {
-            unreachable!()
+            panic!("emit_component_neutral does not support {op:?} for {ty:?}")
         }
     }
 }
@@ -1619,7 +1625,7 @@ fn emit_component_binary(op: ProductOp, ty: &Type, left: &str, right: &str) -> S
         (ProductOp::Add | ProductOp::Sub | ProductOp::Mult, _) => {
             format!("({} {} {})", left, product_binary_symbol(op), right)
         }
-        _ => unreachable!(),
+        _ => panic!("unsupported component-binary operation {op:?} for type {ty:?}"),
     }
 }
 
@@ -1640,7 +1646,7 @@ fn emit_component_unary(op: ProductOp, ty: &Type, value: &str) -> String {
         (ProductOp::Inv, Type::Isom2) => format!("inv_Isom2({value})"),
         (ProductOp::Inv, Type::Isom3) => format!("inv_Isom3({value})"),
         (ProductOp::Inv, Type::Custom { name, .. }) => format!("inv_{name}({value})"),
-        _ => unreachable!(),
+        _ => panic!("unsupported component-unary operation {op:?} for type {ty:?}"),
     }
 }
 
@@ -1658,7 +1664,7 @@ fn product_binary_symbol(op: ProductOp) -> &'static str {
         ProductOp::Add => "+",
         ProductOp::Sub => "-",
         ProductOp::Mult => "*",
-        _ => unreachable!(),
+        _ => panic!("unsupported product operator {op:?}"),
     }
 }
 
@@ -2808,7 +2814,7 @@ fn emit_value_expr(
             match ty {
                 Type::Float => format!("({value} ? 1.0 : 0.0)"),
                 Type::Int => format!("({value} ? 1 : 0)"),
-                _ => unreachable!(),
+                _ => panic!("invalid bool cast target type {ty:?}"),
             }
         }
         ValueExpr::Conditional {
@@ -2873,12 +2879,20 @@ fn emit_value_expr(
             element_ty: _,
             left,
             right,
-        } => format!(
-            "{}({}, {})",
-            concat_helper_name(&ConcatHelper::from_expr(expr).unwrap()),
-            emit_value_expr(left, helper_names, value_names),
-            emit_value_expr(right, helper_names, value_names)
-        ),
+        } => {
+            let helper = ConcatHelper::from_expr(expr).unwrap_or_else(|| {
+                panic!(
+                    "concat expression is missing required vector-length metadata for {:?}",
+                    left.ty()
+                )
+            });
+            format!(
+                "{}({}, {})",
+                concat_helper_name(&helper),
+                emit_value_expr(left, helper_names, value_names),
+                emit_value_expr(right, helper_names, value_names)
+            )
+        }
         ValueExpr::Binary {
             op, left, right, ..
         } => {
@@ -2908,7 +2922,7 @@ fn emit_value_expr(
             emit_value_expr(z, helper_names, value_names),
             emit_value_expr(w, helper_names, value_names)
         ),
-        ValueExpr::Product(_) => unreachable!("structural product values are not emitted directly"),
+        ValueExpr::Product(_) => panic!("structural product values are emitted via product decomposition"),
         ValueExpr::Matrix { columns, rows } => {
             emit_matrix(rows, *columns, helper_names, value_names)
         }
@@ -3020,7 +3034,7 @@ fn emit_matrix(
 /// Performs `emit_matrix_basis` behavior.
 fn emit_matrix_basis(row: usize, column: usize, ty: &Type) -> String {
     let Type::Mat(rows, columns) = ty else {
-        unreachable!("matrix basis literal has non-matrix type")
+        panic!("matrix basis literal has non-matrix type: {ty:?}")
     };
     let values = (0..*columns)
         .flat_map(|current_column| {
@@ -3158,7 +3172,7 @@ fn bool_numeric_cast_type_for_emit(other: &Type) -> Option<Type> {
 /// Performs `emit_custom_binary_expr` behavior.
 fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> String {
     let Type::Custom { name, .. } = ty else {
-        unreachable!();
+        panic!("custom binary expression requires custom type, got {ty:?}")
     };
     match op {
         BinOp::Add => format!("add_{}({}, {})", name, left, right),
@@ -3172,14 +3186,14 @@ fn emit_custom_binary_expr(op: BinOp, ty: &Type, left: &str, right: &str) -> Str
         | BinOp::Gt
         | BinOp::Ge
         | BinOp::Product
-        | BinOp::Compose => unreachable!(),
+        | BinOp::Compose => panic!("custom binary expression does not support {op:?}"),
     }
 }
 
 /// Performs `emit_custom_scale_expr` behavior.
 fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> String {
     let Type::Custom { name, .. } = ty else {
-        unreachable!();
+        panic!("custom scale expression requires custom type, got {ty:?}")
     };
     match op {
         BinOp::Mul => format!("scale_{}({}, {})", name, value, scalar),
@@ -3193,7 +3207,7 @@ fn emit_custom_scale_expr(op: BinOp, ty: &Type, value: &str, scalar: &str) -> St
         | BinOp::Gt
         | BinOp::Ge
         | BinOp::Product
-        | BinOp::Compose => unreachable!(),
+        | BinOp::Compose => panic!("custom scale expression does not support {op:?}"),
     }
 }
 
@@ -3233,7 +3247,7 @@ fn emit_neutral_value(kind: NeutralKind, ty: &Type) -> String {
             NeutralKind::One => format!("one_{name}"),
             NeutralKind::Identity => format!("e_{name}"),
         },
-        _ => unreachable!("unsupported neutral literal"),
+        _ => panic!("unsupported neutral literal {kind:?} for type {ty:?}"),
     }
 }
 
@@ -3372,7 +3386,7 @@ fn emit_sdf_partial_derivative(
         (ShapeDimension::D3, 0) => format!("vec3({}, 0.0, 0.0)", epsilon_name),
         (ShapeDimension::D3, 1) => format!("vec3(0.0, {}, 0.0)", epsilon_name),
         (ShapeDimension::D3, 2) => format!("vec3(0.0, 0.0, {})", epsilon_name),
-        _ => unreachable!(),
+        _ => panic!("unsupported axis {axis} for dimension {dimension:?}"),
     };
     let forward = emit_sdf_call(
         function_name,
@@ -3442,8 +3456,18 @@ fn emit_derivative(
     helper_names: &HashMap<String, String>,
     value_names: &HashMap<String, String>,
 ) -> String {
-    let input_dim = derivative_emit_dimension(&func.input).unwrap();
-    let output_dim = derivative_emit_dimension(&func.output).unwrap();
+    let input_dim = derivative_emit_dimension(&func.input).unwrap_or_else(|| {
+        panic!(
+            "cannot emit derivative for non-vector input type in function '{}'",
+            function_signature(func)
+        )
+    });
+    let output_dim = derivative_emit_dimension(&func.output).unwrap_or_else(|| {
+        panic!(
+            "cannot emit derivative for non-vector output type in function '{}'",
+            function_signature(func)
+        )
+    });
     if input_dim == 1 {
         return emit_axis_derivative(0, func, epsilon, at, helper_names, value_names);
     }
@@ -3510,7 +3534,7 @@ fn vector_constructor(dimension: usize) -> &'static str {
         2 => "vec2",
         3 => "vec3",
         4 => "vec4",
-        _ => unreachable!(),
+        _ => panic!("vector constructor expected 2/3/4 dimensions, got {dimension}"),
     }
 }
 
@@ -3570,7 +3594,7 @@ fn emit_axis_offset(base: ValueExpr, epsilon: ValueExpr, axis: usize, op: BinOp)
                 ValueExpr::Float(0.0)
             }),
         ),
-        _ => unreachable!(),
+        _ => panic!("axis offset only supports float/vec2/vec3/vec4, got {ty:?}"),
     };
     ValueExpr::Binary {
         op,
@@ -3588,7 +3612,12 @@ fn emit_divergence(
     helper_names: &HashMap<String, String>,
     value_names: &HashMap<String, String>,
 ) -> String {
-    let dimension = derivative_emit_dimension(&func.input).unwrap();
+    let dimension = derivative_emit_dimension(&func.input).unwrap_or_else(|| {
+        panic!(
+            "cannot emit divergence for non-vector input type in function '{}'",
+            function_signature(func)
+        )
+    });
     let twice = ValueExpr::Binary {
         op: BinOp::Mul,
         left: Box::new(ValueExpr::Float(2.0)),
@@ -3661,7 +3690,9 @@ fn emit_object_expr(
                     .iter()
                     .map(|(_, expr)| match expr {
                         PrimitiveArgExpr::Value(expr) => emit_plain_value_expr(expr, helper_names),
-                        PrimitiveArgExpr::Vec2List(_) => unreachable!(),
+                        PrimitiveArgExpr::Vec2List(_) => {
+                            panic!("unexpected Vec2List inside param struct object field rendering")
+                        }
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -3684,7 +3715,9 @@ fn emit_object_expr(
                         ("points", PrimitiveArgExpr::Vec2List(vertices)) => Some(vertices),
                         _ => None,
                     })
-                    .unwrap();
+                    .unwrap_or_else(|| {
+                        panic!("polygon primitive '{name}' requires a 'points' field")
+                    });
                 format!(
                     "sdf0_Polygon2D({}, {}, {})",
                     primitive_2d_point_arg(point_expr, ambient_dimension),
@@ -3878,7 +3911,23 @@ fn primitive_value_field<'a>(
             (candidate, PrimitiveArgExpr::Value(expr)) if candidate == name => Some(expr),
             _ => None,
         })
-        .unwrap()
+        .unwrap_or_else(|| {
+            let available_fields = fields
+                .iter()
+                .map(|(field_name, _)| field_name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            panic!(
+                "primitive field '{name}' not found; available fields: [{available_fields}]"
+            )
+        })
+}
+
+fn function_signature(func: &FunctionExpr) -> String {
+    match &func.kind {
+        FunctionExprKind::Named(name) => name.clone(),
+        kind => format!("expr:{kind:?}"),
+    }
 }
 
 /// Performs `emit_polygon_vertices` behavior.

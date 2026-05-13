@@ -8,16 +8,19 @@ fn is_word_char(ch: char) -> bool {
 /// Converts an LSP position into a byte offset in UTF-8 source text.
 pub(crate) fn byte_offset_for_position(text: &str, position: Position) -> Option<usize> {
     let mut offset = 0;
-    for (line_index, line) in text.split_inclusive('\n').enumerate() {
+    let target_line = position.line as usize;
+    let mut line_count = 0usize;
+    for (line_no, line) in text.split_inclusive('\n').enumerate() {
         let line_text = line.strip_suffix('\n').unwrap_or(line);
-        if line_index == position.line as usize {
+        if line_no == target_line {
             return Some(
                 offset + byte_offset_for_character(line_text, position.character as usize),
             );
         }
         offset += line.len();
+        line_count = line_no.saturating_add(1);
     }
-    if position.line as usize == text.lines().count() {
+    if target_line == line_count {
         return Some(text.len());
     }
     None
@@ -33,6 +36,22 @@ fn byte_offset_for_character(line: &str, character: usize) -> usize {
         utf16_units += ch.len_utf16();
     }
     line.len()
+}
+
+/// Converts a byte offset to an LSP position using precomputed line starts.
+pub(crate) fn byte_to_position(
+    source: &str,
+    line_start_bytes: &[usize],
+    byte: usize,
+) -> Position {
+    let line = match line_start_bytes.binary_search(&byte) {
+        Ok(line) => line,
+        Err(next_line) => next_line.saturating_sub(1),
+    };
+    let line_start = line_start_bytes.get(line).copied().unwrap_or(0);
+    let byte = byte.min(source.len());
+    let character = source[line_start..byte].chars().map(char::len_utf16).sum::<usize>();
+    Position::new(line as u32, character as u32)
 }
 
 /// Returns the identifier token under the cursor, if any.

@@ -34,37 +34,17 @@ fn infer_function_expr_for_type(
         return infer_operator_function_expr_for_type(*op, expected_input, expected_output);
     }
     if let Expr::Array(items) = expr {
-        if let Some(count) = vector_dimension(expected_output) {
-            if count == items.len() {
-                let funcs = items
-                    .iter()
-                    .map(|item| {
-                        infer_function_expr_for_type(item, env, expected_input, &Type::Float)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                return Ok(FunctionExpr {
-                    input: expected_input.clone(),
-                    output: expected_output.clone(),
-                    kind: FunctionExprKind::ProductSameDomain(funcs),
-                });
-            }
+        if let Some(function) =
+            infer_same_domain_scalar_function_product(items, expected_input, expected_output, env)?
+        {
+            return Ok(function);
         }
     }
     if let Expr::Tuple(items) = expr {
-        if let Some(count) = vector_dimension(expected_output) {
-            if count == items.len() {
-                let funcs = items
-                    .iter()
-                    .map(|item| {
-                        infer_function_expr_for_type(item, env, expected_input, &Type::Float)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                return Ok(FunctionExpr {
-                    input: expected_input.clone(),
-                    output: expected_output.clone(),
-                    kind: FunctionExprKind::ProductSameDomain(funcs),
-                });
-            }
+        if let Some(function) =
+            infer_same_domain_scalar_function_product(items, expected_input, expected_output, env)?
+        {
+            return Ok(function);
         }
     }
     if let Expr::Binary {
@@ -105,6 +85,29 @@ fn infer_function_expr_for_type(
         "ambiguous function expression {}",
         format_function_expr(expr)
     )))
+}
+
+fn infer_same_domain_scalar_function_product(
+    items: &[Expr],
+    expected_input: &Type,
+    expected_output: &Type,
+    env: &Env<'_>,
+) -> Result<Option<FunctionExpr>, Error> {
+    let Some(count) = vector_dimension(expected_output) else {
+        return Ok(None);
+    };
+    if count != items.len() {
+        return Ok(None);
+    }
+    let funcs = items
+        .iter()
+        .map(|item| infer_function_expr_for_type(item, env, expected_input, &Type::Float))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(FunctionExpr {
+        input: expected_input.clone(),
+        output: expected_output.clone(),
+        kind: FunctionExprKind::ProductSameDomain(funcs),
+    }))
 }
 
 /// Type-checks helper logic for infer_projection_function_for_type.

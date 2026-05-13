@@ -17,21 +17,7 @@ fn import_link_for_line(line: &str, line_index: usize, base_dir: &Path) -> Optio
     if !line[..directive_start].trim().is_empty() {
         return None;
     }
-
-    let rest_start = directive_start + "#import".len();
-    let path_start_offset = line[rest_start..].find(|ch: char| !ch.is_whitespace())?;
-    let mut path_start = rest_start + path_start_offset;
-    let mut path_end = line[path_start..]
-        .find(|ch: char| ch.is_whitespace())
-        .map(|offset| path_start + offset)
-        .unwrap_or(line.len());
-
-    if line[path_start..].starts_with('"') {
-        path_start += 1;
-        let quoted_end = line[path_start..].find('"')?;
-        path_end = path_start + quoted_end;
-    }
-
+    let (path_start, path_end) = import_path_span(line, directive_start)?;
     let import_path = line[path_start..path_end].trim();
     if import_path.is_empty() {
         return None;
@@ -49,4 +35,22 @@ fn import_link_for_line(line: &str, line_index: usize, base_dir: &Path) -> Optio
         tooltip: Some(format!("Open Lane module {import_path}")),
         data: None,
     })
+}
+
+/// Locates the span of an import path in one `#import` directive line.
+fn import_path_span(line: &str, directive_start: usize) -> Option<(usize, usize)> {
+    let rest_start = directive_start + "#import".len();
+    let path_start_offset = line[rest_start..].find(|ch: char| !ch.is_whitespace())?;
+    let mut path_start = rest_start + path_start_offset;
+    let mut path_end = line[path_start..]
+        .find(|ch: char| ch.is_whitespace())
+        .map(|offset| path_start + offset)
+        .unwrap_or(line.len());
+
+    if line[path_start..].starts_with('"') {
+        path_start += 1;
+        let quoted_end = line[path_start..].find('"')?;
+        path_end = path_start + quoted_end;
+    }
+    Some((path_start, path_end))
 }

@@ -134,15 +134,7 @@ impl<'a> Parser<'a> {
                 }
                 for provided_type in provided_types {
                     ensure_public_decl_name(&provided_type.name, "provided type", line_number)?;
-                    if is_known_type_name(&provided_type.name)
-                        || is_known_category_name(&provided_type.name)
-                    {
-                        return Err(Error::new(format!(
-                            "'{}' cannot be used as a provided type name",
-                            provided_type.name
-                        ))
-                        .with_line(line_number));
-                    }
+                    ensure_user_decl_name(&provided_type.name, "provided type", line_number)?;
                     if custom_types
                         .insert(provided_type.name.clone(), provided_type.category)
                         .is_some()
@@ -175,15 +167,7 @@ impl<'a> Parser<'a> {
                         );
                     }
                     ensure_public_decl_name(&provided_type.name, "provided type", line_number)?;
-                    if is_known_type_name(&provided_type.name)
-                        || is_known_category_name(&provided_type.name)
-                    {
-                        return Err(Error::new(format!(
-                            "'{}' cannot be used as a provided type name",
-                            provided_type.name
-                        ))
-                        .with_line(line_number));
-                    }
+                    ensure_user_decl_name(&provided_type.name, "provided type", line_number)?;
                     if custom_types
                         .insert(provided_type.name.clone(), provided_type.category)
                         .is_some()
@@ -203,15 +187,7 @@ impl<'a> Parser<'a> {
                         );
                     }
                     ensure_public_decl_name(&product_type.name, "product type", line_number)?;
-                    if is_known_type_name(&product_type.name)
-                        || is_known_category_name(&product_type.name)
-                    {
-                        return Err(Error::new(format!(
-                            "'{}' cannot be used as a product type name",
-                            product_type.name
-                        ))
-                        .with_line(line_number));
-                    }
+                    ensure_user_decl_name(&product_type.name, "product type", line_number)?;
                     let existing =
                         custom_types.insert(product_type.name.clone(), product_type.category);
                     if existing.is_some_and(|category| category != AlgebraicCategory::Set) {
@@ -225,15 +201,7 @@ impl<'a> Parser<'a> {
                 }
                 Decl::CategoryType(category_type) => {
                     ensure_public_decl_name(&category_type.name, "category type", line_number)?;
-                    if is_known_type_name(&category_type.name)
-                        || is_known_category_name(&category_type.name)
-                    {
-                        return Err(Error::new(format!(
-                            "'{}' cannot be used as a category type name",
-                            category_type.name
-                        ))
-                        .with_line(line_number));
-                    }
+                    ensure_user_decl_name(&category_type.name, "category type", line_number)?;
                     let existing =
                         custom_types.insert(category_type.name.clone(), category_type.category);
                     if existing.is_some_and(|category| {
@@ -467,6 +435,18 @@ fn collect_raw_glsl_closure(
 fn ensure_public_decl_name(name: &str, kind: &str, line: usize) -> Result<(), Error> {
     if name.starts_with('_') {
         Err(Error::new(format!("{kind} names cannot start with '_'")).with_line(line))
+    } else {
+        Ok(())
+    }
+}
+
+/// Rejects declaration names that would collide with built-in names.
+fn ensure_user_decl_name(name: &str, kind: &str, line: usize) -> Result<(), Error> {
+    if is_known_type_name(name) || is_known_category_name(name) {
+        Err(Error::new(format!(
+            "'{name}' cannot be used as a {kind} name",
+        ))
+        .with_line(line))
     } else {
         Ok(())
     }
@@ -753,34 +733,16 @@ fn parse_multi_input_decls(
     custom_types: &HashMap<String, AlgebraicCategory>,
     ambient_dimension: ShapeDimension,
 ) -> Result<Option<Vec<InputDecl>>, Error> {
-    let Some(rest) = line.strip_prefix("provided ") else {
+    let Some((ty_source, names_source)) = parse_provided_multi_names(line) else {
         return Ok(None);
     };
-    if rest.contains('=') {
-        return Ok(None);
-    }
-
-    let rest = rest.trim();
-    let Some(first_comma) = find_top_level_comma(rest) else {
-        return Ok(None);
-    };
-    let Some(split_index) = rest[..first_comma].rfind(' ') else {
-        return Err(Error::new("expected '<type> <name>'"));
-    };
-    let ty_source = rest[..split_index].trim();
-    let names_source = rest[split_index + 1..].trim();
     if category_by_name(ty_source).is_some() {
         return Ok(None);
     }
 
     let ty = parse_type_with_custom_types_for_ambient(ty_source, custom_types, ambient_dimension)?;
     let mut inputs = Vec::new();
-    for name in names_source.split(',').map(str::trim) {
-        if name.is_empty() {
-            return Err(Error::new(
-                "expected a name after ',' in provided declaration",
-            ));
-        }
+    for name in parse_comma_names(names_source)? {
         inputs.push(InputDecl {
             name: name.to_string(),
             ty: ty.clone(),
@@ -792,33 +754,15 @@ fn parse_multi_input_decls(
 
 /// Performs `parse_multi_provided_type_decls` behavior.
 fn parse_multi_provided_type_decls(line: &str) -> Result<Option<Vec<ProvidedTypeDecl>>, Error> {
-    let Some(rest) = line.strip_prefix("provided ") else {
+    let Some((category_source, names_source)) = parse_provided_multi_names(line) else {
         return Ok(None);
     };
-    if rest.contains('=') {
-        return Ok(None);
-    }
-
-    let rest = rest.trim();
-    let Some(first_comma) = find_top_level_comma(rest) else {
-        return Ok(None);
-    };
-    let Some(split_index) = rest[..first_comma].rfind(' ') else {
-        return Err(Error::new("expected '<category> <name>'"));
-    };
-    let category_source = rest[..split_index].trim();
     let Some(category) = category_by_name(category_source) else {
         return Ok(None);
     };
-    let names_source = rest[split_index + 1..].trim();
 
     let mut types = Vec::new();
-    for name in names_source.split(',').map(str::trim) {
-        if name.is_empty() {
-            return Err(Error::new(
-                "expected a name after ',' in provided declaration",
-            ));
-        }
+    for name in parse_comma_names(names_source)? {
         types.push(ProvidedTypeDecl {
             name: name.to_string(),
             category,
@@ -1602,44 +1546,65 @@ fn parse_type_with_custom_types(
     source: &str,
     custom_types: &HashMap<String, AlgebraicCategory>,
 ) -> Result<Type, Error> {
+    parse_type_with_custom_types_base(source, custom_types, None)
+}
+
+/// Performs `parse_type_with_custom_types_for_ambient` behavior.
+fn parse_type_with_custom_types_for_ambient(
+    source: &str,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+    ambient_dimension: ShapeDimension,
+) -> Result<Type, Error> {
+    parse_type_with_custom_types_base(
+        source,
+        custom_types,
+        Some(ambient_dimension),
+    )
+}
+
+fn parse_type_with_custom_types_base(
+    source: &str,
+    custom_types: &HashMap<String, AlgebraicCategory>,
+    ambient_dimension: Option<ShapeDimension>,
+) -> Result<Type, Error> {
     let source = source.trim();
+    if ambient_dimension == Some(ShapeDimension::D2) && source == "Object" {
+        return Ok(Type::Object2D);
+    }
     if source == "*" {
         return Ok(Type::Unit);
     }
     if let Some(parts) = split_top_level_product(source) {
         let mut parsed = Vec::new();
         for part in parts {
-            parsed.push(parse_type_with_custom_types(part, custom_types)?);
+            parsed.push(parse_type_with_custom_types_base(
+                part,
+                custom_types,
+                ambient_dimension,
+            )?);
         }
         return Ok(Type::Product(parsed));
     }
     if let Some((base, exponent)) = split_top_level_power(source) {
         let dim = parse_type_power_exponent(exponent)?;
-        let base = parse_type_with_custom_types(base, custom_types)?;
+        let base = parse_type_with_custom_types_base(base, custom_types, ambient_dimension)?;
         return Ok(power_type(base, dim));
     }
-    if let Some(inner) = strip_type_head(source, "Func") {
-        let (input, output) = split_top_level_comma(inner)?;
+    if let Some((input, output)) = parse_function_like_type(source)? {
         return Ok(Type::func(
-            parse_type_with_custom_types(input, custom_types)?,
-            parse_type_with_custom_types(output, custom_types)?,
-        ));
-    }
-    if let Some(inner) = strip_type_head(source, "Hom") {
-        let (input, output) = split_top_level_comma(inner)?;
-        return Ok(Type::func(
-            parse_type_with_custom_types(input, custom_types)?,
-            parse_type_with_custom_types(output, custom_types)?,
+            parse_type_with_custom_types_base(input, custom_types, ambient_dimension)?,
+            parse_type_with_custom_types_base(output, custom_types, ambient_dimension)?,
         ));
     }
     if let Some(inner) = strip_type_head(source, "End") {
-        let ty = parse_type_with_custom_types(inner, custom_types)?;
+        let ty = parse_type_with_custom_types_base(inner, custom_types, ambient_dimension)?;
         return Ok(Type::func(ty.clone(), ty));
     }
     if let Some(inner) = strip_type_head(source, "Array") {
-        return Ok(Type::Array(Box::new(parse_type_with_custom_types(
+        return Ok(Type::Array(Box::new(parse_type_with_custom_types_base(
             inner,
             custom_types,
+            ambient_dimension,
         )?)));
     }
     if category_by_name(source).is_some() {
@@ -1671,64 +1636,53 @@ fn parse_type_with_custom_types(
     }
 }
 
-/// Performs `parse_type_with_custom_types_for_ambient` behavior.
-fn parse_type_with_custom_types_for_ambient(
-    source: &str,
-    custom_types: &HashMap<String, AlgebraicCategory>,
-    ambient_dimension: ShapeDimension,
-) -> Result<Type, Error> {
-    let source = source.trim();
-    if source == "Object" && ambient_dimension == ShapeDimension::D2 {
-        return Ok(Type::Object2D);
-    }
-    if let Some(parts) = split_top_level_product(source) {
-        let mut parsed = Vec::new();
-        for part in parts {
-            parsed.push(parse_type_with_custom_types_for_ambient(
-                part,
-                custom_types,
-                ambient_dimension,
-            )?);
-        }
-        return Ok(Type::Product(parsed));
-    }
-    if let Some((base, exponent)) = split_top_level_power(source) {
-        let dim = parse_type_power_exponent(exponent)?;
-        let base = parse_type_with_custom_types_for_ambient(base, custom_types, ambient_dimension)?;
-        return Ok(power_type(base, dim));
-    }
-    if let Some(inner) = strip_type_head(source, "Func") {
-        let (input, output) = split_top_level_comma(inner)?;
-        return Ok(Type::func(
-            parse_type_with_custom_types_for_ambient(input, custom_types, ambient_dimension)?,
-            parse_type_with_custom_types_for_ambient(output, custom_types, ambient_dimension)?,
-        ));
-    }
-    if let Some(inner) = strip_type_head(source, "Hom") {
-        let (input, output) = split_top_level_comma(inner)?;
-        return Ok(Type::func(
-            parse_type_with_custom_types_for_ambient(input, custom_types, ambient_dimension)?,
-            parse_type_with_custom_types_for_ambient(output, custom_types, ambient_dimension)?,
-        ));
-    }
-    if let Some(inner) = strip_type_head(source, "End") {
-        let ty = parse_type_with_custom_types_for_ambient(inner, custom_types, ambient_dimension)?;
-        return Ok(Type::func(ty.clone(), ty));
-    }
-    if let Some(inner) = strip_type_head(source, "Array") {
-        return Ok(Type::Array(Box::new(
-            parse_type_with_custom_types_for_ambient(inner, custom_types, ambient_dimension)?,
-        )));
-    }
-    parse_type_with_custom_types(source, custom_types)
-}
-
 // Pulls out the parenthesized payload for tagged type constructors like `Func(...)`.
 fn strip_type_head<'a>(source: &'a str, head: &str) -> Option<&'a str> {
     source
         .strip_prefix(head)
         .and_then(|rest| rest.strip_prefix('('))
         .and_then(|rest| rest.strip_suffix(')'))
+}
+
+/// Parses a function-like type constructor (`Func(...)` or `Hom(...)`).
+fn parse_function_like_type(source: &str) -> Result<Option<(&str, &str)>, Error> {
+    if let Some(inner) = strip_type_head(source, "Func") {
+        return split_top_level_comma(inner).map(Some);
+    }
+    if let Some(inner) = strip_type_head(source, "Hom") {
+        return split_top_level_comma(inner).map(Some);
+    }
+    Ok(None)
+}
+
+fn parse_provided_multi_names(line: &str) -> Option<(&str, &str)> {
+    let Some(rest) = line.strip_prefix("provided ") else {
+        return None;
+    };
+    if rest.contains('=') {
+        return None;
+    }
+    let rest = rest.trim();
+    let Some(first_comma) = find_top_level_comma(rest) else {
+        return None;
+    };
+    let Some(split_index) = rest[..first_comma].rfind(' ') else {
+        return None;
+    };
+    Some((rest[..split_index].trim(), rest[split_index + 1..].trim()))
+}
+
+fn parse_comma_names(source: &str) -> Result<Vec<&str>, Error> {
+    let mut names = Vec::new();
+    for name in source.split(',').map(str::trim) {
+        if name.is_empty() {
+            return Err(Error::new(
+                "expected a name after ',' in provided declaration",
+            ));
+        }
+        names.push(name);
+    }
+    Ok(names)
 }
 
 /// Performs `split_top_level_comma` behavior.
@@ -1741,30 +1695,21 @@ fn split_top_level_comma(source: &str) -> Result<(&str, &str), Error> {
 
 /// Performs `find_top_level_comma` behavior.
 fn find_top_level_comma(source: &str) -> Option<usize> {
-    let mut depth = 0;
-    for (index, ch) in source.char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            ',' if depth == 0 => {
-                return Some(index);
-            }
-            _ => {}
-        }
-    }
-    None
+    find_top_level_delimiter(source, ',')
 }
 
 /// Performs `find_top_level_colon` behavior.
 fn find_top_level_colon(source: &str) -> Option<usize> {
+    find_top_level_delimiter(source, ':')
+}
+
+fn find_top_level_delimiter(source: &str, delimiter: char) -> Option<usize> {
     let mut depth = 0;
     for (index, ch) in source.char_indices() {
         match ch {
             '(' => depth += 1,
             ')' => depth -= 1,
-            ':' if depth == 0 => {
-                return Some(index);
-            }
+            ch if ch == delimiter && depth == 0 => return Some(index),
             _ => {}
         }
     }
@@ -1775,16 +1720,13 @@ fn find_top_level_colon(source: &str) -> Option<usize> {
 fn find_top_level_arrow(source: &str) -> Option<usize> {
     let mut depth = 0;
     let bytes = source.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        let ch = source[index..].chars().next().unwrap();
+    for (index, ch) in source.char_indices() {
         match ch {
             '(' => depth += 1,
             ')' => depth -= 1,
             '-' if depth == 0 && bytes.get(index + 1) == Some(&b'>') => return Some(index),
             _ => {}
         }
-        index += ch.len_utf8();
     }
     None
 }
@@ -1795,9 +1737,7 @@ fn split_top_level_product(source: &str) -> Option<Vec<&str>> {
     let mut parts = Vec::new();
     let mut start = 0;
     let bytes = source.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        let ch = source[index..].chars().next().unwrap();
+    for (index, ch) in source.char_indices() {
         match ch {
             '(' => depth += 1,
             ')' => depth -= 1,
@@ -1817,7 +1757,6 @@ fn split_top_level_product(source: &str) -> Option<Vec<&str>> {
             }
             _ => {}
         }
-        index += ch.len_utf8();
     }
     if parts.is_empty() {
         return None;

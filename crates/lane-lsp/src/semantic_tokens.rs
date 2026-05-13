@@ -79,8 +79,10 @@ pub fn tokens(source: &str) -> SemanticTokens {
         };
     };
 
-    let query = Query::new(&super::LANGUAGE_LANE.into(), QUERY)
-        .expect("lane semantic token query should compile");
+    let query = match Query::new(&super::LANGUAGE_LANE.into(), QUERY) {
+        Ok(query) => query,
+        Err(error) => panic!("lane semantic token query should compile: {error}"),
+    };
     let capture_names = query.capture_names();
     let mut cursor = QueryCursor::new();
     let mut absolute_tokens = Vec::new();
@@ -202,14 +204,16 @@ fn is_default_library(token_type: u32, text: &str) -> bool {
         TOKEN_TYPE_FUNCTOR => matches!(text, "Hom" | "Func"),
         TOKEN_TYPE_TYPE => is_known_type_name(text),
         TOKEN_TYPE_CATEGORY => is_known_category_name(text),
-        TOKEN_TYPE_FUNCTION => {
-            lane::known_primitive(text).is_some()
-                || lane::known_builtin_object(text).is_some_and(|detail| {
-                    matches!(detail.kind, lane::KnownBuiltinObjectKind::Function)
-                })
-        }
+        TOKEN_TYPE_FUNCTION => is_default_library_function(text),
         _ => false,
     }
+}
+
+fn is_default_library_function(name: &str) -> bool {
+    lane::known_primitive(name).is_some()
+        || lane::known_builtin_object(name).is_some_and(|detail| {
+            matches!(detail.kind, lane::KnownBuiltinObjectKind::Function)
+        })
 }
 
 /// Checks if `name` belongs to the built-in category surface.

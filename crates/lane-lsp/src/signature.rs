@@ -127,20 +127,13 @@ fn hom_domain_and_codomain(ty: &str) -> Option<(String, String)> {
 
 /// Splits source at the top-level comma, accounting for nested groups.
 fn split_top_level_comma(source: &str) -> Option<(String, String)> {
-    let mut depth = 0u32;
-    for (index, ch) in source.char_indices() {
-        match ch {
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' if depth > 0 => depth -= 1,
-            ',' if depth == 0 => {
-                let left = source[..index].trim().to_string();
-                let right = source[index + 1..].trim().to_string();
-                return Some((left, right));
-            }
-            _ => {}
-        }
+    let index = find_top_level_delimiter(source, ',')?;
+    if index == 0 || index + 1 >= source.len() {
+        return None;
     }
-    None
+    let left = source[..index].trim().to_string();
+    let right = source[index + 1..].trim().to_string();
+    Some((left, right))
 }
 
 /// Produces parameter labels from a function domain expression.
@@ -161,10 +154,7 @@ fn split_top_level_product(source: &str) -> Vec<String> {
     let mut depth = 0u32;
     let mut parts = Vec::new();
     let mut start = 0;
-    let chars = source.char_indices().collect::<Vec<_>>();
-    let mut index = 0;
-    while index < chars.len() {
-        let (byte, ch) = chars[index];
+    for (byte, ch) in source.char_indices() {
         match ch {
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' if depth > 0 => depth -= 1,
@@ -174,7 +164,6 @@ fn split_top_level_product(source: &str) -> Vec<String> {
             }
             _ => {}
         }
-        index += 1;
     }
     if start > 0 {
         parts.push(source[start..].trim().to_string());
@@ -191,6 +180,19 @@ fn product_separator_at(source: &str, byte: usize, ch: char) -> bool {
     let before = source[..byte].chars().next_back();
     let after = source[byte + ch.len_utf8()..].chars().next();
     before.is_some_and(char::is_whitespace) && after.is_some_and(char::is_whitespace)
+}
+
+fn find_top_level_delimiter(source: &str, delimiter: char) -> Option<usize> {
+    let mut depth = 0u32;
+    for (index, ch) in source.char_indices() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' if depth > 0 => depth -= 1,
+            ch if ch == delimiter && depth == 0 => return Some(index),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Builds a typed signature object for function calls.

@@ -787,15 +787,7 @@ fn infer_identifier_value(
                 name
             )));
         }
-        if lift_param.is_none() {
-            return Err(Error::new(format!(
-                "function '{}' needs an explicit call outside function bodies",
-                name
-            )));
-        }
-        let param_name = lift_param
-            .expect("validated lift parameter presence")
-            .to_string();
+        let param_name = lift_param_name(lift_param, name)?;
         let overloads = env
             .function_overloads(name)
             .ok_or_else(|| Error::new(format!("unknown identifier '{}'", name)))?;
@@ -850,21 +842,13 @@ fn infer_identifier_value(
             array_len: info.array_len,
         }),
         Type::Func(input, output) => {
-            if lift_param.is_none() {
-                return Err(Error::new(format!(
-                    "function '{}' needs an explicit call outside function bodies",
-                    name
-                )));
-            }
             if *input != Type::Float {
                 return Err(Error::new(format!(
                     "function '{}' cannot be lifted implicitly",
                     name
                 )));
             }
-            let param_name = lift_param
-                .expect("validated lift parameter presence")
-                .to_string();
+            let param_name = lift_param_name(lift_param, name)?;
             Ok(ValueExpr::Call {
                 func: name.to_string(),
                 args: vec![ValueExpr::Var {
@@ -973,6 +957,14 @@ fn infer_unary_type(op: UnaryOp, ty: &Type) -> Result<Type, Error> {
             }
         }
     }
+}
+
+fn lift_param_name(lift_param: Option<&str>, name: &str) -> Result<String, Error> {
+    lift_param
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            Error::new(format!("function '{name}' needs an explicit call outside function bodies"))
+        })
 }
 
 /// Type-checks helper logic for infer_binary_type.

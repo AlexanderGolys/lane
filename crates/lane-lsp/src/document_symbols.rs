@@ -1,5 +1,6 @@
-use tower_lsp::lsp_types::{DocumentSymbol, Position, Range, SymbolKind};
+use tower_lsp::lsp_types::{DocumentSymbol, Range, SymbolKind};
 use tree_sitter::Node;
+use crate::position;
 
 /// Returns top-level document symbols discovered from a Lane source buffer.
 pub fn symbols(source: &str) -> Vec<DocumentSymbol> {
@@ -22,36 +23,28 @@ fn symbols_for_declaration(
     node: Node<'_>,
 ) -> Vec<DocumentSymbol> {
     match node.kind() {
-        "directive" => directive_symbol(source, line_start_bytes, node)
-            .into_iter()
-            .collect(),
+        "directive" => directive_symbol(source, line_start_bytes, node).into_iter().collect(),
         "provided_category_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::INTERFACE)
         }
-        "category_type_declaration" => {
+        "category_type_declaration" | "product_type_declaration" => {
             named_field_symbols(source, line_start_bytes, node, SymbolKind::STRUCT)
         }
-        "product_type_declaration" => {
-            named_field_symbols(source, line_start_bytes, node, SymbolKind::STRUCT)
-        }
-        "input_declaration" => {
-            named_field_symbols(source, line_start_bytes, node, SymbolKind::VARIABLE)
-        }
-        "arrow_function_declaration" => {
-            named_field_symbols(source, line_start_bytes, node, SymbolKind::FUNCTION)
-        }
-        "binding_declaration" => named_field_symbols(
+        "input_declaration" => named_field_symbols(
             source,
             line_start_bytes,
             node,
-            binding_symbol_kind(source, node),
+            SymbolKind::VARIABLE,
         ),
-        "inferred_binding_declaration" => named_field_symbols(
+        "arrow_function_declaration" => named_field_symbols(
             source,
             line_start_bytes,
             node,
-            binding_symbol_kind(source, node),
+            SymbolKind::FUNCTION,
         ),
+        "binding_declaration" | "inferred_binding_declaration" => {
+            named_field_symbols(source, line_start_bytes, node, binding_symbol_kind(source, node))
+        }
         _ => Vec::new(),
     }
 }
@@ -72,7 +65,7 @@ fn directive_symbol(
     } else {
         SymbolKind::NAMESPACE
     };
-    Some(make_symbol(source, line_start_bytes, node, name, kind))
+    make_symbol(source, line_start_bytes, node, name, kind)
 }
 
 /// Produces symbol entries for declaration nodes that carry named fields.
@@ -84,14 +77,8 @@ fn named_field_symbols(
 ) -> Vec<DocumentSymbol> {
     let mut cursor = node.walk();
     node.children_by_field_name("name", &mut cursor)
-        .filter(|child| child.is_named())
-        .filter_map(|name| {
-            if node_text(source, name).is_some() {
-                Some(make_symbol(source, line_start_bytes, node, name, kind))
-            } else {
-                None
-            }
-        })
+        .filter(|name| name.is_named())
+        .filter_map(|name| make_symbol(source, line_start_bytes, node, name, kind))
         .collect()
 }
 
@@ -115,20 +102,21 @@ fn make_symbol(
     source: &str,
     line_start_bytes: &[usize],
     node: Node<'_>,
-    name: Node<'_>,
+    name_node: Node<'_>,
     kind: SymbolKind,
-) -> DocumentSymbol {
-    DocumentSymbol {
-        name: node_text(source, name).unwrap_or_default(),
+) -> Option<DocumentSymbol> {
+    let name = node_text(source, name_node)?;
+    Some(DocumentSymbol {
+        name,
         detail: Some(detail_for_node(node).to_string()),
         kind,
         tags: None,
         #[allow(deprecated)]
         deprecated: None,
         range: node_range(source, line_start_bytes, node),
-        selection_range: node_range(source, line_start_bytes, name),
+        selection_range: node_range(source, line_start_bytes, name_node),
         children: None,
-    }
+    })
 }
 
 /// Maps declaration kinds to human-readable symbol details for the UI.
@@ -154,22 +142,7 @@ fn node_text(source: &str, node: Node<'_>) -> Option<String> {
 /// Returns a symbol range for the given node based on precomputed line starts.
 fn node_range(source: &str, line_start_bytes: &[usize], node: Node<'_>) -> Range {
     Range::new(
-        byte_to_position(source, line_start_bytes, node.start_byte()),
-        byte_to_position(source, line_start_bytes, node.end_byte()),
+        position::byte_to_position(source, line_start_bytes, node.start_byte()),
+        position::byte_to_position(source, line_start_bytes, node.end_byte()),
     )
-}
-
-/// Converts a byte offset to LSP position using `line_start_bytes`.
-fn byte_to_position(source: &str, line_start_bytes: &[usize], byte: usize) -> Position {
-    let line = match line_start_bytes.binary_search(&byte) {
-        Ok(line) => line,
-        Err(next_line) => next_line.saturating_sub(1),
-    };
-    let line_start = line_start_bytes.get(line).copied().unwrap_or(0);
-    let byte = byte.min(source.len());
-    let character = source[line_start..byte]
-        .chars()
-        .map(char::len_utf16)
-        .sum::<usize>();
-    Position::new(line as u32, character as u32)
 }
